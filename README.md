@@ -108,32 +108,28 @@ cloud API key:
 ```yaml
 default_profile: local-ollama
 profiles:
-  # Ollama — https://ollama.com  (ollama pull llama3.1:8b)
   local-ollama:
     type: openai
     label: "Ollama (local)"
     endpoint: http://localhost:11434/v1
-    api_key: ollama               # required by the client, ignored by Ollama
-    model: llama3.1:8b
-    supports_tools: true
+    api_key: ollama            # required by the client, ignored by Ollama
+    model: qwen3.6:35b
+    # Optional: restrict/seed the model dropdown. If omitted, /api/providers
+    # tries to list models from the endpoint.
+    models: [qwen3.6:35b, glm-4.7-flash:latest]
+    supports_tools: true       # set false for models without tool-calling
 
-  # LM Studio — start its local server (default port 1234)
-  local-lmstudio:
+  # LM Studio (local) — enable its server under the "Developer" tab (default port 1234).
+  lmstudio:
     type: openai
-    label: "LM Studio (local)"
+    label: "LM-Studio (local)"
     endpoint: http://localhost:1234/v1
-    api_key: lm-studio            # any non-empty string; LM Studio ignores it
-    model: qwen2.5-7b-instruct
-    supports_tools: true
-
-  # vLLM — python -m vllm.entrypoints.openai.api_server --model ...
-  local-vllm:
-    type: openai
-    label: "vLLM (local/self-hosted)"
-    endpoint: http://localhost:8000/v1
-    api_key: vllm                 # required by the client; vLLM ignores it unless you set --api-key
-    model: meta-llama/Meta-Llama-3.1-8B-Instruct
-    supports_tools: true
+    api_key: none            # required by the client, ignored by LM-Studio
+    model: qwen/qwen3.6-27b
+    # Optional: restrict/seed the model dropdown. If omitted, /api/providers
+    # tries to list models from the endpoint.
+    models: [qwen/qwen3.6-27b]
+    supports_tools: true       # set false for models without tool-calling
 ```
 
 The same `type: openai` shape also covers **OpenAI**, **LiteLLM**, and any other

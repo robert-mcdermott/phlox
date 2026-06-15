@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+backend/.venv/
+*.egg-info/
+
+# Backend data (db, workspaces, uploads) and local config
+backend/data/
+backend/config.yml
+backend/.playwright-mcp/
+# Node / Vite
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Env / editors
+.env
+.env.*
+.DS_Store
+.idea/
+.vscode/
+*.log
+.claude/

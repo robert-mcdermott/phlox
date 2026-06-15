@@ -1,0 +1,138 @@
+/*
+ * Theme token layer. Each [data-theme="..."] block sets the CSS variables the
+ * Tailwind semantic colors resolve against (see tailwind.config.js). Add a theme
+ * by adding a block here and an entry in presets.js. See docs/THEMING.md.
+ */
+
+/* Phlox Dark (default) — deep purple-black with the phlox magenta brand accent. */
+[data-theme='phlox-dark'] {
+  --color-bg: #160821;
+  --color-surface: #20102e;
+  --color-surface-2: #2a1740;
+  --color-surface-3: #341d4f;
+  --color-border: #3d2659;
+  --color-text: #f0e6f7;
+  --color-text-muted: #b69fc9;
+  --color-accent: #df00ff; /* phlox */
+  --color-accent-fg: #ffffff;
+  --color-user-bubble: #7a1fa2;
+  --color-user-bubble-fg: #ffffff;
+  --color-header: #110619;
+  --color-header-border: #df00ff;
+  --color-sidebar: #110619;
+  --color-sidebar-fg: #e3d3ee;
+}
+
+/* Phlox Light — soft lavender with the phlox magenta brand accent. */
+[data-theme='phlox-light'] {
+  --color-bg: #faf5fe;
+  --color-surface: #ffffff;
+  --color-surface-2: #f7eefb;
+  --color-surface-3: #f0e2f7;
+  --color-border: #ead7f3;
+  --color-text: #2a1438;
+  --color-text-muted: #856b97;
+  --color-accent: #c200de; /* phlox (toned for contrast on light) */
+  --color-accent-fg: #ffffff;
+  --color-user-bubble: #9b00cc;
+  --color-user-bubble-fg: #ffffff;
+  --color-header: #ffffff;
+  --color-header-border: #df00ff;
+  --color-sidebar: #2a0a3d;
+  --color-sidebar-fg: #f0e2f7;
+}
+
+/* Fred Hutch — light, navy + cyan brand. */
+[data-theme='fred-hutch'] {
+  --color-bg: #f4f6f9;
+  --color-surface: #ffffff;
+  --color-surface-2: #f9fafb;
+  --color-surface-3: #eef2f7;
+  --color-border: #e2e8f0;
+  --color-text: #1f2937;
+  --color-text-muted: #6b7280;
+  --color-accent: #00abc8; /* hutch-cyan */
+  --color-accent-fg: #ffffff;
+  --color-user-bubble: #1b365d; /* hutch-navy */
+  --color-user-bubble-fg: #ffffff;
+  --color-header: #ffffff;
+  --color-header-border: #00abc8;
+  --color-sidebar: #1b365d;
+  --color-sidebar-fg: #e8eef6;
+}
+
+/* Light — neutral grayscale with cyan accent. */
+[data-theme='light'] {
+  --color-bg: #ffffff;
+  --color-surface: #ffffff;
+  --color-surface-2: #f8fafc;
+  --color-surface-3: #f1f5f9;
+  --color-border: #e5e7eb;
+  --color-text: #111827;
+  --color-text-muted: #6b7280;
+  --color-accent: #0ea5b7;
+  --color-accent-fg: #ffffff;
+  --color-user-bubble: #0ea5b7;
+  --color-user-bubble-fg: #ffffff;
+  --color-header: #ffffff;
+  --color-header-border: #e5e7eb;
+  --color-sidebar: #f8fafc;
+  --color-sidebar-fg: #1f2937;
+}
+
+/* Dark — deep slate with cyan accent. */
+[data-theme='dark'] {
+  --color-bg: #0f172a;
+  --color-surface: #1e293b;
+  --color-surface-2: #243149;
+  --color-surface-3: #2d3b55;
+  --color-border: #334155;
+  --color-text: #e2e8f0;
+  --color-text-muted: #94a3b8;
+  --color-accent: #22d3ee;
+  --color-accent-fg: #06283d;
+  --color-user-bubble: #0e7490;
+  --color-user-bubble-fg: #ecfeff;
+  --color-header: #0b1220;
+  --color-header-border: #22d3ee;
+  --color-sidebar: #0b1220;
+  --color-sidebar-fg: #cbd5e1;
+}
+
+/* Hutch Night — Fred Hutch navy taken dark, purple/gold accents. */
+[data-theme='hutch-night'] {
+  --color-bg: #10192b;
+  --color-surface: #16223a;
+  --color-surface-2: #1c2c4a;
+  --color-surface-3: #243454;
+  --color-border: #2c3e60;
+  --color-text: #e6edf6;
+  --color-text-muted: #93a4be;
+  --color-accent: #aa4ac4; /* hutch-purple */
+  --color-accent-fg: #ffffff;
+  --color-user-bubble: #00abc8;
+  --color-user-bubble-fg: #04222a;
+  --color-header: #0b1322;
+  --color-header-border: #aa4ac4;
+  --color-sidebar: #0b1322;
+  --color-sidebar-fg: #d7e0ee;
+}
+
+/* Solarized-ish warm light. */
+[data-theme='sandstone'] {
+  --color-bg: #faf5ee;
+  --color-surface: #fffdf9;
+  --color-surface-2: #f5eee2;
+  --color-surface-3: #efe6d6;
+  --color-border: #e4d9c6;
+  --color-text: #3a3226;
+  --color-text-muted: #8a7d68;
+  --color-accent: #b8860b;
+  --color-accent-fg: #ffffff;
+  --color-user-bubble: #1b365d;
+  --color-user-bubble-fg: #ffffff;
+  --color-header: #fffdf9;
+  --color-header-border: #b8860b;
+  --color-sidebar: #1b365d;
+  --color-sidebar-fg: #f0e9da;
+}

@@ -1,0 +1,180 @@
+# Phlox configuration
+# Copy to config.yml and edit. Supports any number of named "profiles", each
+# pointing at an OpenAI-compatible endpoint OR AWS Bedrock. Users switch the
+# active profile at runtime from the Settings UI.
+#
+# Any OpenAI-compatible server works with `type: openai` — including the popular LOCAL
+# runtimes Ollama, LM Studio, and vLLM (examples below), so Phlox can run fully
+# offline with no cloud API key. It also covers OpenAI, LiteLLM, and similar gateways.
+#
+# THIS FILE IS THE SEED. An admin can override several sections LIVE from the UI
+# (Settings → Admin → Configuration), with no restart: provider `profiles`, model `pricing`,
+# `resilience`, generation `defaults`, and the sandbox container *limits*. Those overrides
+# are stored in the database and take precedence over this file. The sections that stay
+# file-only (for bootstrap/security): `auth` (incl. jwt_secret), `vector_store`, the sandbox
+# `runner` *type*, and `observability.otel`/`request_logging`.
+
+# Which profile is active on first launch (can be changed in the UI afterwards).
+default_profile: local-ollama
+
+# Default generation parameters. SEED ONLY — also editable live in Settings → Admin →
+# Configuration ("Runtime defaults"), and per-conversation in the chat UI. The values here
+# are the initial deployment defaults; a DB override takes precedence once set.
+defaults:
+  temperature: 0.3
+  # max_tokens caps the OUTPUT of a single model response (not the whole chat). "Thinking"
+  # models and file/code generation need headroom — raise this for large outputs.
+  max_tokens: 8192
+  max_tool_rounds: 12
+  # When the replayed transcript (the multi-turn context) exceeds this many estimated
+  # tokens, older turns are summarized to stay within the model's context window.
+  max_context_tokens: 16000
+  system_prompt: |
+    You are Phlox, a helpful, capable AI assistant.
+    You can chat, reason, search uploaded documents, run code, use the filesystem in a
+    sandboxed per-conversation workspace, and call connected tools. Be clear and concise.
+    When you run tools or code, briefly explain what you did and surface the key results.
+
+# Named provider profiles. `type` is "openai" (any OpenAI-compatible endpoint)
+# or "bedrock" (AWS Bedrock Converse API). At least one profile must exist here so a fresh
+# install has a working model on first boot. After that, admins can add/edit/remove profiles
+# live in Settings → Admin → Configuration (API keys there are write-only/masked) — those
+# overrides replace this list. `default_profile` above picks the one active on first launch.
+profiles:
+  local-ollama:
+    type: openai
+    label: "Ollama (local)"
+    endpoint: http://localhost:11434/v1
+    api_key: ollama            # required by the client, ignored by Ollama
+    model: qwen3.6:35b
+    # Optional: restrict/seed the model dropdown. If omitted, /api/providers
+    # tries to list models from the endpoint.
+    models: [qwen3.6:35b, glm-4.7-flash:latest]
+    supports_tools: true       # set false for models without tool-calling
+
+  # LM Studio (local) — enable its server under the "Developer" tab (default port 1234).
+  lmstudio:
+    type: openai
+    label: "LM-Studio (local)"
+    endpoint: http://localhost:1234/v1
+    api_key: none            # required by the client, ignored by LM-Studio
+    model: qwen/qwen3.6-27b
+    # Optional: restrict/seed the model dropdown. If omitted, /api/providers
+    # tries to list models from the endpoint.
+    models: [qwen/qwen3.6-27b]
+    supports_tools: true       # set false for models without tool-calling
+
+  # vLLM (local) — e.g.
+  #   python -m vllm.entrypoints.openai.api_server \
+  #     --model meta-llama/Meta-Llama-3.1-8B-Instruct --enable-auto-tool-choice
+  local-vllm:
+    type: openai
+    label: "vLLM (local)"
+    endpoint: http://localhost:8000/v1
+    api_key: vllm              # required by the client; vLLM ignores it unless launched with --api-key
+    model: meta-llama/Meta-Llama-3.1-8B-Instruct
+    supports_tools: true       # vLLM needs --enable-auto-tool-choice for tool calling
+    # NOTE: vLLM defaults to port 8000 — the same port the Phlox backend uses. Run vLLM
+    # on another port (--port 8001) or the backend elsewhere to avoid the clash.
+
+  openai-gpt:
+    type: openai
+    label: "OpenAI"
+    endpoint: https://api.openai.com/v1
+    api_key: "sk-..."          # or set OPENAI_API_KEY in the environment
+    model: gpt-4o
+    models: [gpt-4o, gpt-4o-mini, o3-mini]
+    supports_tools: true
+
+  bedrock-sonnet:
+    type: bedrock
+    label: "AWS Bedrock — Claude"
+    aws_region: us-west-2
+    # Authenticate with ONE of the following (or none, to use the host's AWS chain).
+    # All of these are also editable in the admin UI (Settings → Admin → Configuration),
+    # where the secret fields are write-only/masked.
+    #
+    # (a) Single Amazon Bedrock API key (a bearer token — simplest):
+    # aws_bedrock_api_key: "..."
+    # (b) Explicit IAM credentials:
+    # aws_access_key_id: "..."
+    # aws_secret_access_key: "..."
+    # For TEMPORARY / STS credentials (access keys starting with ASIA), you MUST also
+    # provide the session token — without it auth fails:
+    # aws_session_token: "..."
+    # (c) A named profile from ~/.aws/credentials:
+    # aws_profile: my-sso-profile
+    # (d) Nothing here -> the standard AWS chain (env, ~/.aws, instance role) is used.
+    model: us.anthropic.claude-sonnet-4-6
+    models:
+      - us.anthropic.claude-sonnet-4-6
+      - us.anthropic.claude-opus-4-1
+      - us.anthropic.claude-3-5-haiku-20241022-v1:0
+    supports_tools: true
+    prompt_cache: true           # cache the system prompt + tools (Claude on Bedrock) for
+                                 # lower latency/cost; set false if your model lacks caching
+
+# Embeddings used for document/RAG search. FILE-ONLY (not in the admin UI). If the active
+# profile cannot embed, Phlox falls back to a deterministic local hashing embedder so RAG
+# still works.
+# Switching the embedder changes the vector dimension; Phlox re-embeds stored
+# documents and rebuilds the index automatically on startup (see rag/maintenance.py).
+embeddings:
+  # profile + model to use for embeddings (must be an "openai"-type profile / endpoint).
+  profile: local-ollama          # fully local, no API key (after: ollama pull nomic-embed-text)
+  model: nomic-embed-text
+  # OpenAI alternative:
+  # profile: openai-gpt
+  # model: text-embedding-3-small
+
+# Observability: structured request logs (always on), per-message token cost, and an
+# optional OpenTelemetry exporter. See docs/OBSERVABILITY.md.
+observability:
+  request_logging: true          # file-only (wired at startup)
+  # Per-model pricing (USD per 1,000,000 tokens) to compute per-turn cost. Optional.
+  # SEED ONLY — also editable live in Settings → Admin → Configuration ("Model pricing").
+  pricing:
+    us.anthropic.claude-sonnet-4-6: { input: 3.0, output: 15.0 }
+    gpt-4o: { input: 2.5, output: 10.0 }
+  # OpenTelemetry tracing — file-only (instrumented once at startup, needs a restart).
+  # otel:
+  #   endpoint: http://localhost:4318/v1/traces
+  #   service_name: phlox
+
+# Resilience: client timeouts, automatic retries on transient errors, and an optional
+# fallback profile used if the active provider fails. SEED ONLY — also editable live in
+# Settings → Admin → Configuration ("Runtime defaults").
+resilience:
+  timeout: 120                 # seconds per request
+  max_retries: 2               # SDK-level retries on transient errors (429/5xx/timeouts)
+  fallback_profile: null       # e.g. "local-ollama" — used if the active provider errors
+
+# Code/shell execution sandbox.
+#   runner: local      -> run on the host (fast, trusts the host; fine for single-user/dev)
+#   runner: container  -> run in an ephemeral, resource-limited container per execution.
+# The container runner targets the Docker-compatible CLI, so it works with Podman
+# (including Podman's Docker-compat mode) and Docker, on Windows/macOS/Linux. Required for
+# untrusted / multi-user execution. Falls back to local if no engine is found.
+sandbox:
+  runner: local                  # FILE-ONLY: changing the runner type needs a restart (and
+                                 # is never UI-editable — flipping isolation at runtime is unsafe).
+  # The container limits below are SEED ONLY — also editable live in Settings → Admin →
+  # Configuration ("Sandbox limits"); a saved override rebuilds the runner with no restart.
+  container:
+    engine: auto                 # auto | podman | docker | <full path to the binary>
+    python_image: python:3.12-slim
+    node_image: node:22-slim
+    memory: 1024m
+    cpus: "1.0"
+    pids_limit: 256
+    network: none                # none (most secure) | bridge (allow network, e.g. pip)
+
+# Vector store for document/RAG search. FILE-ONLY (not in the admin UI). Default is Qdrant in
+# embedded file-based mode (no server needed; works the same on Windows/macOS/Linux). To scale
+# later, run a Qdrant server and set `url:` instead of `path:` — no other code changes needed.
+vector_store:
+  provider: qdrant
+  path: ./data/qdrant          # embedded, on-disk (relative to backend/)
+  # url: http://localhost:6333 # uncomment to use a Qdrant server instead of `path`
+  # api_key: ""                # for Qdrant Cloud / secured servers
+  collection: doc_chunks

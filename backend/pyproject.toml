@@ -1,0 +1,43 @@
+[project]
+name = "phlox-backend"
+version = "0.1.0"
+description = "Phlox — feature-rich ChatGPT-style app backend (FastAPI)"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+authors = [{ name = "Robert McDermott", email = "robert.c.mcdermott@gmail.com" }]
+dependencies = [
+    "fastapi>=0.135.0",
+    "uvicorn[standard]>=0.41.0",
+    "sqlalchemy>=2.0.48",
+    "pydantic>=2.10.0",
+    "pydantic-settings>=2.7.0",
+    "pyyaml>=6.0.2",
+    "python-multipart>=0.0.18",
+    "openai>=2.26.0",
+    "boto3>=1.42.0",
+    "httpx>=0.28.0",
+    "numpy>=2.1.0",
+    "pypdf>=5.1.0",
+    "python-docx>=1.1.2",
+    "mcp>=1.2.0",
+    "qdrant-client>=1.12.0",
+    "bcrypt>=4.2.0",
+    "pyjwt>=2.10.0",
+]
+
+[project.optional-dependencies]
+dev = ["ruff>=0.8.0", "pytest>=8.3.0"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+pythonpath = ["."]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]

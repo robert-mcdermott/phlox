@@ -26,7 +26,7 @@ function CodeBlock({ className, children }) {
         {copied ? <Check size={14} /> : <Copy size={14} />}
       </button>
       <pre className="overflow-x-auto rounded-lg bg-[#0d1117] p-4 text-sm">
-        <code className={className}>{children}</code>
+        <code className={`${className || ''} !text-[#e6edf3]`}>{children}</code>
       </pre>
     </div>
   )

@@ -36,16 +36,26 @@ function Welcome() {
   )
 }
 
-function ThinkingDots() {
+// True while at least one tool call is still executing (no result yet).
+// Those cards render their own spinner, so the page-level indicator yields to them;
+// in the gaps between tool steps (all results in, next step not started) it stays visible.
+function anyToolRunning(live) {
+  return live.toolCalls.some((tc) => tc.content === null)
+}
+
+function ThinkingDots({ label }) {
   return (
-    <div className="flex gap-1.5 px-1 py-2">
-      {[0, 1, 2].map((i) => (
-        <span
-          key={i}
-          className="hc-dot h-2 w-2 rounded-full bg-accent"
-          style={{ animationDelay: `${i * 0.16}s` }}
-        />
-      ))}
+    <div className="flex items-center gap-2 px-1 py-2" role="status" aria-live="polite">
+      <div className="flex gap-1.5">
+        {[0, 1, 2].map((i) => (
+          <span
+            key={i}
+            className="hc-dot h-2 w-2 rounded-full bg-accent"
+            style={{ animationDelay: `${i * 0.16}s` }}
+          />
+        ))}
+      </div>
+      <span className="text-sm text-muted">{label || 'Working\u2026'}</span>
     </div>
   )
 }
@@ -103,11 +113,8 @@ export default function ChatPage() {
               </>
             )}
 
-            {streaming && live && !live.content && live.toolCalls.length === 0 && (
-              <div className="flex flex-col gap-1">
-                {live.status && <span className="px-1 text-sm text-accent">{live.status}</span>}
-                <ThinkingDots />
-              </div>
+            {streaming && live && !live.pendingApproval && !anyToolRunning(live) && (
+              <ThinkingDots label={live.status || (live.content ? 'Responding\u2026' : 'Working\u2026')} />
             )}
 
             {error && (

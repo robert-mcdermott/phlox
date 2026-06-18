@@ -4,7 +4,12 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from app.config import get_embeddings_config, get_profile, get_profiles
+from app.config import (
+    get_default_profile_name,
+    get_embeddings_config,
+    get_profile,
+    get_profiles,
+)
 from app.providers.base import LLMProvider
 from app.providers.bedrock_provider import BedrockProvider
 from app.providers.openai_provider import OpenAIProvider
@@ -69,6 +74,53 @@ def list_models(profile_name: str) -> list[str]:
         except Exception as e:  # noqa: BLE001
             logger.warning("Could not list models for %s: %s", profile_name, e)
     return [cfg["model"]] if cfg.get("model") else []
+
+
+def gateway_models() -> list[dict[str, Any]]:
+    """Flat list of callable models across all profiles, for the gateway ``GET /v1/models``.
+
+    Each entry advertises both a bare ``model`` id and a fully-qualified ``profile/model``
+    id (returned as the OpenAI ``id``), since the same model id (e.g. ``gpt-4o``) can exist
+    under several profiles. Clients may call either form; ``resolve_model`` disambiguates.
+    """
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for name, cfg in get_profiles().items():
+        models = list(cfg.get("models") or ([cfg["model"]] if cfg.get("model") else []))
+        for m in models:
+            qualified = f"{name}/{m}"
+            if qualified in seen:
+                continue
+            seen.add(qualified)
+            out.append({"id": qualified, "profile": name, "model": m})
+    return out
+
+
+def resolve_model(model: str) -> tuple[str, str]:
+    """Resolve a gateway ``model`` string to a concrete ``(profile, model)`` pair.
+
+    Accepts either ``"profile/model"`` (explicit) or a bare ``"model"`` (resolved against
+    the profile catalog; falls back to the default profile so a bare id always works for the
+    common single-profile deployment). Raises ``ValueError`` if it can't be resolved.
+    """
+    if not model:
+        raise ValueError("A 'model' is required.")
+    profiles = get_profiles()
+    # Explicit "profile/model" form.
+    if "/" in model:
+        profile, _, bare = model.partition("/")
+        if profile in profiles:
+            return profile, bare
+    # Bare model id: first profile that lists it (or whose single model matches).
+    for name, cfg in profiles.items():
+        catalog = cfg.get("models") or ([cfg["model"]] if cfg.get("model") else [])
+        if model in catalog:
+            return name, model
+    # Last resort: hand the bare id to the default profile (overrides its configured model).
+    default = get_default_profile_name()
+    if default:
+        return default, model
+    raise ValueError(f"Unknown model: {model!r}")
 
 
 def build_embedder() -> tuple[LLMProvider | None, str | None]:

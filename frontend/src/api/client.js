@@ -87,6 +87,11 @@ export const api = {
     return req('GET', `/api/usage/by-user${q ? `?${q}` : ''}`)
   },
 
+  // api keys (gateway access)
+  listApiKeys: () => req('GET', '/api/api-keys'),
+  createApiKey: (body) => req('POST', '/api/api-keys', body || {}),
+  revokeApiKey: (id) => req('DELETE', `/api/api-keys/${id}`),
+
   // memories
   listMemories: () => req('GET', '/api/memories'),
   addMemory: (body) => req('POST', '/api/memories', body),

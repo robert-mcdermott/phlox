@@ -144,6 +144,18 @@ The things a user *feels* immediately; they make it a real agent, not "chat that
 - [x] **Keyboard shortcuts.** New chat (Ctrl/Cmd+K), toggle sidebar (Ctrl/Cmd+\\), Esc to
   close. Command palette + voice in/out still TODO.
 
+## API gateway (OpenAI-compatible)
+
+Use Phlox programmatically as an authenticated LLM gateway, with the same per-user/department
+cost accounting as interactive chat. See [API_GATEWAY.md](API_GATEWAY.md).
+
+- [x] **Phase 1 — raw passthrough.** Per-user API keys (SHA-256 hashed, revocable, expiring),
+  OpenAI-compatible `POST /v1/chat/completions` (streaming + buffered) and `GET /v1/models`,
+  exactly one model call per request, usage recorded to the `UsageLedger`.
+- [ ] **Phase 2 — agentic endpoint.** `POST /v1/agent/completions` exposing RAG + tools + MCP;
+  the N model calls of one request grouped by `parent_request_id` (the ledger seam is already
+  in place). Per-key budgets / rate-limiting are a candidate follow-up here.
+
 ## Tier 5 — Sensitive-data deployment (PHI)
 
 Deferred until the app is used with real/sensitive data. **Gates any PHI use.**
@@ -159,8 +171,10 @@ Deferred until the app is used with real/sensitive data. **Gates any PHI use.**
 ### Status
 **Tiers 1, 2, 3, and 4 are complete.** Remaining Tier 4 nice-to-haves: full
 conversation-branch tree, HTML/React live artifact previews, command palette, voice.
+**API gateway Phase 1 is complete; Phase 2 (`/v1/agent/completions`) is next.**
 **Postgres and PHI/data-governance are Tier 5**, deferred until a sensitive-data
 deployment.
 
-See [AUTH.md](AUTH.md) (auth/SSO), [SANDBOX.md](SANDBOX.md) (container sandbox), and
-[OBSERVABILITY.md](OBSERVABILITY.md) (logging/usage/tracing).
+See [AUTH.md](AUTH.md) (auth/SSO), [SANDBOX.md](SANDBOX.md) (container sandbox),
+[OBSERVABILITY.md](OBSERVABILITY.md) (logging/usage/tracing), and
+[API_GATEWAY.md](API_GATEWAY.md) (OpenAI-compatible gateway).

@@ -71,9 +71,9 @@ def delete_user_data(db: Session, user_id: str) -> dict:
     import shutil
 
     from app.config import UPLOADS_DIR, WORKSPACES_DIR
-    from app.models import Conversation, Document, Memory, Setting
+    from app.models import ApiKey, Conversation, Document, Memory, Setting
 
-    counts = {"conversations": 0, "documents": 0, "memories": 0}
+    counts = {"conversations": 0, "documents": 0, "memories": 0, "api_keys": 0}
 
     for conv in db.query(Conversation).filter(Conversation.user_id == user_id).all():
         ws = WORKSPACES_DIR / conv.id
@@ -97,6 +97,12 @@ def delete_user_data(db: Session, user_id: str) -> dict:
     for mem in db.query(Memory).filter(Memory.user_id == user_id).all():
         db.delete(mem)
         counts["memories"] += 1
+
+    # Gateway API keys: hard-delete so a departing user's keys can never authenticate again.
+    # (The usage they already incurred lives on in the ledger, identity snapshotted.)
+    for k in db.query(ApiKey).filter(ApiKey.user_id == user_id).all():
+        db.delete(k)
+        counts["api_keys"] += 1
 
     # Per-user settings are keyed "<user_id>:<key>".
     for s in db.query(Setting).filter(Setting.key.like(f"{user_id}:%")).all():

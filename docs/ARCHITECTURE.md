@@ -84,7 +84,8 @@ deals with provider-specific shapes.
 | **RAG** | `rag/ingest.py`, `embed.py`, `retrieve.py`, `store.py` | Parse → chunk → embed → **Qdrant** vector search (`VectorStore` seam) |
 | **MCP** | `mcp/manager.py` | Connect MCP servers, proxy their tools into the registry |
 | **Observability** | `observability.py`, `usage_ledger.py`, `routers/usage.py` | Per-request logging, OTel seam, per-turn token/cost capture + durable chargeback ledger. See [OBSERVABILITY.md](OBSERVABILITY.md) |
-| **Routers** | `routers/*.py` | `auth, chat, conversations, providers, settings, documents, mcp, tools, files, memories, checkpoints, attachments, usage, admin_config` |
+| **API gateway** | `api_keys.py`, `routers/api_keys.py`, `routers/gateway.py` | Per-user API keys (SHA-256 hashed) + OpenAI-compatible `/v1/chat/completions` & `/v1/models`; usage flows through `usage_ledger`. See [API_GATEWAY.md](API_GATEWAY.md) |
+| **Routers** | `routers/*.py` | `auth, chat, conversations, providers, settings, documents, mcp, tools, files, memories, checkpoints, attachments, usage, admin_config, api_keys, gateway` |
 
 ### Key design decisions
 - **One unified tool surface.** Built-in tools, MCP tools, and `search_documents` all
@@ -181,6 +182,9 @@ streamed markdown with highlighted, copyable code.
 - `UsageLedger` — append-only, **FK-free** per-turn token/cost rows with a snapshot of the
   billable identity (username/email/department). Deliberately survives user deletion for
   chargeback; see [OBSERVABILITY.md](OBSERVABILITY.md) / [AUTH.md](AUTH.md).
+- `ApiKey` — per-user gateway keys: only a SHA-256 `key_hash` (unique) + non-secret
+  `prefix` are stored, with `is_active`/`expires_at`/`last_used_at`. Resolves to the owning
+  `User` (the billable identity); hard-deleted with the user. See [API_GATEWAY.md](API_GATEWAY.md).
 - `AppConfig` — admin overrides for deployment config (section key → JSON), seeded from
   `config.yml`; the overlay that powers the admin **Configuration** tab (see §6).
 

@@ -28,8 +28,11 @@ regardless of provider, so the rest of the app is auth-method-agnostic.
   tool enable/permissions, **deployment configuration** (see below), and **user
   management** — create users, **reset passwords**, set a **department** (for chargeback),
   enable/disable, and **delete accounts**. Deleting an account **purges all of that user's
-  data** (chats + workspaces, documents + files + vectors, memories, settings) via
-  `auth/service.delete_user_data` — the admin never reads the content, it is just removed.
+  data** (chats + workspaces, documents + files + vectors, memories, settings, **API
+  keys**) via `auth/service.delete_user_data` — the admin never reads the content, it is
+  just removed. (A deleted user's gateway keys are hard-deleted so they can never
+  authenticate again, while their incurred usage survives in the ledger; see
+  [API_GATEWAY.md](API_GATEWAY.md).)
 - **Admin deployment configuration** (`routers/admin_config.py`, **Settings → (Admin)
   Configuration**): admins edit a curated set of `config.yml` sections **live, without a
   restart** — provider profiles, model pricing, resilience, generation defaults, and sandbox

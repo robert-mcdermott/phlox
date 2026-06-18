@@ -15,6 +15,7 @@ lifecycle. Then the focused guides:
 - [docs/ADDING_A_TOOL.md](docs/ADDING_A_TOOL.md)
 - [docs/ADDING_A_PROVIDER.md](docs/ADDING_A_PROVIDER.md)
 - [docs/AUTH.md](docs/AUTH.md) — auth, roles, multi-user isolation, Entra ID SSO
+- [docs/API_GATEWAY.md](docs/API_GATEWAY.md) — OpenAI-compatible API gateway: keys + `/v1/*`
 - [docs/SANDBOX.md](docs/SANDBOX.md) — local vs Podman/Docker code-exec sandbox
 - [docs/THEMING.md](docs/THEMING.md)
 - [docs/MCP.md](docs/MCP.md)
@@ -71,6 +72,7 @@ live in `backend/evals/run_evals.py` and are not part of CI.
 **Tiers 1–4 complete** (see [docs/ROADMAP.md](docs/ROADMAP.md)): streaming chat + resumable
 agent loop with approvals, RAG (hybrid Qdrant + rerank), cross-conversation memory,
 sub-agents, checkpoints, multimodal, auth/multi-user + Entra SSO, container sandbox,
-observability + usage/cost chargeback, and tests/CI. **Tier 5** (Postgres, PHI/data
+observability + usage/cost chargeback, an OpenAI-compatible **API gateway** (Phase 1:
+per-user keys + `/v1/chat/completions` & `/v1/models`), and tests/CI. **Tier 5** (Postgres, PHI/data
 governance) is deferred and gates any sensitive-data deployment. Extend along the documented
 seams above.

@@ -76,6 +76,12 @@ That's it. On next startup the tool is registered, a `ToolPref` row is seeded wi
 
 Mutating or executing tools should default to `ask`. Read-only tools can be `auto`.
 
+Some built-in tools also need per-turn user intent, not just a global tool preference.
+For those, keep the tool registered normally, but pass an `allowed_tools` set into
+`AgentSession` from `routers/chat.py` and omit the tool unless the request opts in. The
+`web_search` tool is the reference pattern: it appears in the Tool Manager, but the model
+only sees it when the Composer sends `web_search: true` for that prompt.
+
 ## 4. Test
 
 ```bash

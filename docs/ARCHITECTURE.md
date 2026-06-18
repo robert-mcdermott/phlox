@@ -97,6 +97,10 @@ deals with provider-specific shapes.
   default policy (`auto|ask|deny`); read-only tools are `auto`, mutating/exec tools are
   `ask`. "Agent mode" in the composer sets `auto_approve`, which promotes `ask`→`allow`
   for that turn. Users override per-tool in the Tool Manager (persisted in `ToolPref`).
+- **Live web search is opt-in per prompt.** `web_search` is registered like other tools,
+  but `routers/chat.py` passes an `allowed_tools` set to `AgentSession` and removes
+  `web_search` unless the composer request has `web_search: true`. The tool uses ddgs by
+  default and can use SearXNG via `web_search.searxng_url` / `SEARXNG_URL`.
 - **Sandbox is a swappable interface** (`sandbox/runner.py`). `LocalSubprocessRunner`
   (host, fast) and `ContainerRunner` (ephemeral Podman/Docker container with CPU/mem/PID
   limits + network isolation, workspace bind-mounted) are selected by `sandbox.runner` in

@@ -63,6 +63,8 @@ class ChatRequest(BaseModel):
     model: str | None = None
     # When true, tools whose policy is "ask" are auto-approved for this turn.
     auto_approve: bool = True
+    # When true, advertise web_search to the model for this turn.
+    web_search: bool = False
     # When true, re-run the existing history without appending a new user message
     # (used by "regenerate" after the last assistant turn was deleted).
     regenerate: bool = False

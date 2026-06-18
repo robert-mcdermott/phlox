@@ -149,6 +149,11 @@ resilience:
   max_retries: 2               # SDK-level retries on transient errors (429/5xx/timeouts)
   fallback_profile: null       # e.g. "local-ollama" — used if the active provider errors
 
+# Live web search. By default `web_search` uses ddgs, which needs no API key or signup.
+# Optional: point at a SearXNG instance with JSON output enabled.
+web_search:
+  searxng_url: ""              # e.g. http://localhost:8080 (or set SEARXNG_URL)
+
 # Code/shell execution sandbox.
 #   runner: local      -> run on the host (fast, trusts the host; fine for single-user/dev)
 #   runner: container  -> run in an ephemeral, resource-limited container per execution.

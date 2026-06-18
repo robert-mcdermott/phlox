@@ -99,6 +99,23 @@ def test_compute_cost_from_pricing(monkeypatch):
     assert observability.compute_cost("unknown", {"input": 100}) is None
 
 
+def test_web_search_normalizes_bounded_triplets():
+    from app.agent.tools.web import WebSearch
+
+    results = WebSearch()._normalize_results(
+        [
+            {"title": " Example  title ", "href": "https://example.com", "body": "snippet " * 120},
+            {"title": "No URL"},
+        ],
+        max_results=10,
+    )
+
+    assert len(results) == 1
+    assert results[0]["title"] == "Example title"
+    assert results[0]["url"] == "https://example.com"
+    assert results[0]["snippet"].endswith("... [truncated]")
+
+
 # -- bedrock auth modes ----------------------------------------------------
 def test_bedrock_auth_modes_select_signer():
     """The single Bedrock API key uses bearer auth; IAM creds and the default chain use

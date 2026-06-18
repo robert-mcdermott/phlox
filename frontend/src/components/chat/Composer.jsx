@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Send, Square, Paperclip, Zap, ImagePlus, X } from 'lucide-react'
+import { Send, Square, Paperclip, Zap, ImagePlus, X, Search } from 'lucide-react'
 import { useStore } from '../../store/useStore'
 import { api } from '../../api/client'
 import TokenMeter from './TokenMeter'
@@ -16,6 +16,7 @@ function fileToDataUrl(file) {
 export default function Composer() {
   const [text, setText] = useState('')
   const [autoApprove, setAutoApprove] = useState(true)
+  const [webSearch, setWebSearch] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [images, setImages] = useState([]) // data URLs
   const streaming = useStore((s) => s.streaming)
@@ -31,7 +32,7 @@ export default function Composer() {
   const submit = () => {
     if (!text.trim() && images.length === 0) return
     // While streaming, the store queues this as a follow-up (steering).
-    send(text.trim(), { autoApprove, images })
+    send(text.trim(), { autoApprove, webSearch, images })
     setText('')
     setImages([])
     if (taRef.current) taRef.current.style.height = 'auto'
@@ -143,12 +144,19 @@ export default function Composer() {
             </button>
           )}
         </div>
-        <div className="mt-1.5 flex items-center justify-between px-1 text-xs text-muted">
-          <label className="flex cursor-pointer items-center gap-1.5" title="Auto-approve tools that normally ask">
-            <input type="checkbox" checked={autoApprove} onChange={(e) => setAutoApprove(e.target.checked)}
-              className="rounded border-border text-accent focus:ring-accent" />
-            <Zap size={12} /> Agent mode (auto-run tools)
-          </label>
+        <div className="mt-1.5 flex items-center justify-between gap-3 px-1 text-xs text-muted">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+            <label className="flex cursor-pointer items-center gap-1.5" title="Auto-approve tools that normally ask">
+              <input type="checkbox" checked={autoApprove} onChange={(e) => setAutoApprove(e.target.checked)}
+                className="rounded border-border text-accent focus:ring-accent" />
+              <Zap size={12} /> Agent mode (auto-run tools)
+            </label>
+            <label className="flex cursor-pointer items-center gap-1.5" title="Allow live web search for this prompt">
+              <input type="checkbox" checked={webSearch} onChange={(e) => setWebSearch(e.target.checked)}
+                className="rounded border-border text-accent focus:ring-accent" />
+              <Search size={12} /> Web search
+            </label>
+          </div>
           <TokenMeter />
         </div>
       </div>

@@ -149,8 +149,12 @@ def chat(req: ChatRequest, db: Session = Depends(get_db), user: User = Depends(g
             yield events.status("Summarizing earlier context…")
 
         gate = PermissionGate(db, REGISTRY, auto_approve=req.auto_approve)
+        enabled_tools = gate.enabled_names()
+        if not req.web_search:
+            enabled_tools.discard("web_search")
         session = AgentSession(
             db, conversation, provider, REGISTRY, gate, params, profile, model,
+            allowed_tools=enabled_tools,
             fallback_provider=fallback,
         )
         yield from session.run(compacted)
@@ -189,9 +193,11 @@ def approve(req: ApproveRequest, db: Session = Depends(get_db), user: User = Dep
             return
 
         gate = PermissionGate(db, REGISTRY, auto_approve=False)
+        allowed_tools = state.get("allowed_tools")
         session = AgentSession(
             db, conversation, provider, REGISTRY, gate,
             state.get("params", {}), state["profile"], state.get("model"),
+            allowed_tools=set(allowed_tools) if allowed_tools is not None else None,
         )
         # Consume the pending row before resuming (it's superseded once we continue).
         db.delete(pending)

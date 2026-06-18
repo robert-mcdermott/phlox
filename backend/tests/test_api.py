@@ -59,7 +59,34 @@ def test_tools_list_admin(client):
     r = client.get("/api/tools")
     assert r.status_code == 200
     names = [t["name"] for t in r.json()]
-    assert "write_file" in names and "execute_python" in names
+    assert "write_file" in names and "execute_python" in names and "web_search" in names
+
+
+def test_chat_web_search_advertised_only_when_requested(client, monkeypatch):
+    from app.providers.base import StreamDelta
+    import app.routers.chat as chat_router
+
+    seen_tools = []
+
+    class CaptureProvider:
+        model = "capture"
+        supports_tools = True
+
+        def stream(self, messages, tools, params):  # noqa: ARG002
+            seen_tools.append({tool.name for tool in tools})
+            yield StreamDelta(type="text", text="ok")
+            yield StreamDelta(type="done", stop_reason="stop")
+
+    monkeypatch.setattr(chat_router, "build_provider", lambda profile, model=None: CaptureProvider())
+    monkeypatch.setattr(chat_router, "_build_fallback", lambda active_profile: None)
+
+    r = client.post("/api/chat", json={"message": "hello"})
+    assert r.status_code == 200
+    assert seen_tools and "web_search" not in seen_tools[-1]
+
+    r = client.post("/api/chat", json={"message": "hello", "web_search": True})
+    assert r.status_code == 200
+    assert "web_search" in seen_tools[-1]
 
 
 def test_usage_summary(client):

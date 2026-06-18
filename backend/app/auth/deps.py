@@ -46,3 +46,33 @@ def require_admin(user: User = Depends(get_current_user)) -> User:
     if user.role != "admin":
         raise HTTPException(403, "Admin privileges required")
     return user
+
+
+def require_api_key(
+    authorization: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+) -> User:
+    """Resolve an ``Authorization: Bearer <phlox-sk-...>`` API key to its owning user.
+
+    This is the auth seam for the OpenAI-compatible **gateway** (``/v1/*``). It deliberately
+    accepts *only* API keys (not the browser session JWT) so programmatic access is always
+    attributable to a named, revocable key. Errors mirror the OpenAI spec shape
+    (401 + ``error`` object) so SDKs surface them cleanly.
+
+    When ``auth.enabled`` is false the app is single-user dev mode: a valid key is still
+    required (so the gateway behaves identically in dev and prod), but it resolves against
+    the synthetic local admin when the stored key has no live ``User`` row.
+    """
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(401, "Missing API key. Pass 'Authorization: Bearer <key>'.")
+    from app.api_keys import resolve_key
+
+    key_row = resolve_key(db, authorization.split(" ", 1)[1].strip())
+    if key_row is None:
+        raise HTTPException(401, "Invalid, revoked, or expired API key.")
+    user = db.get(User, key_row.user_id)
+    if user is None and not get_auth_config()["enabled"]:
+        return _dev_admin()
+    if user is None or not user.is_active:
+        raise HTTPException(401, "The user for this API key is inactive or no longer exists.")
+    return user

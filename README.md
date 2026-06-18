@@ -38,6 +38,9 @@ models).
   automatically.
 - 🔀 **Any provider** — named profiles for Bedrock / OpenAI-compatible endpoints,
   switchable live, with a connection tester.
+- 🚪 **OpenAI-compatible API gateway** — mint per-user API keys and call Phlox from any
+  OpenAI SDK/tool (`POST /v1/chat/completions`, `GET /v1/models`); every call flows through
+  the same per-user/department cost accounting. See [docs/API_GATEWAY.md](docs/API_GATEWAY.md).
 - 🏠 **Runs fully local** — point at **Ollama**, **LM Studio**, or **vLLM** (any
   OpenAI-compatible server) for offline, self-hosted inference with no cloud API key; RAG
   embeddings can run locally too.
@@ -67,6 +70,7 @@ models).
 | [docs/AUTH.md](docs/AUTH.md) | Local accounts, roles, multi-user isolation, **Entra ID SSO** setup |
 | [docs/SANDBOX.md](docs/SANDBOX.md) | Local vs **Podman/Docker container** code-execution sandbox |
 | [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md) | Token usage/cost, structured logs, OpenTelemetry tracing |
+| [docs/API_GATEWAY.md](docs/API_GATEWAY.md) | OpenAI-compatible API gateway: API keys + `/v1/*` endpoints |
 | [docs/MCP.md](docs/MCP.md) | Connecting MCP servers |
 | [docs/THEMING.md](docs/THEMING.md) | The theme token system + adding themes |
 | [docs/ADDING_A_TOOL.md](docs/ADDING_A_TOOL.md) · [docs/ADDING_A_PROVIDER.md](docs/ADDING_A_PROVIDER.md) | Extension guides |

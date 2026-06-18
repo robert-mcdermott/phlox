@@ -68,6 +68,45 @@ def record_usage(
     db.commit()
 
 
+def record_gateway_usage(
+    db: Session,
+    *,
+    request_id: str,
+    user_id: str | None,
+    model: str | None,
+    usage: dict,
+    parent_request_id: str | None = None,
+) -> None:
+    """Append one ledger row for a single **gateway** model call (``/v1/*`` API).
+
+    Captures usage at the *model-call layer*, so attribution is identical to interactive
+    chat: one row per model call, billed to the API key's owning user/department. The
+    synthetic ``request_id`` is stored in the ledger's unique ``message_id`` column so a
+    retried write can't double-count, and the (optional) ``parent_request_id`` is stored in
+    ``conversation_id`` to group the N model calls of one agentic request (Phase 2) for
+    accurate per-request totals. Best-effort: a ledger failure must never break the API
+    response, so callers should not let exceptions propagate.
+    """
+    if db.query(UsageLedger).filter(UsageLedger.message_id == request_id).first():
+        return
+    ident = _identity_snapshot(db, user_id)
+    inp = int(usage.get("input", 0) or 0)
+    out = int(usage.get("output", 0) or 0)
+    row = UsageLedger(
+        message_id=request_id,
+        # Reuse conversation_id as the agentic-request grouping key (null for passthrough).
+        conversation_id=parent_request_id,
+        model=model,
+        input_tokens=inp,
+        output_tokens=out,
+        total_tokens=int(usage.get("total", inp + out) or (inp + out)),
+        cost_usd=usage.get("cost"),
+        **ident,
+    )
+    db.add(row)
+    db.commit()
+
+
 def backfill_usage_ledger(db: Session) -> int:
     """Create ledger rows for any historical ``Message.usage`` that predates the ledger.
 

@@ -10,6 +10,7 @@ Tables
 - ``Setting``       : key/value runtime settings (active profile, params, theme...).
 - ``McpServer``     : configured MCP servers to connect on demand.
 - ``ToolPref``      : per-tool enabled flag + permission policy.
+- ``ApiKey``        : hashed API key -> user identity, for the OpenAI-compatible gateway.
 - ``AppConfig``     : admin-edited overrides for deployment config (seeded from config.yml).
 """
 from __future__ import annotations
@@ -222,6 +223,43 @@ class UsageLedger(Base):
     total_tokens: Mapped[int] = mapped_column(Integer, default=0)
     cost_usd: Mapped[float | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now, index=True)
+
+
+class ApiKey(Base):
+    """A user-issued API key for programmatic access to the OpenAI-compatible gateway
+    (``/v1/chat/completions``, ``/v1/models``).
+
+    **Only a hash of the key is stored** (``key_hash``), never the plaintext: the secret is
+    shown exactly once at creation time and is unrecoverable afterwards. A short, non-secret
+    ``prefix`` (e.g. ``phlox-sk-AbC1``) is kept so the UI can label each key and the bearer
+    middleware can scope its hash lookup. Bearer auth resolves a presented key to its
+    ``user_id`` (the billable identity), so all gateway usage attributes to the owning user
+    and their department in the chargeback ledger — identical to interactive chat usage.
+
+    Keys can be ``revoked`` (soft delete, keeps the audit row) or given an ``expires_at``.
+    ``scopes`` is reserved for future per-key capability limits (e.g. chat-only); it defaults
+    to the full gateway and is not yet enforced.
+    """
+
+    __tablename__ = "api_keys"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    # Owner (billable identity). FK-free for parity with the rest of the per-user model;
+    # delete_user_data revokes/removes a departing user's keys.
+    user_id: Mapped[str] = mapped_column(String(32), index=True)
+    # Optional cost-center snapshot is NOT stored here; the ledger snapshots identity at
+    # write time from the live User, so a department change is reflected automatically.
+    name: Mapped[str] = mapped_column(String(150), default="API key")
+    # SHA-256 hex of the full secret. Unique so a presented key maps to at most one row.
+    key_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    # Non-secret display prefix ("phlox-sk-AbC1"), safe to show in the UI.
+    prefix: Mapped[str] = mapped_column(String(32))
+    # Reserved for future per-key capability scoping; full access when null/empty.
+    scopes: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
 
 class PendingApproval(Base):

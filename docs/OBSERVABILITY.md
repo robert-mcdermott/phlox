@@ -45,7 +45,11 @@ capturing tokens/cost/model **plus a snapshot of the billable identity**
 - is **backfilled** once at startup from any pre-existing `Message.usage` history
   (idempotent), so historical cost isn't lost when the feature ships;
 - snapshots **department per turn**, so reassigning a user mid-month bills each department
-  for the usage incurred while the user was assigned to it.
+  for the usage incurred while the user was assigned to it;
+- also captures **API-gateway** traffic: each `/v1/chat/completions` call writes a ledger
+  row via `usage_ledger.record_gateway_usage` (keyed on a unique `request_id`, so retries
+  can't double-count), so programmatic usage shows up in the same chargeback view as chat.
+  See [API_GATEWAY.md](API_GATEWAY.md).
 
 ## 2. Structured request logging
 

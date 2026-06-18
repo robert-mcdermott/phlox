@@ -26,6 +26,7 @@ from app.database import SessionLocal, init_db
 from app.observability import setup_observability
 from app.routers import (
     admin_config,
+    api_keys,
     attachments,
     auth,
     chat,
@@ -33,6 +34,7 @@ from app.routers import (
     conversations,
     documents,
     files,
+    gateway,
     mcp,
     memories,
     providers,
@@ -117,7 +119,7 @@ app.add_middleware(
 )
 
 for r in (auth, chat, conversations, providers, settings, documents, mcp, tools, files,
-          memories, checkpoints, attachments, usage, admin_config):
+          memories, checkpoints, attachments, usage, admin_config, api_keys, gateway):
     app.include_router(r.router)
 
 # Structured request logging (always) + OpenTelemetry tracing (if configured).

@@ -21,7 +21,7 @@ export const useStore = create((set, get) => ({
   live: null, // emptyLive() while streaming
   abortFn: null,
   error: null,
-  queued: null, // a follow-up message queued while streaming {text, images, autoApprove}
+  queued: null, // a follow-up message queued while streaming {text, images, autoApprove, webSearch}
   lastUsage: null, // {input, output, total} token usage from the last model response
 
   // -- auth ----------------------------------------------------------------
@@ -167,11 +167,11 @@ export const useStore = create((set, get) => ({
   },
 
   // -- sending a message ---------------------------------------------------
-  async sendMessage(text, { autoApprove = true, images = [] } = {}) {
+  async sendMessage(text, { autoApprove = true, webSearch = false, images = [] } = {}) {
     if (!text.trim() && images.length === 0) return
     // Steering: if a turn is in flight, queue this as a follow-up to send when it finishes.
     if (get().streaming) {
-      set({ queued: { text, images, autoApprove } })
+      set({ queued: { text, images, autoApprove, webSearch } })
       return
     }
     const userMsg = {
@@ -191,6 +191,7 @@ export const useStore = create((set, get) => ({
       conversation_id: get().activeId,
       message: text,
       auto_approve: autoApprove,
+      web_search: webSearch,
       images,
     }
 
@@ -315,7 +316,11 @@ export const useStore = create((set, get) => ({
     const q = get().queued
     if (q) {
       set({ queued: null })
-      get().sendMessage(q.text, { autoApprove: q.autoApprove, images: q.images })
+      get().sendMessage(q.text, {
+        autoApprove: q.autoApprove,
+        webSearch: q.webSearch,
+        images: q.images,
+      })
     }
   },
 

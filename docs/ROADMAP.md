@@ -61,6 +61,12 @@ The things a user *feels* immediately; they make it a real agent, not "chat that
   to global + current-conversation docs via a Qdrant payload filter. _Implemented in:_
   `Document.conversation_id`, `rag/store.py` scope filter, `rag/retrieve.py`,
   `routers/documents.py`.
+- [x] **Opt-in live web search.** `web_search` discovers current web results with
+  zero-config ddgs by default, optional SearXNG via `web_search.searxng_url` /
+  `SEARXNG_URL`, and a per-prompt Composer toggle keeps the tool unadvertised unless the
+  user enables it for that turn. _Implemented in:_ `agent/tools/web.py`,
+  `routers/chat.py`, `agent/harness.py`, `schemas.py`, `Composer.jsx`, store
+  `sendMessage`.
 
 ## Tier 3 — Multi-user, isolation & operability
 

@@ -199,7 +199,9 @@ class AgentSession:
         ask_batch: list[ToolCall] = []
 
         for call in calls:
-            if decisions is not None and call.id in decisions:
+            if self.allowed_tools is not None and call.name not in self.allowed_tools:
+                decision = "not_enabled"
+            elif decisions is not None and call.id in decisions:
                 decision = "allow" if decisions[call.id] == "allow" else "deny"
             else:
                 decision = self.gate.decide(call.name)
@@ -209,7 +211,12 @@ class AgentSession:
                 continue
 
             yield events.tool_call(call.id, call.name, call.arguments)
-            if decision == "deny":
+            if decision == "not_enabled":
+                result = ToolResult(
+                    content=f"Tool '{call.name}' is not enabled for this turn. Not executed.",
+                    is_error=True,
+                )
+            elif decision == "deny":
                 result = ToolResult(content=f"Tool '{call.name}' was denied. Not executed.", is_error=True)
             else:
                 yield events.status(f"Running {call.name}…")
@@ -240,6 +247,7 @@ class AgentSession:
             "params": self.params,
             "profile": self.profile,
             "model": self.model,
+            "allowed_tools": sorted(self.allowed_tools) if self.allowed_tools is not None else None,
         }
         pending = PendingApproval(conversation_id=self.conversation.id, state=state)
         self.db.add(pending)

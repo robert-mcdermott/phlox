@@ -18,9 +18,10 @@ models).
   **LaTeX math**.
 - 🤖 **Agentic harness** (inspired by PI Coder): the model uses tools in a loop —
   filesystem (`read_file`/`write_file`/`edit_file`/`glob`/`grep`), `run_shell`,
-  `execute_python`/`execute_node`, `search_documents`, `web_fetch`, plus **planning**
-  (`update_todos`), **sub-agents** (`spawn_subagent`), **memory** (`save_memory`), and
-  **checkpoints** — each scoped to a per-conversation sandboxed workspace.
+  `execute_python`/`execute_node`, `search_documents`, opt-in live `web_search` +
+  `web_fetch`, plus **planning** (`update_todos`), **sub-agents** (`spawn_subagent`),
+  **memory** (`save_memory`), and **checkpoints** — each scoped to a per-conversation
+  sandboxed workspace.
 - 🤝 **Human-in-the-loop approvals** — pause on sensitive tools, approve/deny, resume.
 - 🧰 **Code execution** with captured output and **artifacts** shown inline + a
   **Workspace Files** panel to browse/download everything the agent created.
@@ -28,6 +29,9 @@ models).
 - 📚 **Documents / RAG** — upload PDF/DOCX/TXT/MD/code; **hybrid (dense+sparse) search**
   over **Qdrant** with reranking + citations; global or per-conversation scoping. Works
   offline via a fallback embedder.
+- 🌐 **Opt-in live web search** — a per-prompt composer toggle exposes `web_search`
+  backed by zero-config `ddgs` (or optional SearXNG), so the agent can discover current
+  sources before fetching pages with `web_fetch`.
 - 🧠 **Cross-conversation memory** — durable facts recalled across chats.
 - 🖼️ **Multimodal** — attach images to messages for vision models.
 - 🔌 **MCP integration** — connect Model Context Protocol servers; their tools join
@@ -52,6 +56,7 @@ models).
 - 🎨 **Theming** — Phlox Dark (default) + Phlox Light/Light/Dark/Fred Hutch/Hutch
   Night/Sandstone, instant switching. See [docs/THEMING.md](docs/THEMING.md).
 - 🛡️ **Per-tool permissions** — `auto | ask | deny`, with an "Agent mode" toggle.
+  Live web search is a separate per-prompt toggle and is off by default.
 
 ## Documentation
 

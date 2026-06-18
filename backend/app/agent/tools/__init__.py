@@ -31,6 +31,7 @@ def register_builtin_tools(registry: "ToolRegistry") -> None:
         code.ExecutePython(),
         code.ExecuteNode(),
         docs.SearchDocuments(),
+        web.WebSearch(),
         web.WebFetch(),
         memory.SaveMemory(),
         subagent.SpawnSubagent(),

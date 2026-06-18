@@ -32,7 +32,7 @@ class FailingProvider:
 
     def stream(self, messages, tools, params):
         raise RuntimeError("primary down")
-        yield  # noqa: unreachable — makes this a generator
+        yield  # pragma: no cover - makes this a generator
 
 
 class TextProvider:
@@ -42,6 +42,25 @@ class TextProvider:
     def stream(self, messages, tools, params):
         yield StreamDelta(type="text", text="Answer from the fallback model.")
         yield StreamDelta(type="done", stop_reason="stop")
+
+
+class UnexpectedToolProvider:
+    model = "unexpected"
+    supports_tools = True
+
+    def __init__(self):
+        self.round = 0
+
+    def stream(self, messages, tools, params):  # noqa: ARG002
+        self.round += 1
+        if self.round == 1:
+            yield StreamDelta(
+                type="tool_calls",
+                tool_calls=[ToolCall(id="c1", name="web_search", arguments={"query": "latest"})],
+            )
+        else:
+            yield StreamDelta(type="text", text="Done.")
+            yield StreamDelta(type="done", stop_reason="stop")
 
 
 def _new_conversation(db):
@@ -96,3 +115,13 @@ def test_fallback_provider_used_on_primary_failure(db):
     asst = [m for m in conv.messages if m.role == "assistant"]
     assert asst and "fallback model" in asst[-1].content.lower()
     assert "switching to fallback" in events.lower()
+
+
+def test_allowed_tools_denies_unadvertised_tool_calls(db):
+    conv = _new_conversation(db)
+    session = _session(db, conv, UnexpectedToolProvider(), allowed_tools=set())
+    events = "".join(session.run([{"role": "system", "content": "s"},
+                                  {"role": "user", "content": "search"}]))
+
+    assert "web_search" in events
+    assert "not enabled for this turn" in events

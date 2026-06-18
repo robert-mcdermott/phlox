@@ -127,6 +127,22 @@ def get_resilience_config() -> dict[str, Any]:
     return cfg
 
 
+def get_web_search_config() -> dict[str, Any]:
+    """Web search settings.
+
+    By default Phlox uses ddgs with no configuration. Set ``web_search.searxng_url`` in
+    config.yml, or the ``SEARXNG_URL`` environment variable, to use SearXNG instead.
+    """
+    cfg = dict(load_config().get("web_search", {}) or {})
+    env_url = os.environ.get("SEARXNG_URL")
+    if env_url:
+        cfg["searxng_url"] = env_url
+    elif cfg.get("SEARXNG_URL") and not cfg.get("searxng_url"):
+        cfg["searxng_url"] = cfg["SEARXNG_URL"]
+    cfg.setdefault("searxng_url", "")
+    return cfg
+
+
 def get_sandbox_config() -> dict[str, Any]:
     """Code/shell execution sandbox config. ``runner`` is ``local`` or ``container``.
 

@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="phlox-dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Phlox — A full-featured, self-hostable AI platform</title>
+  <meta name="description" content="Phlox is a full-featured, self-hostable AI platform with an agentic harness, document RAG, code execution, an OpenAI-compatible gateway, per-user cost accounting, and MCP integration — running over any model provider: AWS Bedrock or any OpenAI-compatible endpoint, including fully local models." />
+  <meta name="author" content="Robert McDermott" />
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="Phlox — A full-featured, self-hostable AI platform" />
+  <meta property="og:description" content="Agentic harness, document RAG, code execution, and MCP integration over any model provider. Self-hostable, open source, Apache 2.0." />
+  <meta property="og:image" content="images/phlox-screenshot.png" />
+
+  <link rel="icon" type="image/svg+xml" href="images/favicon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <!-- Decorative background -->
+  <div class="bg-aurora" aria-hidden="true"></div>
+  <div class="bg-grid" aria-hidden="true"></div>
+
+  <!-- ===== Header ===== -->
+  <header class="site-header" id="top">
+    <div class="container header-inner">
+      <a class="brand" href="#top" aria-label="Phlox home">
+        <img src="images/phlox-logo.svg" alt="" class="brand-mark" width="34" height="34" />
+        <span class="brand-name">Phlox</span>
+      </a>
+      <nav class="nav" id="nav">
+        <a href="#features">Features</a>
+        <a href="#agent">Agent</a>
+        <a href="#knowledge">Knowledge</a>
+        <a href="#security">Security</a>
+        <a href="#platform">Platform</a>
+        <a href="#architecture">Architecture</a>
+        <a href="#quickstart">Quick start</a>
+      </nav>
+      <div class="header-actions">
+        <a class="btn btn-ghost" href="https://github.com/robert-mcdermott/phlox" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="currentColor"><path d="M12 .5C5.73.5.5 5.74.5 12.04c0 5.1 3.29 9.42 7.86 10.95.58.11.79-.25.79-.56 0-.27-.01-1.16-.02-2.1-3.2.7-3.88-1.37-3.88-1.37-.52-1.34-1.28-1.69-1.28-1.69-1.05-.72.08-.71.08-.71 1.16.08 1.77 1.2 1.77 1.2 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.23-1.28-5.23-5.71 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.79 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.44-2.69 5.41-5.25 5.7.41.36.78 1.06.78 2.14 0 1.54-.01 2.79-.01 3.17 0 .31.21.68.8.56A11.54 11.54 0 0 0 23.5 12.04C23.5 5.74 18.27.5 12 .5Z"/></svg>
+          <span>GitHub</span>
+        </a>
+        <button class="nav-toggle" id="navToggle" aria-label="Toggle navigation" aria-expanded="false">
+          <span></span><span></span><span></span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- ===== Hero ===== -->
+    <section class="hero">
+      <div class="container hero-inner">
+        <div class="hero-copy reveal">
+          <div class="eyebrow">
+            <span class="dot"></span> Self-hostable · Open source · Apache 2.0
+          </div>
+          <h1 class="hero-title">
+            A full-featured AI platform<br /><span class="grad-text">you actually own.</span>
+          </h1>
+          <p class="hero-sub">
+            Phlox is a self-hostable AI platform — an agentic tool-using harness, document RAG,
+            code execution, an OpenAI-compatible gateway, and per-user cost accounting — running
+            over <strong>any</strong> model provider: AWS Bedrock or any OpenAI-compatible
+            endpoint, including fully local models.
+          </p>
+          <div class="hero-cta">
+            <a class="btn btn-primary" href="https://github.com/robert-mcdermott/phlox" target="_blank" rel="noopener">
+              <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="currentColor"><path d="M12 .5C5.73.5.5 5.74.5 12.04c0 5.1 3.29 9.42 7.86 10.95.58.11.79-.25.79-.56 0-.27-.01-1.16-.02-2.1-3.2.7-3.88-1.37-3.88-1.37-.52-1.34-1.28-1.69-1.28-1.69-1.05-.72.08-.71.08-.71 1.16.08 1.77 1.2 1.77 1.2 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.23-1.28-5.23-5.71 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.79 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.44-2.69 5.41-5.25 5.7.41.36.78 1.06.78 2.14 0 1.54-.01 2.79-.01 3.17 0 .31.21.68.8.56A11.54 11.54 0 0 0 23.5 12.04C23.5 5.74 18.27.5 12 .5Z"/></svg>
+              View on GitHub
+            </a>
+            <a class="btn btn-secondary" href="#quickstart">Quick start →</a>
+          </div>
+          <div class="hero-providers">
+            <span class="hero-providers-label">Runs over</span>
+            <ul class="provider-list">
+              <li>AWS Bedrock</li>
+              <li>OpenAI</li>
+              <li>Ollama</li>
+              <li>vLLM</li>
+              <li>LiteLLM</li>
+              <li>LM Studio</li>
+            </ul>
+          </div>
+        </div>
+        <div class="hero-visual reveal">
+          <div class="browser-frame">
+            <div class="browser-bar">
+              <span class="traffic"></span><span class="traffic"></span><span class="traffic"></span>
+              <span class="browser-url">localhost:5173</span>
+            </div>
+            <img src="images/phlox-screenshot.png" alt="The Phlox chat interface showing a streaming conversation, tool calls, and an artifact panel" loading="eager" />
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== Stats / capability strip ===== -->
+    <section class="strip">
+      <div class="container strip-inner">
+        <div class="strip-item reveal"><span class="strip-num">~40</span><span class="strip-label">built-in agent tools</span></div>
+        <div class="strip-item reveal"><span class="strip-num">100%</span><span class="strip-label">self-hostable &amp; offline-capable</span></div>
+        <div class="strip-item reveal"><span class="strip-num">8</span><span class="strip-label">built-in themes</span></div>
+        <div class="strip-item reveal"><span class="strip-num">6+</span><span class="strip-label">model providers, one config</span></div>
+      </div>
+    </section>
+
+    <!-- ===== Provider band ===== -->
+    <section class="band" id="providers">
+      <div class="container band-inner">
+        <div class="band-copy reveal">
+          <h2 class="section-title">Bring your own model. Or run it all locally.</h2>
+          <p class="section-lead">
+            Named provider profiles cover <strong>AWS Bedrock</strong> and <strong>any</strong>
+            OpenAI-compatible endpoint — OpenAI, LiteLLM, or a local runtime. Point Phlox at
+            Ollama, LM Studio, or vLLM and the whole stack — chat <em>and</em> RAG embeddings —
+            runs offline with no cloud API key. Switch profiles live, with a built-in connection
+            tester.
+          </p>
+          <ul class="check-list">
+            <li>Define as many provider profiles as you like, switch between them instantly</li>
+            <li>Local embeddings (e.g. <code>nomic-embed-text</code>) keep RAG fully offline</li>
+            <li>Edit profiles, pricing, and limits live — no server restart required</li>
+          </ul>
+        </div>
+        <div class="code-card reveal">
+          <div class="code-head">
+            <span class="code-file">config.yml</span>
+            <button class="copy-btn" data-copy-target="cfg">Copy</button>
+          </div>
+<pre class="code-block" id="cfg"><code><span class="c-key">default_profile</span>: local-ollama
+<span class="c-key">profiles</span>:
+  <span class="c-key">local-ollama</span>:
+    <span class="c-key">type</span>: openai
+    <span class="c-key">label</span>: <span class="c-str">"Ollama (local)"</span>
+    <span class="c-key">endpoint</span>: http://localhost:11434/v1
+    <span class="c-key">api_key</span>: ollama       <span class="c-cmt"># ignored by Ollama</span>
+    <span class="c-key">model</span>: qwen3.6:35b
+    <span class="c-key">supports_tools</span>: <span class="c-bool">true</span></code></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== Features grid ===== -->
+    <section class="section" id="features">
+      <div class="container">
+        <div class="section-head reveal">
+          <span class="kicker">Everything in one app</span>
+          <h2 class="section-title">A complete assistant, not just a chat box</h2>
+          <p class="section-lead center">Phlox bundles the pieces you'd otherwise stitch together yourself — each one self-hosted and under your control.</p>
+        </div>
+        <div class="feature-grid">
+          <article class="feature-card reveal">
+            <div class="feature-ic">💬</div>
+            <h3>Streaming chat</h3>
+            <p>Conversation history with rename, delete, search &amp; export. Edit/regenerate messages, markdown with highlighted, copyable code, plus Mermaid diagrams and LaTeX math.</p>
+          </article>
+          <article class="feature-card reveal">
+            <div class="feature-ic">🤖</div>
+            <h3>Agentic harness</h3>
+            <p>The model uses tools in a loop — filesystem, shell, Python/Node execution, document search, plus planning, sub-agents, memory, and checkpoints — all in a sandboxed workspace.</p>
+          </article>
+          <article class="feature-card reveal">
+            <div class="feature-ic">🤝</div>
+            <h3>Human-in-the-loop</h3>
+            <p>Pause on sensitive tools, approve or deny, then resume. The run state is persisted, so approvals survive disconnects.</p>
+          </article>
+          <article class="feature-card reveal">
+            <div class="feature-ic">🧰</div>
+            <h3>Code execution &amp; artifacts</h3>
+            <p>Run code with captured output and inline artifacts. A Workspace Files panel lets you browse and download everything the agent created.</p>
+          </article>
+          <article class="feature-card reveal">
+            <div class="feature-ic">📚</div>
+            <h3>Documents &amp; RAG</h3>
+            <p>Upload PDF, DOCX, TXT, MD, or code. Hybrid dense + sparse search over Qdrant with reranking and citations, scoped globally or per conversation. Works offline.</p>
+          </article>
+          <article class="feature-card reveal">
+            <div class="feature-ic">🌐</div>
+            <h3>Opt-in web search</h3>
+            <p>A per-prompt composer toggle exposes <code>web_search</code> (zero-config ddgs or SearXNG) so the agent can discover current sources before fetching pages.</p>
+          </article>
+          <article class="feature-card reveal">
+            <div class="feature-ic">🧠</div>
+            <h3>Cross-conversation memory</h3>
+            <p>Durable facts are saved and semantically recalled across chats, so the assistant remembers you from one conversation to the next.</p>
+          </article>
+          <article class="feature-card reveal">
+            <div class="feature-ic">🖼️</div>
+            <h3>Multimodal</h3>
+            <p>Attach images to messages for vision models, persisted and replayed into the provider as image content parts.</p>
+          </article>
+          <article class="feature-card reveal">
+            <div class="feature-ic">🔌</div>
+            <h3>MCP integration</h3>
+            <p>Connect Model Context Protocol servers from the UI; their tools join the model's toolset automatically, no code required.</p>
+          </article>
+          <article class="feature-card reveal">
+            <div class="feature-ic">🚪</div>
+            <h3>OpenAI-compatible gateway</h3>
+            <p>Mint per-user API keys and call Phlox from any OpenAI SDK via <code>/v1/chat/completions</code> — with the same per-user cost accounting.</p>
+          </article>
+          <article class="feature-card reveal">
+            <div class="feature-ic">💵</div>
+            <h3>Usage &amp; cost accounting</h3>
+            <p>Per-message token and cost in the UI, plus an admin chargeback view by month × user × department × model, with CSV export for finance.</p>
+          </article>
+          <article class="feature-card reveal">
+            <div class="feature-ic">🎨</div>
+            <h3>Theming</h3>
+            <p>Phlox Dark by default, with Light, Fred Hutch, Hutch Night, Sandstone and more — instant switching via a CSS-variable token system.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== Agentic harness deep dive ===== -->
+    <section class="section section-alt" id="agent">
+      <div class="container">
+        <div class="section-head reveal">
+          <span class="kicker">The agentic core</span>
+          <h2 class="section-title">A real agent, not "chat that calls tools"</h2>
+          <p class="section-lead center">Each turn, the model works in a loop — calling tools, planning, and recovering — inside a per-conversation sandboxed workspace you can inspect, snapshot, and roll back.</p>
+        </div>
+        <div class="split">
+          <div class="split-list reveal">
+            <div class="split-item">
+              <h3><span class="num">01</span> Tool loop</h3>
+              <p>Filesystem (<code>read_file</code>, <code>write_file</code>, <code>edit_file</code>, <code>glob</code>, <code>grep</code>), <code>run_shell</code>, <code>execute_python</code> / <code>execute_node</code>, and <code>search_documents</code> — one unified tool surface the model drives until the task is done.</p>
+            </div>
+            <div class="split-item">
+              <h3><span class="num">02</span> Planning &amp; sub-agents</h3>
+              <p><code>update_todos</code> keeps a visible plan; <code>spawn_subagent</code> runs a nested, ephemeral agent with a scoped toolset in the same workspace and returns a report.</p>
+            </div>
+            <div class="split-item">
+              <h3><span class="num">03</span> Memory &amp; checkpoints</h3>
+              <p><code>save_memory</code> persists durable facts across chats. Every workspace is a git repo that auto-snapshots after mutating tools, with one-click restore.</p>
+            </div>
+            <div class="split-item">
+              <h3><span class="num">04</span> Approvals &amp; permissions</h3>
+              <p>Every tool has an <code>auto</code> / <code>ask</code> / <code>deny</code> policy. The loop pauses on <code>ask</code>, persists its state, and resumes statelessly after you decide.</p>
+            </div>
+          </div>
+          <aside class="diagram-card reveal" aria-label="Agent loop diagram">
+            <div class="loop">
+              <div class="loop-node">User message</div>
+              <div class="loop-arrow">↓</div>
+              <div class="loop-node accent">Agent loop<small>provider.stream → tool_calls</small></div>
+              <div class="loop-row">
+                <div class="loop-pill">read / write / edit</div>
+                <div class="loop-pill">run_shell</div>
+                <div class="loop-pill">execute_python</div>
+                <div class="loop-pill">search_documents</div>
+                <div class="loop-pill">web_search</div>
+                <div class="loop-pill">spawn_subagent</div>
+              </div>
+              <div class="loop-arrow">↓</div>
+              <div class="loop-node">Permission gate <span class="badge">auto · ask · deny</span></div>
+              <div class="loop-arrow">↓</div>
+              <div class="loop-node ok">Final answer + artifacts</div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== Knowledge / RAG ===== -->
+    <section class="section" id="knowledge">
+      <div class="container">
+        <div class="split reverse">
+          <div class="split-copy reveal">
+            <span class="kicker">Knowledge &amp; memory</span>
+            <h2 class="section-title">Your documents, searched the right way</h2>
+            <p class="section-lead">
+              Upload PDFs, Office docs, markdown, or source code. Phlox parses, chunks, and
+              embeds them into <strong>Qdrant</strong>, then retrieves with true hybrid search —
+              a dense semantic vector and a sparse lexical vector per chunk, fused with RRF and
+              reranked, returning numbered citations the model is instructed to cite.
+            </p>
+            <ul class="check-list">
+              <li>Global knowledge base <em>or</em> per-conversation document scoping</li>
+              <li>Dependency-free sparse vectors and reranker work fully offline</li>
+              <li>SQLite stays the source of truth — the index can always be rebuilt</li>
+              <li>Cross-conversation memory recalls durable facts into every turn</li>
+            </ul>
+          </div>
+          <div class="stack-card reveal">
+            <div class="stack-row"><span class="stack-step">1</span><div><strong>Parse</strong><small>PDF · DOCX · TXT · MD · code</small></div></div>
+            <div class="stack-line"></div>
+            <div class="stack-row"><span class="stack-step">2</span><div><strong>Chunk &amp; embed</strong><small>dense + sparse vectors</small></div></div>
+            <div class="stack-line"></div>
+            <div class="stack-row"><span class="stack-step">3</span><div><strong>Hybrid search</strong><small>RRF fusion across both vectors</small></div></div>
+            <div class="stack-line"></div>
+            <div class="stack-row"><span class="stack-step">4</span><div><strong>Rerank</strong><small>cross-encoder-ready seam</small></div></div>
+            <div class="stack-line"></div>
+            <div class="stack-row"><span class="stack-step">5</span><div><strong>Cite</strong><small>numbered sources <code>[n]</code></small></div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== Security & multi-user ===== -->
+    <section class="section section-alt" id="security">
+      <div class="container">
+        <div class="section-head reveal">
+          <span class="kicker">Built for teams</span>
+          <h2 class="section-title">Multi-user, isolated, and accountable</h2>
+          <p class="section-lead center">Auth is on by default, data is scoped strictly per user, and every sensitive tool runs behind a permission gate you control.</p>
+        </div>
+        <div class="grid-3">
+          <article class="info-card reveal">
+            <div class="feature-ic">🔐</div>
+            <h3>Auth &amp; SSO</h3>
+            <p>Local accounts (bcrypt + JWT) or <strong>Microsoft Entra ID</strong> SSO. <code>user</code> / <code>admin</code> roles, strict per-user isolation — admins manage accounts but can't read others' content.</p>
+          </article>
+          <article class="info-card reveal">
+            <div class="feature-ic">📦</div>
+            <h3>Container sandbox</h3>
+            <p>Run agent code in an ephemeral <strong>Podman/Docker</strong> container with CPU, memory, and PID limits plus network isolation — or a fast local subprocess for trusted single-user use.</p>
+          </article>
+          <article class="info-card reveal">
+            <div class="feature-ic">🛡️</div>
+            <h3>Per-tool permissions</h3>
+            <p>Each tool is <code>auto</code>, <code>ask</code>, or <code>deny</code>. Mutating and execution tools default to <code>ask</code>; an Agent-mode toggle auto-approves for a single turn.</p>
+          </article>
+          <article class="info-card reveal">
+            <div class="feature-ic">⚙️</div>
+            <h3>Live admin config</h3>
+            <p>Edit provider profiles, model pricing, resilience, and sandbox limits from an admin panel — applied without a restart. API keys are write-only and masked.</p>
+          </article>
+          <article class="info-card reveal">
+            <div class="feature-ic">📊</div>
+            <h3>Observability</h3>
+            <p>Per-request structured logs, an optional OpenTelemetry tracing seam, and per-turn token/cost capture in a durable ledger.</p>
+          </article>
+          <article class="info-card reveal">
+            <div class="feature-ic">💵</div>
+            <h3>Departmental chargeback</h3>
+            <p>A durable, FK-free usage ledger keeps a departed user's costs billable after deletion — usage by month × user × department × model, CSV-exportable.</p>
+          </article>
+        </div>
+        <div class="shot-row reveal">
+          <figure class="shot">
+            <img src="images/shot-sso.png" alt="Authentication settings showing Microsoft Entra ID single sign-on configuration" loading="lazy" />
+            <figcaption>Entra ID SSO &amp; local accounts</figcaption>
+          </figure>
+          <figure class="shot">
+            <img src="images/shot-sandbox.png" alt="Sandbox limits panel with container memory, CPU, PID, and network controls" loading="lazy" />
+            <figcaption>Container sandbox resource limits</figcaption>
+          </figure>
+          <figure class="shot">
+            <img src="images/shot-tools.png" alt="Tools and permissions panel with per-tool auto, ask, and deny policies" loading="lazy" />
+            <figcaption>Per-tool <code>auto · ask · deny</code> policies</figcaption>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== Platform: gateway, cost & governance ===== -->
+    <section class="section" id="platform">
+      <div class="container">
+        <div class="section-head reveal">
+          <span class="kicker">The platform layer</span>
+          <h2 class="section-title">An LLM gateway and cost ledger for the whole team</h2>
+          <p class="section-lead center">Beyond chat, Phlox is an OpenAI-compatible gateway with per-user API keys, live model pricing, and department-level chargeback — the governance layer that turns a chat app into shared infrastructure.</p>
+        </div>
+
+        <figure class="shot shot-feature reveal">
+          <img src="images/shot-cost.png" alt="Usage and cost dashboard grouped by department, user, and model with per-month totals and CSV export" loading="lazy" />
+          <figcaption>Usage &amp; cost, grouped by month × department × user × model — exportable to CSV for finance.</figcaption>
+        </figure>
+
+        <div class="shot-row two reveal">
+          <figure class="shot">
+            <img src="images/shot-api-keys.png" alt="API keys management panel showing per-user keys for the OpenAI-compatible gateway" loading="lazy" />
+            <figcaption>Mint per-user API keys — call Phlox from any OpenAI SDK</figcaption>
+          </figure>
+          <figure class="shot">
+            <img src="images/shot-pricing.png" alt="Model pricing editor with input and output cost per million tokens for each model" loading="lazy" />
+            <figcaption>Live model pricing — applied to new turns, no restart</figcaption>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== Architecture ===== -->
+    <section class="section" id="architecture">
+      <div class="container">
+        <div class="section-head reveal">
+          <span class="kicker">Under the hood</span>
+          <h2 class="section-title">Two clean processes</h2>
+          <p class="section-lead center">A FastAPI backend handles LLM orchestration, the agent harness, MCP, RAG, code execution, auth, and SQLite persistence. A React + Vite frontend renders the rich, streaming UI.</p>
+        </div>
+        <div class="arch reveal">
+          <div class="arch-col">
+            <div class="arch-head">Frontend <span>React + Vite + Tailwind</span></div>
+            <ul>
+              <li>Zustand store — live streaming assembly</li>
+              <li>SSE stream parser for <code>/api/chat</code></li>
+              <li>Tool cards, reasoning, inline artifacts</li>
+              <li>CSS-variable theme tokens</li>
+            </ul>
+          </div>
+          <div class="arch-flow" aria-hidden="true">
+            <span class="arch-flow-label">SSE / REST</span>
+            <span class="arch-flow-line"></span>
+          </div>
+          <div class="arch-col accent">
+            <div class="arch-head">Backend <span>FastAPI</span></div>
+            <ul>
+              <li>Resumable agent loop + tool registry</li>
+              <li>Permission gate — the security seam</li>
+              <li>Providers: OpenAI-compatible &amp; Bedrock</li>
+              <li>RAG · sandbox · workspace · MCP</li>
+              <li>SQLite source of truth + Qdrant index</li>
+            </ul>
+          </div>
+        </div>
+        <p class="arch-note reveal">In dev, Vite proxies <code>/api</code> to FastAPI. In production, FastAPI serves the built SPA from <code>frontend/dist</code> — one command to run the whole thing.</p>
+      </div>
+    </section>
+
+    <!-- ===== Themes ===== -->
+    <section class="section section-alt" id="themes">
+      <div class="container">
+        <div class="section-head reveal">
+          <span class="kicker">Make it yours</span>
+          <h2 class="section-title">Eight themes, instant switching</h2>
+          <p class="section-lead center">A semantic CSS-variable token layer means themes change with no rebuild — and adding your own is two small edits.</p>
+        </div>
+        <div class="theme-grid reveal">
+          <div class="theme-chip"><span class="sw" style="background:#160821"></span><span class="sw" style="background:#df00ff"></span><span class="sw" style="background:#f0e6f7"></span><b>Phlox Dark</b></div>
+          <div class="theme-chip"><span class="sw" style="background:#faf5fe"></span><span class="sw" style="background:#c200de"></span><span class="sw" style="background:#2a1438"></span><b>Phlox Light</b></div>
+          <div class="theme-chip"><span class="sw" style="background:#f4f6f9"></span><span class="sw" style="background:#00abc8"></span><span class="sw" style="background:#1b365d"></span><b>Fred Hutch</b></div>
+          <div class="theme-chip"><span class="sw" style="background:#10192b"></span><span class="sw" style="background:#aa4ac4"></span><span class="sw" style="background:#e6edf6"></span><b>Hutch Night</b></div>
+          <div class="theme-chip"><span class="sw" style="background:#0f172a"></span><span class="sw" style="background:#22d3ee"></span><span class="sw" style="background:#e2e8f0"></span><b>Dark</b></div>
+          <div class="theme-chip"><span class="sw" style="background:#ffffff"></span><span class="sw" style="background:#0ea5b7"></span><span class="sw" style="background:#111827"></span><b>Light</b></div>
+          <div class="theme-chip"><span class="sw" style="background:#faf5ee"></span><span class="sw" style="background:#b8860b"></span><span class="sw" style="background:#3a3226"></span><b>Sandstone</b></div>
+          <div class="theme-chip"><span class="sw" style="background:#160821"></span><span class="sw" style="background:#7a1fa2"></span><span class="sw" style="background:#e3d3ee"></span><b>+ your own</b></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== Quick start ===== -->
+    <section class="section" id="quickstart">
+      <div class="container">
+        <div class="section-head reveal">
+          <span class="kicker">Up and running in minutes</span>
+          <h2 class="section-title">Quick start</h2>
+          <p class="section-lead center">Prerequisites: Python 3.11+ with <code>uv</code>, Node 18+, and a model provider — a local Ollama is the easiest.</p>
+        </div>
+        <div class="qs-grid">
+          <div class="code-card reveal">
+            <div class="code-head">
+              <span class="code-file">1 · Backend</span>
+              <button class="copy-btn" data-copy-target="qs-be">Copy</button>
+            </div>
+<pre class="code-block" id="qs-be"><code><span class="c-cmt"># from backend/</span>
+uv sync
+cp config.yml.example config.yml   <span class="c-cmt"># set your provider</span>
+uv run uvicorn app.main:app --reload --port 8000</code></pre>
+          </div>
+          <div class="code-card reveal">
+            <div class="code-head">
+              <span class="code-file">2 · Frontend</span>
+              <button class="copy-btn" data-copy-target="qs-fe">Copy</button>
+            </div>
+<pre class="code-block" id="qs-fe"><code><span class="c-cmt"># from frontend/, separate terminal</span>
+npm install
+npm run dev
+<span class="c-cmt"># open http://localhost:5173</span></code></pre>
+          </div>
+        </div>
+        <p class="qs-note reveal">
+          On Windows run both with <code>./scripts/dev.ps1</code>; on macOS/Linux <code>./scripts/dev.sh</code>.
+          Auth is on by default with a seeded <code>admin / admin</code> —
+          <strong>change it and set a real <code>jwt_secret</code> before sharing access.</strong>
+        </p>
+      </div>
+    </section>
+
+    <!-- ===== Docs ===== -->
+    <section class="section section-alt" id="docs">
+      <div class="container">
+        <div class="section-head reveal">
+          <span class="kicker">Go deeper</span>
+          <h2 class="section-title">Documentation</h2>
+        </div>
+        <div class="doc-grid reveal">
+          <a class="doc-card" href="https://github.com/robert-mcdermott/phlox/blob/main/docs/ARCHITECTURE.md" target="_blank" rel="noopener"><h3>Architecture</h3><p>System map, request lifecycle, module guide — start here.</p></a>
+          <a class="doc-card" href="https://github.com/robert-mcdermott/phlox/blob/main/docs/ROADMAP.md" target="_blank" rel="noopener"><h3>Roadmap</h3><p>What's done and what's next across Tiers 1–5.</p></a>
+          <a class="doc-card" href="https://github.com/robert-mcdermott/phlox/blob/main/docs/AUTH.md" target="_blank" rel="noopener"><h3>Auth</h3><p>Local accounts, roles, isolation, and Entra ID SSO setup.</p></a>
+          <a class="doc-card" href="https://github.com/robert-mcdermott/phlox/blob/main/docs/SANDBOX.md" target="_blank" rel="noopener"><h3>Sandbox</h3><p>Local vs Podman/Docker container code execution.</p></a>
+          <a class="doc-card" href="https://github.com/robert-mcdermott/phlox/blob/main/docs/OBSERVABILITY.md" target="_blank" rel="noopener"><h3>Observability</h3><p>Token usage/cost, structured logs, OpenTelemetry tracing.</p></a>
+          <a class="doc-card" href="https://github.com/robert-mcdermott/phlox/blob/main/docs/API_GATEWAY.md" target="_blank" rel="noopener"><h3>API Gateway</h3><p>OpenAI-compatible keys and <code>/v1/*</code> endpoints.</p></a>
+          <a class="doc-card" href="https://github.com/robert-mcdermott/phlox/blob/main/docs/MCP.md" target="_blank" rel="noopener"><h3>MCP</h3><p>Connecting Model Context Protocol servers.</p></a>
+          <a class="doc-card" href="https://github.com/robert-mcdermott/phlox/blob/main/docs/THEMING.md" target="_blank" rel="noopener"><h3>Theming</h3><p>The theme token system and adding new themes.</p></a>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== CTA ===== -->
+    <section class="cta-final">
+      <div class="container cta-inner reveal">
+        <img src="images/phlox-logo.svg" alt="" class="cta-logo" width="64" height="64" />
+        <h2>Self-host your own AI assistant today</h2>
+        <p>Open source under Apache 2.0. Clone it, point it at a model, and run.</p>
+        <div class="hero-cta center">
+          <a class="btn btn-primary" href="https://github.com/robert-mcdermott/phlox" target="_blank" rel="noopener">View on GitHub</a>
+          <a class="btn btn-secondary" href="#quickstart">Quick start →</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ===== Footer ===== -->
+  <footer class="site-footer">
+    <div class="container footer-inner">
+      <div class="footer-brand">
+        <a class="brand" href="#top">
+          <img src="images/phlox-logo.svg" alt="" class="brand-mark" width="30" height="30" />
+          <span class="brand-name">Phlox</span>
+        </a>
+        <p>A full-featured, self-hostable AI platform.</p>
+      </div>
+      <nav class="footer-cols">
+        <div class="footer-col">
+          <h4>Product</h4>
+          <a href="#features">Features</a>
+          <a href="#agent">Agentic harness</a>
+          <a href="#knowledge">Documents &amp; RAG</a>
+          <a href="#security">Security</a>
+        </div>
+        <div class="footer-col">
+          <h4>Docs</h4>
+          <a href="https://github.com/robert-mcdermott/phlox/blob/main/docs/ARCHITECTURE.md" target="_blank" rel="noopener">Architecture</a>
+          <a href="https://github.com/robert-mcdermott/phlox/blob/main/docs/ROADMAP.md" target="_blank" rel="noopener">Roadmap</a>
+          <a href="https://github.com/robert-mcdermott/phlox/blob/main/docs/API_GATEWAY.md" target="_blank" rel="noopener">API Gateway</a>
+          <a href="https://github.com/robert-mcdermott/phlox/blob/main/docs/THEMING.md" target="_blank" rel="noopener">Theming</a>
+        </div>
+        <div class="footer-col">
+          <h4>Project</h4>
+          <a href="https://github.com/robert-mcdermott/phlox" target="_blank" rel="noopener">GitHub repository</a>
+          <a href="https://github.com/robert-mcdermott/phlox/blob/main/LICENSE" target="_blank" rel="noopener">License (Apache 2.0)</a>
+          <a href="#quickstart">Quick start</a>
+        </div>
+      </nav>
+    </div>
+    <div class="container footer-bottom">
+      <span>© 2026 Robert McDermott. Licensed under the Apache License, Version 2.0.</span>
+      <span class="footer-built">Independent open-source project. Not affiliated with any model provider.</span>
+    </div>
+  </footer>
+
+  <script src="js/main.js"></script>
+</body>
+</html>

@@ -6,7 +6,7 @@
 
 Phlox is a self-hostable chat application with an agentic harness, document RAG, code
 execution, and MCP integration — running over **any** model provider: **AWS Bedrock** or
-**any OpenAI-compatible endpoint** (OpenAI, Ollama, vLLM, LiteLLM, LM Studio, local
+**any OpenAI-compatible endpoint** (OpenAI, Ollama, OpenRouter, vLLM, LiteLLM, LM Studio, local
 models).
 
 ![phox-screenshot](docs/phlox-screenshot.png)

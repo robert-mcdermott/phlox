@@ -1,0 +1,35 @@
+# Keep the build context small and never bake local state/secrets into the image.
+
+# Python
+**/__pycache__/
+**/*.py[cod]
+**/.venv/
+backend/.venv/
+**/*.egg-info/
+
+# Local runtime data + config (these must come from mounted volumes, not the image)
+backend/data/
+backend/config.yml
+
+# Node / Vite (frontend deps + build are produced inside the image)
+**/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Git / CI / editors / docs that don't belong in the image
+.git/
+.github/
+.idea/
+.vscode/
+**/*.log
+.DS_Store
+
+# Tests, evals, and dev scripts aren't needed at runtime
+backend/tests/
+backend/evals/
+scripts/
+
+# Don't copy these into the context for no reason
+docs/
+product.html
+*.png

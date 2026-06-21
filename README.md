@@ -67,6 +67,8 @@ models).
 |---|---|
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System map, request lifecycle, module guide — **start here** |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | What's done and what's next (Tiers 1–5) |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Production deployment on Linux (Ubuntu/RHEL) under **systemd** |
+| [docs/DOCKER.md](docs/DOCKER.md) | Running Phlox in a container (**Docker or Podman**) |
 | [docs/AUTH.md](docs/AUTH.md) | Local accounts, roles, multi-user isolation, **Entra ID SSO** setup |
 | [docs/SANDBOX.md](docs/SANDBOX.md) | Local vs **Podman/Docker container** code-execution sandbox |
 | [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md) | Token usage/cost, structured logs, OpenTelemetry tracing |
@@ -85,7 +87,7 @@ exec, auth, SQLite persistence) and a **React/Vite** frontend. Full details in
 ```
 backend/   FastAPI app (app/), config.yml, SQLite + Qdrant under data/
 frontend/  React + Vite + Tailwind SPA
-docs/      ARCHITECTURE, ROADMAP, AUTH, SANDBOX, MCP, THEMING, ADDING_A_*
+docs/      ARCHITECTURE, ROADMAP, DEPLOYMENT, DOCKER, AUTH, SANDBOX, MCP, THEMING, ADDING_A_*
 scripts/   dev.ps1 / dev.sh
 ```
 

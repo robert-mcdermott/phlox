@@ -174,7 +174,9 @@ access — see [docs/AUTH.md](docs/AUTH.md). To run single-user with no login, s
 
 By default code runs in a **local subprocess** (fast, trusts the host). For isolation, set
 `sandbox.runner: container` to run each execution in an ephemeral **Podman/Docker**
-container with CPU/memory/PID limits and network isolation — see [docs/SANDBOX.md](docs/SANDBOX.md).
+container with CPU/memory/PID limits and network isolation. For data-analysis workloads you
+can optionally build the **batteries-included images** (numpy/pandas/matplotlib/… preinstalled)
+so the agent doesn't pip-install packages on every run — see [docs/SANDBOX.md](docs/SANDBOX.md).
 
 ## Production build
 

@@ -52,6 +52,52 @@ The container runner targets the **Docker-compatible CLI**, so it works with **P
    ```
 3. Set `sandbox.runner: container` and restart the backend.
 
+## Batteries-included images (opt-in)
+
+Phlox **defaults to the small official `python:3.12-slim` / `node:22-slim` images** so a
+fresh install pulls fast and just works. They're bare, though, which is fine for light
+scripting but painful for data work.
+
+**Why you'd want the batteries-included images:** every execution runs in a fresh `--rm`
+container, so anything the agent `pip install`s does **not** persist to the next call. A
+"analyze this CSV and plot it" request then turns into a slow loop of *import error →
+install numpy → import error → install pandas → install matplotlib …*, burning tool-call
+rounds and only working at all with `network: bridge` (network egress enabled). Baking the
+common stack into the image removes that loop entirely **and** lets you switch to
+`network: none` — the most secure mode — since the agent no longer needs the network to
+fetch packages.
+
+This is **opt-in**: build the images, then point the config at them. Phlox ships the
+definitions under [`docker/sandbox/`](../docker/sandbox/):
+
+```bash
+./docker/sandbox/build.sh          # builds phlox-sandbox-python:latest + phlox-sandbox-node:latest
+# or just Python:  ./docker/sandbox/build.sh python
+```
+
+Then point the runner at them in `config.yml`:
+
+```yaml
+sandbox:
+  runner: container
+  container:
+    python_image: phlox-sandbox-python:latest
+    node_image:   phlox-sandbox-node:latest
+    network: bridge          # safe to lock down now — packages are already in the image
+```
+
+The Python image includes numpy, pandas, scipy, matplotlib, seaborn, scikit-learn,
+statsmodels, openpyxl/xlsxwriter, pypdf, python-docx, pillow, requests/httpx,
+beautifulsoup4/lxml, sympy, networkx, tabulate — plus `git/curl/wget/jq` and fonts for
+matplotlib. The Node image preinstalls lodash, axios, dayjs, mathjs, d3, csv-parse
+(via `NODE_PATH`). Edit the Dockerfiles and re-run `build.sh` to add more; the runner
+picks up the new image on the next execution with no Phlox restart (image tag is read at
+run time). Add packages your workflows need rather than leaving the agent to install them.
+
+> With packages baked in you can set `network: none` — the most secure mode — because the
+> agent no longer needs egress to fetch them. Keep `bridge` only if you still want the
+> agent to install ad-hoc packages at runtime.
+
 ## Security properties
 
 - **Filesystem:** only the conversation workspace is mounted (`/work`); the rest of the

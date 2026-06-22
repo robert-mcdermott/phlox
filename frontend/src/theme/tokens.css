@@ -118,6 +118,35 @@
   --color-sidebar-fg: #d7e0ee;
 }
 
+/* Terminal — old CRT look: black screen, glowing phosphor-green text. */
+[data-theme='terminal'] {
+  --color-bg: #000000;
+  --color-surface: #0a0a0a;
+  --color-surface-2: #0f0f0f;
+  --color-surface-3: #141414;
+  --color-border: #003b00;
+  --color-text: #00ff41; /* phosphor green */
+  --color-text-muted: #18a531;
+  --color-accent: #00ff41;
+  --color-accent-fg: #001a06; /* near-black on the green accent for contrast */
+  --color-user-bubble: #00ff41;
+  --color-user-bubble-fg: #001a06;
+  --color-header: #000000;
+  --color-header-border: #00ff41;
+  --color-sidebar: #050505;
+  --color-sidebar-fg: #00ff41;
+}
+
+/* Terminal: subtle CRT phosphor bloom on headings only. */
+[data-theme='terminal'] h1,
+[data-theme='terminal'] h2,
+[data-theme='terminal'] h3,
+[data-theme='terminal'] h4,
+[data-theme='terminal'] h5,
+[data-theme='terminal'] h6 {
+  text-shadow: 0 0 3px rgba(0, 255, 65, 0.55), 0 0 8px rgba(0, 255, 65, 0.30);
+}
+
 /* Solarized-ish warm light. */
 [data-theme='sandstone'] {
   --color-bg: #faf5ee;

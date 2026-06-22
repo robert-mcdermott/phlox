@@ -57,7 +57,8 @@ models).
 - 📦 **Container sandbox** — run code in an isolated **Podman/Docker** container with
   resource limits + network isolation. See [docs/SANDBOX.md](docs/SANDBOX.md).
 - 🎨 **Theming** — Phlox Dark (default) + Phlox Light/Light/Dark/Fred Hutch/Hutch
-  Night/Sandstone, instant switching. See [docs/THEMING.md](docs/THEMING.md).
+  Night/Sandstone/**Terminal** (CRT phosphor-green), instant switching. See
+  [docs/THEMING.md](docs/THEMING.md).
 - 🛡️ **Per-tool permissions** — `auto | ask | deny`, with an "Agent mode" toggle.
   Live web search is a separate per-prompt toggle and is off by default.
 

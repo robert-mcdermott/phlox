@@ -196,3 +196,17 @@ class SandboxLimits(BaseModel):
 
 class SandboxUpdate(BaseModel):
     container: SandboxLimits
+
+
+class BudgetCreate(BaseModel):
+    scope_type: str                  # "user" | "department"
+    scope_value: str                 # user id, or department name
+    limit_usd: float
+    warn_pct: int = 90
+    is_active: bool = True
+
+
+class BudgetUpdate(BaseModel):
+    limit_usd: float | None = None
+    warn_pct: int | None = None
+    is_active: bool | None = None

@@ -100,6 +100,16 @@ The things a user *feels* immediately; they make it a real agent, not "chat that
   from Entra claims). _Implemented in:_ `usage_ledger.py`, `models.py` (`UsageLedger`,
   `User.department`), `routers/usage.py`, `auth/{service,entra}.py`, `UsagePanel.jsx`,
   `UsersPanel.jsx`. See [OBSERVABILITY.md](OBSERVABILITY.md) + [AUTH.md](AUTH.md).
+- [x] **Spend budgets.** Admin-set **monthly USD caps** per **user** or **department**, with
+  an adjustable **warn threshold** (default 90%, in-UI banner) and **hard enforcement** that
+  blocks **priced** models once a budget is reached (free models stay usable). Enforced at
+  both model-call choke points — interactive chat (HTTP 402) and the API gateway (OpenAI-shaped
+  402 + `phlox_blocked` on `/v1/models`) — so API-key traffic is gated identically. Spend is a
+  live, date-bounded sum over the `UsageLedger` (no counter to reset; rolls forward monthly);
+  enforcement is most-restrictive-wins across a user's own + their department budget.
+  _Implemented in:_ `budgets.py`, `models.py` (`Budget`), `routers/budgets.py`,
+  `routers/{chat,gateway,usage}.py`, `auth/service.py` (cleanup), `BudgetsPanel.jsx`,
+  `ChatPage.jsx` (banner). See [BUDGETS.md](BUDGETS.md).
 - [x] **Live admin configuration.** Admin-only **Configuration** panel to edit deployment
   config without a restart: provider profiles (API keys **write-only/masked**), model
   pricing, resilience, generation defaults, and sandbox **limits**. `config.yml` is the seed;
@@ -147,14 +157,17 @@ The things a user *feels* immediately; they make it a real agent, not "chat that
 ## API gateway (OpenAI-compatible)
 
 Use Phlox programmatically as an authenticated LLM gateway, with the same per-user/department
-cost accounting as interactive chat. See [API_GATEWAY.md](API_GATEWAY.md).
+cost accounting **and spend-budget enforcement** as interactive chat (a 402 once over budget).
+See [API_GATEWAY.md](API_GATEWAY.md).
 
 - [x] **Phase 1 — raw passthrough.** Per-user API keys (SHA-256 hashed, revocable, expiring),
   OpenAI-compatible `POST /v1/chat/completions` (streaming + buffered) and `GET /v1/models`,
   exactly one model call per request, usage recorded to the `UsageLedger`.
 - [ ] **Phase 2 — agentic endpoint.** `POST /v1/agent/completions` exposing RAG + tools + MCP;
   the N model calls of one request grouped by `parent_request_id` (the ledger seam is already
-  in place). Per-key budgets / rate-limiting are a candidate follow-up here.
+  in place). Per-user/department spend budgets already apply to gateway calls (see
+  [BUDGETS.md](BUDGETS.md)); finer-grained **per-key** budgets / rate-limiting are a candidate
+  follow-up here.
 
 ## Tier 5 — Sensitive-data deployment (PHI)
 

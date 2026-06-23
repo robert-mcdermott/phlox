@@ -51,6 +51,11 @@ capturing tokens/cost/model **plus a snapshot of the billable identity**
   can't double-count), so programmatic usage shows up in the same chargeback view as chat.
   See [API_GATEWAY.md](API_GATEWAY.md).
 
+> **The ledger also powers spend budgets.** Monthly USD caps per user/department are
+> enforced by summing this ledger over the current month — no separate accounting. The
+> `pricing` map above doubles as the definition of a "priced" (and therefore blockable)
+> model. See [BUDGETS.md](BUDGETS.md).
+
 ## 2. Structured request logging
 
 A middleware logs one line per API request: method, path, status, duration, and the user

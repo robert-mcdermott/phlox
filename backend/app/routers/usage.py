@@ -62,6 +62,18 @@ def usage_summary(db: Session = Depends(get_db), user: User = Depends(get_curren
     }
 
 
+@router.get("/budget")
+def my_budget_status(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """The signed-in user's monthly budget status (applicable user + department budgets).
+
+    Drives the chat warning banner and the pre-send block. Returns empty ``budgets`` when no
+    budget covers this user. See :mod:`app.budgets` and docs/BUDGETS.md.
+    """
+    from app.budgets import budget_status
+
+    return budget_status(db, user)
+
+
 @router.get("/by-user")
 def usage_by_user(
     start: str | None = Query(None, description="ISO date/datetime lower bound (inclusive)"),

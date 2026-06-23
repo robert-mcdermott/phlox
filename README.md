@@ -51,6 +51,10 @@ models).
   **chargeback** view: usage by **month × user × department × model**, CSV export for
   finance, and a durable ledger that keeps a departed user's costs billable after their
   account is deleted. See [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md).
+- 🧮 **Spend budgets** — admins set a monthly USD cap per **user** or **department**; users
+  get a warning banner at an adjustable threshold (default 90%) and **priced** models are
+  blocked once a budget is reached (free models stay usable), enforced for both chat and the
+  API gateway and resetting each month. See [docs/BUDGETS.md](docs/BUDGETS.md).
 - ⚙️ **Live admin configuration** — edit provider profiles (keys write-only), model
   pricing, resilience, generation defaults, and sandbox limits from an admin-only
   **Configuration** panel, applied without a server restart. `config.yml` remains the seed.
@@ -73,6 +77,7 @@ models).
 | [docs/AUTH.md](docs/AUTH.md) | Local accounts, roles, multi-user isolation, **Entra ID SSO** setup |
 | [docs/SANDBOX.md](docs/SANDBOX.md) | Local vs **Podman/Docker container** code-execution sandbox |
 | [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md) | Token usage/cost, structured logs, OpenTelemetry tracing |
+| [docs/BUDGETS.md](docs/BUDGETS.md) | Monthly spend budgets per user/department: warnings + enforcement |
 | [docs/API_GATEWAY.md](docs/API_GATEWAY.md) | OpenAI-compatible API gateway: API keys + `/v1/*` endpoints |
 | [docs/MCP.md](docs/MCP.md) | Connecting MCP servers |
 | [docs/THEMING.md](docs/THEMING.md) | The theme token system + adding themes |
@@ -88,7 +93,7 @@ exec, auth, SQLite persistence) and a **React/Vite** frontend. Full details in
 ```
 backend/   FastAPI app (app/), config.yml, SQLite + Qdrant under data/
 frontend/  React + Vite + Tailwind SPA
-docs/      ARCHITECTURE, ROADMAP, DEPLOYMENT, DOCKER, AUTH, SANDBOX, MCP, THEMING, ADDING_A_*
+docs/      ARCHITECTURE, ROADMAP, DEPLOYMENT, DOCKER, AUTH, SANDBOX, MCP, THEMING, BUDGETS, ADDING_A_*
 scripts/   dev.ps1 / dev.sh
 ```
 

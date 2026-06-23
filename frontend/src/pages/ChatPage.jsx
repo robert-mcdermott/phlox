@@ -1,8 +1,47 @@
 import { useEffect, useRef } from 'react'
+import { AlertTriangle, Ban } from 'lucide-react'
 import Message from '../components/chat/Message'
 import Composer from '../components/chat/Composer'
 import ApprovalPrompt from '../components/chat/ApprovalPrompt'
 import { useStore } from '../store/useStore'
+
+const fmtUsd = (n) =>
+  (n || 0).toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 2 })
+
+// Banner shown when the signed-in user is over (blocked) or near (warn) a monthly budget.
+function BudgetBanner() {
+  const budget = useStore((s) => s.budget)
+  if (!budget || (!budget.blocked && !budget.warn)) return null
+  const w = budget.worst || {}
+  const where = w.scope_type === 'department' ? 'Your department' : 'You'
+  const blocked = budget.blocked
+  return (
+    <div
+      className={`mx-auto mb-2 flex max-w-3xl items-start gap-2 rounded-lg border px-4 py-2 text-sm ${
+        blocked
+          ? 'border-red-300 bg-red-50 text-red-700'
+          : 'border-amber-300 bg-amber-50 text-amber-800'
+      }`}
+      role="status"
+    >
+      {blocked ? <Ban size={16} className="mt-0.5 shrink-0" /> : <AlertTriangle size={16} className="mt-0.5 shrink-0" />}
+      <div>
+        {blocked ? (
+          <>
+            <b>Monthly budget reached.</b> {where} {where === 'You' ? 'have' : 'has'} used{' '}
+            {fmtUsd(w.spent_usd)} of the {fmtUsd(w.limit_usd)} budget. Models with an assigned
+            cost are paused until the budget resets next month; free models still work.
+          </>
+        ) : (
+          <>
+            <b>Approaching budget limit.</b> {where} {where === 'You' ? 'have' : 'has'} used{' '}
+            {fmtUsd(w.spent_usd)} of {fmtUsd(w.limit_usd)} ({w.pct}%) this month.
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
 
 const SUGGESTIONS = [
   'Write a Python script to plot a sine wave and run it',
@@ -125,6 +164,9 @@ export default function ChatPage() {
             <div ref={endRef} />
           </div>
         )}
+      </div>
+      <div className="px-4 pt-2">
+        <BudgetBanner />
       </div>
       <Composer />
     </div>

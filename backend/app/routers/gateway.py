@@ -24,7 +24,7 @@ import time
 import uuid
 from collections.abc import Iterator
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -83,13 +83,26 @@ def _record(db: Session, *, request_id: str, user_id: str, model: str, usage: di
 
 
 @router.get("/models")
-def list_v1_models(_user: User = Depends(require_api_key)):
-    """OpenAI-compatible model list. ``id`` is the fully-qualified ``profile/model``."""
+def list_v1_models(
+    db: Session = Depends(get_db), user: User = Depends(require_api_key)
+):
+    """OpenAI-compatible model list. ``id`` is the fully-qualified ``profile/model``.
+
+    When the caller is over their monthly budget, priced models are annotated with a
+    non-standard ``phlox_blocked: true`` (clients can ignore it; a blocked call still
+    returns a 402). Free models are never blocked.
+    """
+    from app.budgets import budget_status, model_is_priced
+
     created = int(time.time())
+    blocked = budget_status(db, user)["blocked"]
     return {
         "object": "list",
         "data": [
-            {"id": m["id"], "object": "model", "created": created, "owned_by": m["profile"]}
+            {
+                "id": m["id"], "object": "model", "created": created, "owned_by": m["profile"],
+                "phlox_blocked": blocked and model_is_priced(m["model"]),
+            }
             for m in gateway_models()
         ],
     }
@@ -107,6 +120,14 @@ def chat_completions(
         profile, model = resolve_model(req.model)
     except ValueError as e:
         return _err(404, str(e), etype="model_not_found")
+    # Budget gate: refuse a priced model once the key's owner (or their department) is over
+    # their monthly cap. Returned in OpenAI error shape so SDKs surface it cleanly.
+    from app.budgets import enforce_budget
+
+    try:
+        enforce_budget(db, user, model)
+    except HTTPException as e:
+        return _err(402, e.detail, etype="insufficient_quota")
     try:
         provider = build_provider(profile, model)
     except Exception as e:  # noqa: BLE001

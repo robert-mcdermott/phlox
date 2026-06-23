@@ -84,6 +84,12 @@ def chat(req: ChatRequest, db: Session = Depends(get_db), user: User = Depends(g
     profile = req.profile or settings["active_profile"]
     model = req.model or settings.get("model")
 
+    # Budget gate: refuse a priced model once this user (or their department) is over their
+    # monthly cap. Runs before any message is persisted so a blocked turn writes nothing.
+    from app.budgets import enforce_budget
+
+    enforce_budget(db, user, model)
+
     conversation: Conversation | None = None
     if req.conversation_id:
         conversation = db.get(Conversation, req.conversation_id)

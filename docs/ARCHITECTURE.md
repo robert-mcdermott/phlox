@@ -84,8 +84,9 @@ deals with provider-specific shapes.
 | **RAG** | `rag/ingest.py`, `embed.py`, `retrieve.py`, `store.py` | Parse → chunk → embed → **Qdrant** vector search (`VectorStore` seam) |
 | **MCP** | `mcp/manager.py` | Connect MCP servers, proxy their tools into the registry |
 | **Observability** | `observability.py`, `usage_ledger.py`, `routers/usage.py` | Per-request logging, OTel seam, per-turn token/cost capture + durable chargeback ledger. See [OBSERVABILITY.md](OBSERVABILITY.md) |
+| **Budgets** | `budgets.py`, `routers/budgets.py` | Monthly USD spend caps per user/department: current-month spend (from the ledger), warn/block status, and `enforce_budget` applied at the chat + gateway choke points. See [BUDGETS.md](BUDGETS.md) |
 | **API gateway** | `api_keys.py`, `routers/api_keys.py`, `routers/gateway.py` | Per-user API keys (SHA-256 hashed) + OpenAI-compatible `/v1/chat/completions` & `/v1/models`; usage flows through `usage_ledger`. See [API_GATEWAY.md](API_GATEWAY.md) |
-| **Routers** | `routers/*.py` | `auth, chat, conversations, providers, settings, documents, mcp, tools, files, memories, checkpoints, attachments, usage, admin_config, api_keys, gateway` |
+| **Routers** | `routers/*.py` | `auth, chat, conversations, providers, settings, documents, mcp, tools, files, memories, checkpoints, attachments, usage, admin_config, api_keys, gateway, budgets` |
 
 ### Key design decisions
 - **One unified tool surface.** Built-in tools, MCP tools, and `search_documents` all
@@ -151,6 +152,16 @@ deals with provider-specific shapes.
 - **Self-healing model setting** (`runtime_settings.py::_heal_model`): if the DB's active
   model isn't valid for the profile catalog (e.g. after a `config.yml` edit), it falls back
   to the profile's configured model so stale settings don't override config.
+- **Spend budgets enforce at the model-call choke points** (`budgets.py`). Admin-set monthly
+  USD caps (`Budget`, scoped to a user or department) are checked by `enforce_budget` in
+  *both* `routers/chat.py` and `routers/gateway.py`, so interactive chat and API-key traffic
+  are gated identically. "Spend this month" is a live, date-bounded sum over `UsageLedger`
+  (no counter to reset — the window rolls forward), so budgets reuse the chargeback ledger
+  rather than adding new accounting. Enforcement is **most-restrictive-wins** (a user's own
+  budget and their department budget both apply) and only blocks **priced** models (those in
+  `observability.pricing`); free/local models stay usable. Because cost is known only after a
+  turn finishes, it blocks the *next* turn once at/over budget rather than mid-turn. See
+  [BUDGETS.md](BUDGETS.md).
 
 ## 4. Frontend module map (`frontend/src/`)
 
@@ -162,7 +173,7 @@ deals with provider-specific shapes.
 | **Layout** | `components/layout/Header.jsx`, `Sidebar.jsx` | FH logo header, conversation list, nav |
 | **Chat** | `components/chat/*` | `Message`, `ToolCallCard`, `ArtifactViewer`, `Composer`; `pages/ChatPage.jsx` |
 | **Markdown** | `components/markdown/Markdown.jsx` | react-markdown + GFM + syntax highlight + copy |
-| **Settings** | `components/settings/*`, `documents/*`, `mcp/*`, `tools/*` | Drawer with user tabs (Model, Appearance, Documents, Memory) + admin tabs (Users, Usage & Cost, **Configuration**, Authentication, MCP, Tools) |
+| **Settings** | `components/settings/*`, `documents/*`, `mcp/*`, `tools/*` | Drawer with user tabs (Model, Appearance, Documents, Memory, API Keys) + admin tabs (Users, Usage & Cost, **Budgets**, **Configuration**, Authentication, MCP, Tools) |
 
 The frontend renders a rich turn: collapsible **tool cards** (args + results), a
 **reasoning** disclosure, inline **artifacts** (images render, files download), and
@@ -182,6 +193,9 @@ streamed markdown with highlighted, copyable code.
 - `UsageLedger` — append-only, **FK-free** per-turn token/cost rows with a snapshot of the
   billable identity (username/email/department). Deliberately survives user deletion for
   chargeback; see [OBSERVABILITY.md](OBSERVABILITY.md) / [AUTH.md](AUTH.md).
+- `Budget` — a monthly USD spend cap scoped to a user (`scope_value` = `User.id`) or a
+  department (`scope_value` = name), with `limit_usd`, `warn_pct`, and `is_active`. FK-free;
+  spend is summed live from `UsageLedger` (no stored counter). See [BUDGETS.md](BUDGETS.md).
 - `ApiKey` — per-user gateway keys: only a SHA-256 `key_hash` (unique) + non-secret
   `prefix` are stored, with `is_active`/`expires_at`/`last_used_at`. Resolves to the owning
   `User` (the billable identity); hard-deleted with the user. See [API_GATEWAY.md](API_GATEWAY.md).
@@ -222,6 +236,8 @@ Three layers, each with a clear job:
   [THEMING.md](THEMING.md).
 - **MCP servers** → no code; configure in the UI. Internals in [MCP.md](MCP.md).
 - **A new settings tab / panel** → add a tab in `components/settings/SettingsDrawer.jsx`.
+- **A spend/quota check on model calls** → add it to `budgets.py` and call it from the gate
+  in both `routers/chat.py` and `routers/gateway.py` (the two model-call choke points).
 - **Harder code-exec isolation** → implement `DockerRunner` in `sandbox/runner.py`.
 - **Bigger RAG corpus** → replace `rag/retrieve.search_chunks` with a vector index; keep
   the signature so `search_documents` is unaffected.

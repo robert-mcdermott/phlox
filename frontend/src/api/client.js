@@ -87,6 +87,13 @@ export const api = {
     return req('GET', `/api/usage/by-user${q ? `?${q}` : ''}`)
   },
 
+  // budgets (monthly spend caps): self status + admin CRUD
+  budgetStatus: () => req('GET', '/api/usage/budget'),
+  listBudgets: () => req('GET', '/api/admin/budgets'),
+  createBudget: (body) => req('POST', '/api/admin/budgets', body),
+  updateBudget: (id, body) => req('PATCH', `/api/admin/budgets/${id}`, body),
+  deleteBudget: (id) => req('DELETE', `/api/admin/budgets/${id}`),
+
   // api keys (gateway access)
   listApiKeys: () => req('GET', '/api/api-keys'),
   createApiKey: (body) => req('POST', '/api/api-keys', body || {}),

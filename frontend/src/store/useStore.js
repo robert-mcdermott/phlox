@@ -23,6 +23,7 @@ export const useStore = create((set, get) => ({
   error: null,
   queued: null, // a follow-up message queued while streaming {text, images, autoApprove, webSearch}
   lastUsage: null, // {input, output, total} token usage from the last model response
+  budget: null, // monthly budget status for the signed-in user (or null when none applies)
 
   // -- auth ----------------------------------------------------------------
   authConfig: null, // {enabled, allow_registration, entra_enabled}
@@ -57,7 +58,20 @@ export const useStore = create((set, get) => ({
   },
 
   async loadApp() {
-    await Promise.all([get().loadConversations(), get().loadSettings(), get().loadProviders()])
+    await Promise.all([
+      get().loadConversations(), get().loadSettings(), get().loadProviders(), get().loadBudget(),
+    ])
+  },
+
+  // Monthly budget status (drives the chat warning/block banner). Refreshed after each
+  // turn since spend changes. Null'd out if the request fails or no budget applies.
+  async loadBudget() {
+    try {
+      const b = await api.budgetStatus()
+      set({ budget: b && b.budgets && b.budgets.length ? b : null })
+    } catch {
+      set({ budget: null })
+    }
   },
 
   async login(username, password) {
@@ -199,7 +213,11 @@ export const useStore = create((set, get) => ({
       payload,
       (ev) => get()._onEvent(ev),
       () => get()._finalize(),
-      (err) => set({ error: String(err), streaming: false, live: null }),
+      (err) => {
+        set({ error: String(err).replace(/^Error:\s*/, ''), streaming: false, live: null })
+        // A 402 budget rejection means spend/limit state may have changed — refresh banner.
+        if (err?.status === 402) get().loadBudget()
+      },
     )
     set({ abortFn })
   },
@@ -311,6 +329,8 @@ export const useStore = create((set, get) => ({
       set({ live: null })
     }
     get().loadConversations()
+    // Spend changed this turn — refresh the budget banner.
+    get().loadBudget()
 
     // Send any follow-up the user queued while this turn was streaming.
     const q = get().queued

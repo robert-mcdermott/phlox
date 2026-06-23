@@ -14,7 +14,18 @@ export function streamChat(payload, onEvent, onDone, onError, path = '/api/chat'
         signal: controller.signal,
       })
       if (!res.ok || !res.body) {
-        throw new Error(`Chat failed: ${res.status}`)
+        // Surface the server's error detail (e.g. a 402 budget rejection) instead of a
+        // bare status code, so the UI can show a meaningful message.
+        let detail = ''
+        try {
+          const data = await res.clone().json()
+          detail = data?.detail || data?.error?.message || ''
+        } catch {
+          /* non-JSON body */
+        }
+        const err = new Error(detail || `Chat failed: ${res.status}`)
+        err.status = res.status
+        throw err
       }
       const reader = res.body.getReader()
       const decoder = new TextDecoder()

@@ -71,7 +71,7 @@ def delete_user_data(db: Session, user_id: str) -> dict:
     import shutil
 
     from app.config import UPLOADS_DIR, WORKSPACES_DIR
-    from app.models import ApiKey, Conversation, Document, Memory, Setting
+    from app.models import ApiKey, Budget, Conversation, Document, Memory, Setting
 
     counts = {"conversations": 0, "documents": 0, "memories": 0, "api_keys": 0}
 
@@ -107,6 +107,16 @@ def delete_user_data(db: Session, user_id: str) -> dict:
     # Per-user settings are keyed "<user_id>:<key>".
     for s in db.query(Setting).filter(Setting.key.like(f"{user_id}:%")).all():
         db.delete(s)
+
+    # Drop a user-scoped spend budget so it doesn't linger as an orphaned config row.
+    # Department budgets are NOT touched — they aren't tied to a single account, and the
+    # ledger still attributes this user's past spend to their department for chargeback.
+    for b in (
+        db.query(Budget)
+        .filter(Budget.scope_type == "user", Budget.scope_value == user_id)
+        .all()
+    ):
+        db.delete(b)
 
     # NOTE: UsageLedger rows are intentionally NOT deleted here. They are the durable
     # chargeback record (usage metadata only, identity snapshotted at write time) and must

@@ -29,6 +29,7 @@ from app.routers import (
     api_keys,
     attachments,
     auth,
+    budgets,
     chat,
     checkpoints,
     conversations,
@@ -119,7 +120,8 @@ app.add_middleware(
 )
 
 for r in (auth, chat, conversations, providers, settings, documents, mcp, tools, files,
-          memories, checkpoints, attachments, usage, admin_config, api_keys, gateway):
+          memories, checkpoints, attachments, usage, admin_config, api_keys, gateway,
+          budgets):
     app.include_router(r.router)
 
 # Structured request logging (always) + OpenTelemetry tracing (if configured).

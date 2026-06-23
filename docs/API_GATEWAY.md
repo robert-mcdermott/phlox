@@ -45,6 +45,10 @@ Lists every callable model across all profiles. Each `id` is fully-qualified
 `profile/model` (since the same model id can exist under multiple profiles); a bare model
 id also works and resolves against the catalog (falling back to the default profile).
 
+When the key's owner is over a monthly **spend budget**, priced models are annotated with a
+non-standard `"phlox_blocked": true` (clients may ignore it; calling a blocked model still
+returns a 402). See [BUDGETS.md](BUDGETS.md).
+
 ### `POST /v1/chat/completions`
 
 OpenAI-spec request/response. Supports streaming (`"stream": true`, SSE
@@ -52,6 +56,11 @@ OpenAI-spec request/response. Supports streaming (`"stream": true`, SSE
 Honored fields: `model`, `messages`, `temperature`, `max_tokens`, `stream`. Other fields
 (`top_p`, `stop`, `user`, …) are accepted and ignored in Phase 1. **Tools/RAG/agentic
 behavior are intentionally not exposed here** — that's Phase 2's `/v1/agent/completions`.
+
+If the key's owner (or their department) is over a monthly **spend budget** and the
+requested model is priced, the call is rejected with **HTTP 402** in the OpenAI error
+envelope (`type: "insufficient_quota"`) before any upstream call. Models with no assigned
+cost are never blocked. See [BUDGETS.md](BUDGETS.md).
 
 ### Examples
 
@@ -92,7 +101,8 @@ gateway model call appends one row to the durable **`UsageLedger`**
 
 Gateway usage therefore appears automatically in the admin **Usage & Cost** view
 (`GET /api/usage/by-user`, "usage by month × user × department × model") and the per-user
-`GET /api/usage` meter — no extra wiring.
+`GET /api/usage` meter — no extra wiring. The same ledger also drives **spend budgets**, so
+gateway spend counts toward a user's/department's monthly cap. See [BUDGETS.md](BUDGETS.md).
 
 ## 4. Where it lives (code map)
 

@@ -26,6 +26,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -223,6 +224,42 @@ class UsageLedger(Base):
     total_tokens: Mapped[int] = mapped_column(Integer, default=0)
     cost_usd: Mapped[float | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now, index=True)
+
+
+class Budget(Base):
+    """A monthly USD spend cap for a single user or a whole department.
+
+    Enforced against the durable :class:`UsageLedger`: a turn is blocked once the current
+    UTC calendar month's summed ``cost_usd`` for the budget's scope reaches ``limit_usd``,
+    but only for **priced** models (those with an ``observability.pricing`` entry) — free
+    models stay usable. ``warn_pct`` drives the UI warning banner before the hard cap.
+
+    FK-free for parity with the rest of the per-user model: ``scope_value`` holds a
+    ``User.id`` (scope_type ``user``) or a department name (scope_type ``department``). A
+    user can be covered by both a user budget and their department budget; enforcement is
+    most-restrictive-wins. ``is_active`` is a soft on/off that keeps the row.
+
+    There is no stored counter to reset each month — "spend this month" is always a
+    date-bounded query over the ledger, so it rolls forward automatically.
+    """
+
+    __tablename__ = "budgets"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    # scope_type: user | department
+    scope_type: Mapped[str] = mapped_column(String(20))
+    # User.id when scope_type == 'user'; department name when 'department'.
+    scope_value: Mapped[str] = mapped_column(String(200))
+    limit_usd: Mapped[float] = mapped_column(default=0.0)
+    # Percent of the limit at which to warn the user (UI banner). 0 disables the warning.
+    warn_pct: Mapped[int] = mapped_column(Integer, default=90)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
+
+    __table_args__ = (
+        UniqueConstraint("scope_type", "scope_value", name="uq_budget_scope"),
+    )
 
 
 class ApiKey(Base):

@@ -212,6 +212,11 @@
             <p>Per-message token and cost in the UI, plus an admin chargeback view by month × user × department × model, with CSV export for finance.</p>
           </article>
           <article class="feature-card reveal">
+            <div class="feature-ic">🧮</div>
+            <h3>Spend budgets</h3>
+            <p>Set a monthly cost cap per user or department. Warn at an adjustable threshold, then block priced models once the budget is reached — across chat and the API gateway. Resets each month.</p>
+          </article>
+          <article class="feature-card reveal">
             <div class="feature-ic">🎨</div>
             <h3>Theming</h3>
             <p>Phlox Dark by default, with Light, Fred Hutch, Hutch Night, Sandstone and more — instant switching via a CSS-variable token system.</p>
@@ -344,6 +349,11 @@
             <h3>Departmental chargeback</h3>
             <p>A durable usage ledger outlives the accounts it tracks — a departed user's costs stay billable after their account is deleted. Usage by month × user × department × model, CSV-exportable.</p>
           </article>
+          <article class="info-card reveal">
+            <div class="feature-ic">🧮</div>
+            <h3>Spend budgets</h3>
+            <p>Cap monthly spend per user or department. Users see a warning as they near the limit; priced models are blocked once it's reached — enforced for both chat and the API gateway, with a monthly reset.</p>
+          </article>
         </div>
         <div class="shot-row reveal">
           <figure class="shot">
@@ -368,7 +378,7 @@
         <div class="section-head reveal">
           <span class="kicker">The platform layer</span>
           <h2 class="section-title">An LLM gateway and cost ledger for the whole team</h2>
-          <p class="section-lead center">Beyond chat, Phlox is an OpenAI-compatible gateway with per-user API keys, live model pricing, and department-level chargeback — the governance layer that turns a chat app into shared infrastructure.</p>
+          <p class="section-lead center">Beyond chat, Phlox is an OpenAI-compatible gateway with per-user API keys, live model pricing, department-level chargeback, and <strong>monthly spend budgets</strong> — the governance layer that turns a chat app into shared infrastructure.</p>
         </div>
 
         <figure class="shot shot-feature reveal">
@@ -384,6 +394,32 @@
           <figure class="shot">
             <img src="images/shot-pricing.png" alt="Model pricing editor with input and output cost per million tokens for each model" loading="lazy" />
             <figcaption>Live model pricing — applied to new turns, no restart</figcaption>
+          </figure>
+        </div>
+
+        <div class="section-head reveal" style="margin-top:3rem">
+          <span class="kicker">Spend budgets</span>
+          <h2 class="section-title">Set a cap. Warn, then enforce.</h2>
+          <p class="section-lead center">Give a user or a whole department a monthly cost ceiling. Phlox warns as they approach it and blocks priced models once it's reached — while free, locally-hosted models keep working. Enforcement is shared by chat and the API gateway, and budgets reset each month. Most-restrictive budget wins when both a user and department cap apply.</p>
+        </div>
+
+        <figure class="shot shot-feature reveal">
+          <img src="images/shot-budget-panel.png" alt="Admin Budgets panel showing monthly spend caps for departments and users with spent-vs-limit progress bars, editable limit and warning thresholds, and a form to add a budget" loading="lazy" />
+          <figcaption>Admin budgets — a monthly cap per user or department, with an adjustable warning threshold and live spend bars.</figcaption>
+        </figure>
+
+        <div class="shot-row reveal">
+          <figure class="shot">
+            <img src="images/shot-budget-warning.png" alt="In-app banner warning that the department has used 97.2 percent of its monthly budget" loading="lazy" />
+            <figcaption>Approaching the limit — an in-app warning at your chosen threshold</figcaption>
+          </figure>
+          <figure class="shot">
+            <img src="images/shot-budget-exceeded.png" alt="In-app banner showing the monthly budget has been reached and priced models are paused until reset" loading="lazy" />
+            <figcaption>Budget reached — priced models pause; free models still work</figcaption>
+          </figure>
+          <figure class="shot">
+            <img src="images/shot-budget-api.png" alt="A curl request to the OpenAI-compatible gateway returning an insufficient_quota error because the monthly budget is exceeded" loading="lazy" />
+            <figcaption>Enforced at the gateway too — an OpenAI-shaped <code>insufficient_quota</code> error</figcaption>
           </figure>
         </div>
       </div>

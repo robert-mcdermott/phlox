@@ -13,7 +13,6 @@ from app.schemas import McpServerIn, McpServerOut
 # MCP server management is admin-only.
 router = APIRouter(prefix="/api/mcp", tags=["mcp"], dependencies=[Depends(require_admin)])
 
-
 def _to_out(server: McpServer) -> McpServerOut:
     connected = server.name in mcp_manager.connected_servers()
     from app.agent.registry import REGISTRY
@@ -27,11 +26,12 @@ def _to_out(server: McpServer) -> McpServerOut:
         args=server.args,
         env=server.env,
         url=server.url,
+        headers=server.headers,
+        auth_token=None,  # never echo the bearer token back to clients
         enabled=server.enabled,
         connected=connected,
         tools=tools,
     )
-
 
 @router.get("", response_model=list[McpServerOut])
 def list_servers(db: Session = Depends(get_db)):
@@ -81,7 +81,6 @@ def delete_server(server_id: str, db: Session = Depends(get_db)):
     db.commit()
     return {"deleted": server_id}
 
-
 def _server_dict(server: McpServer) -> dict:
     return {
         "name": server.name,
@@ -90,4 +89,6 @@ def _server_dict(server: McpServer) -> dict:
         "args": server.args,
         "env": server.env,
         "url": server.url,
+        "headers": server.headers,
+        "auth_token": server.auth_token,
     }

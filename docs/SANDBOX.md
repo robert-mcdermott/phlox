@@ -122,8 +122,11 @@ dir. The runner therefore:
 2. **syncs the local workspace in** (`writeFiles`) before each run,
 3. invokes `executeCode` / `executeCommand`, reading the clean `stdout`/`stderr`/`exitCode`
    from the response's `structuredContent`,
-4. **syncs produced files back out** (`listFiles` + `readFiles`) into the local dir, where
-   the normal mtime diff picks them up as artifacts,
+4. **syncs produced/changed files back out** (`listFiles` + `readFiles`) into the local dir,
+   where the normal mtime diff picks them up as artifacts. The session's working dir is
+   shared and pre-populated (interpreter internals like `node_modules`), so the runner
+   snapshots a baseline at session start and only pulls back files that aren't part of it;
+   unchanged inputs are not rewritten, so they aren't mis-flagged as artifacts,
 5. tears the session down deterministically when the **conversation is deleted** (via the
    additive `SandboxRunner.close_session(workdir)` hook) — no leaked sessions, no TTL reaper.
 

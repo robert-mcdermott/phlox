@@ -1,9 +1,12 @@
 """Tests for the AgentCore remote sandbox runner + the additive close_session hook.
 
-No live AWS is needed: the boto3 client is replaced with a fake whose responses mirror
-the ``bedrock-agentcore`` event-stream shapes (``result.structuredContent`` +
-``result.content[]``). These lock in the runner's behavior — dispatch, fallback, output
-parsing, file sync, and deterministic session teardown — independent of the real service.
+No live AWS is needed: the boto3 client is replaced with a ``FakeClient`` whose responses
+mirror the **real** ``bedrock-agentcore`` Code Interpreter shapes captured from a live
+session — ``result.structuredContent`` (stdout/stderr/exitCode) for execute*, and a small
+virtual filesystem behind ``writeFiles``/``listFiles``/``readFiles`` (one-level
+``resource_link`` listings with name+description; ``resource`` blocks with ``file:///``
+uris on read). These lock in dispatch, fallback, output parsing, the baseline-aware file
+sync, and deterministic session teardown — independent of the real service.
 """
 import pytest
 
@@ -15,7 +18,7 @@ from app.sandbox.runner import (
 
 
 # --------------------------------------------------------------------------- #
-# A fake bedrock-agentcore client recording calls and returning modeled shapes
+# A fake bedrock-agentcore client backed by a virtual session filesystem
 # --------------------------------------------------------------------------- #
 def _event(content=None, structured=None, is_error=False):
     result = {"content": content or [], "isError": is_error}
@@ -24,13 +27,20 @@ def _event(content=None, structured=None, is_error=False):
     return {"result": result}
 
 
+# Mirrors the live session's pre-populated working dir (interpreter internals).
+_SYSTEM_FILES = {"node_modules/x.js": "//", "package.json": "{}", "log/app.log": ""}
+
+
 class FakeClient:
     def __init__(self):
         self.calls = []
         self.session_counter = 0
         self.stopped = []
-        self.written = []          # captured writeFiles content
-        self.files = {}            # path -> text, returned by listFiles/readFiles
+        # path -> str|bytes. Starts with system files; writeFiles/run add ours.
+        self.fs: dict[str, object] = dict(_SYSTEM_FILES)
+        # Files an executeCode call "produces" — merged into fs *after* session start, so
+        # they're not part of the baseline (i.e. they look like genuine run output).
+        self.produce: dict[str, object] = {}
 
     def start_code_interpreter_session(self, **kw):
         self.calls.append(("start", kw))
@@ -42,30 +52,60 @@ class FakeClient:
         self.stopped.append(kw["sessionId"])
         return {}
 
+    def _children(self, dirpath):
+        prefix = "" if dirpath in (".", "") else dirpath.rstrip("/") + "/"
+        dirs, files = set(), set()
+        for path in self.fs:
+            if prefix and not path.startswith(prefix):
+                continue
+            rest = path[len(prefix):]
+            if "/" in rest:
+                dirs.add(rest.split("/", 1)[0])
+            elif rest:
+                files.add(rest)
+        blocks = []
+        for d in sorted(dirs):
+            blocks.append({"type": "resource_link", "uri": f"file:///{prefix}{d}",
+                           "name": d, "description": "Directory"})
+        for f in sorted(files):
+            blocks.append({"type": "resource_link", "uri": f"file:///{prefix}{f}",
+                           "name": f, "description": "File"})
+        return blocks
+
     def invoke_code_interpreter(self, **kw):
         self.calls.append((kw["name"], kw))
         name, args = kw["name"], kw.get("arguments", {})
         if name == "executeCode":
+            self.fs.update(self.produce)
             return {"stream": [_event(
                 content=[{"type": "text", "text": "hello from code"}],
-                structured={"stdout": "hello from code\n", "stderr": "", "exitCode": 0},
+                structured={"stdout": "hello from code", "stderr": "", "exitCode": 0},
             )]}
         if name == "executeCommand":
             return {"stream": [_event(
-                structured={"stdout": "cmd-out\n", "stderr": "warn\n", "exitCode": 3},
+                structured={"stdout": "cmd-out\r\n", "stderr": "warn\r\n", "exitCode": 3},
             )]}
         if name == "writeFiles":
-            self.written = args.get("content", [])
-            return {"stream": [_event(content=[{"type": "text", "text": "ok"}])]}
+            for f in args.get("content", []):
+                self.fs[f["path"]] = f["text"] if "text" in f else f.get("blob")
+            n = len(args.get("content", []))
+            return {"stream": [_event(content=[{"type": "text", "text": f"Successfully wrote all {n} files"}])]}
         if name == "listFiles":
-            blocks = [{"type": "resource", "uri": p} for p in self.files]
-            return {"stream": [_event(content=blocks)]}
+            return {"stream": [_event(content=self._children(args.get("directoryPath", ".")))]}
         if name == "readFiles":
-            blocks = [
-                {"type": "resource", "resource": {"type": "text", "uri": p, "text": t}}
-                for p, t in self.files.items()
-                if p in args.get("paths", [])
-            ]
+            blocks = []
+            for p in args.get("paths", []):
+                if p not in self.fs:
+                    return {"stream": [_event(
+                        content=[{"type": "text", "text": f"Error executing tool read_files: File {p} not found"}],
+                        is_error=True)]}
+                v = self.fs[p]
+                res = {"uri": f"file:///{p}"}
+                if isinstance(v, (bytes, bytearray)):
+                    res["blob"] = bytes(v)
+                else:
+                    res["text"] = v
+                blocks.append({"type": "resource", "resource": res})
             return {"stream": [_event(content=blocks)]}
         return {"stream": [_event()]}
 
@@ -166,29 +206,78 @@ def test_sync_in_uploads_local_files(fake_runner, tmp_path):
     r, fake = fake_runner
     (tmp_path / "a.txt").write_text("local-content", encoding="utf-8")
     r.run_code("print(1)", "python", tmp_path)
-    paths = {f["path"] for f in fake.written}
-    assert "a.txt" in paths
-    assert any(f.get("text") == "local-content" for f in fake.written)
+    # writeFiles landed the local file into the session FS.
+    assert fake.fs.get("a.txt") == "local-content"
+
+
+def test_sync_in_uploads_binary_as_blob(fake_runner, tmp_path):
+    r, fake = fake_runner
+    payload = b"\x89PNG\r\n\x1a\n\xff\xfe\x00\x01"   # non-UTF-8 bytes -> blob path
+    (tmp_path / "pic.bin").write_bytes(payload)
+    r.run_code("print(1)", "python", tmp_path)
+    assert fake.fs.get("pic.bin") == payload
+
+
+def test_sync_in_preserves_crlf_text_byte_for_byte(fake_runner, tmp_path):
+    r, fake = fake_runner
+    # A valid-UTF-8 file with CRLF must round-trip unchanged (no newline translation).
+    (tmp_path / "crlf.txt").write_bytes(b"line1\r\nline2\r\n")
+    r.run_code("print(1)", "python", tmp_path)
+    assert fake.fs.get("crlf.txt") == "line1\r\nline2\r\n"
 
 
 def test_sync_out_writes_produced_files_back_locally(fake_runner, tmp_path):
     r, fake = fake_runner
-    # The session "produces" a new file that isn't on local disk yet.
-    fake.files = {"out.csv": "x,y\n1,2\n"}
-    res = r.run_code("write csv", "python", tmp_path)
-    written_back = tmp_path / "out.csv"
-    assert written_back.exists()
-    assert written_back.read_text(encoding="utf-8") == "x,y\n1,2\n"
-    # ...and it is detected as an artifact by the normal mtime diff.
-    assert any(a["path"] == "out.csv" for a in res.artifacts)
+    # The session produces new files (text + nested + binary) after it starts — these are
+    # not in the baseline, so they should sync back into the local workspace.
+    fake.produce = {
+        "out.csv": "x,y\n1,2\n",
+        "produced/nested.txt": "deep",
+        "bin.dat": bytes(range(16)),
+    }
+    res = r.run_code("write files", "python", tmp_path)
+    assert (tmp_path / "out.csv").read_text(encoding="utf-8") == "x,y\n1,2\n"
+    assert (tmp_path / "produced" / "nested.txt").read_text(encoding="utf-8") == "deep"
+    assert (tmp_path / "bin.dat").read_bytes() == bytes(range(16))
+    # ...and they're detected as artifacts by the normal mtime diff.
+    art_paths = {a["path"] for a in res.artifacts}
+    assert {"out.csv", "produced/nested.txt", "bin.dat"} <= art_paths
 
 
-def test_sync_out_ignores_unsafe_paths(fake_runner, tmp_path):
+def test_sync_out_skips_interpreter_system_files(fake_runner, tmp_path):
     r, fake = fake_runner
-    fake.files = {"/etc/passwd": "root:x:0:0", "../escape": "no", "ok.txt": "fine"}
-    r.run_code("x", "python", tmp_path)
-    assert (tmp_path / "ok.txt").exists()
-    assert not (tmp_path / "etc" / "passwd").exists()
+    r.run_code("noop", "python", tmp_path)
+    # The pre-existing interpreter files must NOT be dragged into the local workspace.
+    assert not (tmp_path / "node_modules").exists()
+    assert not (tmp_path / "package.json").exists()
+    assert not (tmp_path / "log").exists()
+
+
+def test_sync_out_unchanged_input_not_reflagged_as_artifact(fake_runner, tmp_path):
+    r, _ = fake_runner
+    (tmp_path / "input.txt").write_text("unchanged", encoding="utf-8")
+    res = r.run_code("noop", "python", tmp_path)
+    # The input round-trips out unchanged; write_back must skip it so it isn't a false artifact.
+    assert all(a["path"] != "input.txt" for a in res.artifacts)
+
+
+def test_uri_to_rel_rejects_escapes(fake_runner):
+    r, _ = fake_runner
+    assert r._uri_to_rel("file:///hello.txt") == "hello.txt"
+    assert r._uri_to_rel("file:///sub/dir/nested.txt") == "sub/dir/nested.txt"
+    assert r._uri_to_rel("file:///./produced/out.csv") == "produced/out.csv"
+    assert r._uri_to_rel("file:///../escape") is None
+    assert r._uri_to_rel("") is None
+
+
+def test_write_back_ignores_unsafe_uris(fake_runner, tmp_path):
+    r, _ = fake_runner
+    content = [
+        {"type": "resource", "resource": {"uri": "file:///../escape", "text": "no"}},
+        {"type": "resource", "resource": {"uri": "file:///ok.txt", "text": "fine"}},
+    ]
+    r._write_back(content, tmp_path)
+    assert (tmp_path / "ok.txt").read_text(encoding="utf-8") == "fine"
     assert not (tmp_path.parent / "escape").exists()
 
 

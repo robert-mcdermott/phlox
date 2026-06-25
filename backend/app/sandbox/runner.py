@@ -274,6 +274,19 @@ class ContainerRunner(SandboxRunner):
 # ---------------------------------------------------------------------------
 # Remote sandbox (AWS Bedrock AgentCore Code Interpreter)
 # ---------------------------------------------------------------------------
+# Bounds for syncing the session FS back into the local workspace (the CI session's
+# working dir is shared and pre-populated, so we walk it deliberately rather than wholesale).
+_CI_MAX_SYNC_FILES = 500
+_CI_MAX_SYNC_DEPTH = 8
+# Interpreter-internal top-level entries to never sync back, as a safety net if the
+# per-session baseline capture fails (see ``_session_for``). The dynamic baseline is the
+# primary mechanism; this just guards the heavy/obvious ones.
+_CI_SYSTEM_NAMES = {
+    "node_modules", ".ipython", "log", "run", "package.json", "package-lock.json",
+    "nodejs-js-execution", "nodejs-ts-execution",
+}
+
+
 class AgentCoreCodeInterpreterRunner(SandboxRunner):
     """Run code/commands in an AWS Bedrock AgentCore Code Interpreter microVM.
 
@@ -303,7 +316,8 @@ class AgentCoreCodeInterpreterRunner(SandboxRunner):
         # FS tools + artifact detection see them). Can be disabled for execute-only use.
         self.sync_back = bool(self.cfg.get("sync_back", True))
         self._client = None
-        self._sessions: dict[str, str] = {}     # workdir.name -> sessionId
+        self._sessions: dict[str, str] = {}        # workdir.name -> sessionId
+        self._baseline: dict[str, set[str]] = {}   # workdir.name -> pre-existing top-level entries
         self._lock = threading.Lock()
         self._fallback = LocalSubprocessRunner()
 
@@ -332,6 +346,10 @@ class AgentCoreCodeInterpreterRunner(SandboxRunner):
             sessionTimeoutSeconds=self.session_timeout,
         )
         sid = resp["sessionId"]
+        # The CI session's working dir is shared and pre-populated (node_modules, the
+        # IPython profile, etc.). Snapshot those top-level names now, before we sync any
+        # workspace files in, so sync-out can tell *our* files from the interpreter's.
+        baseline = self._capture_baseline(sid)
         with self._lock:
             # Another thread may have created one concurrently; keep the first and
             # drop ours so we don't leak a session.
@@ -340,11 +358,20 @@ class AgentCoreCodeInterpreterRunner(SandboxRunner):
                 other = sid
             else:
                 self._sessions[key] = sid
+                self._baseline[key] = baseline
                 other = None
         if other:
             self._stop(other)
             return existing
         return sid
+
+    def _capture_baseline(self, sid: str) -> set[str]:
+        try:
+            listing = self._consume(self._invoke(sid, "listFiles", {"directoryPath": "."}))
+            return {b.get("name") for b in listing["content"] if b.get("name")}
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("AgentCore baseline capture failed: %s", exc)
+            return set()
 
     def _stop(self, sid: str) -> None:
         try:
@@ -357,6 +384,7 @@ class AgentCoreCodeInterpreterRunner(SandboxRunner):
     def close_session(self, workdir: Path) -> None:
         with self._lock:
             sid = self._sessions.pop(workdir.name, None)
+            self._baseline.pop(workdir.name, None)
         if sid:
             self._stop(sid)
 
@@ -373,10 +401,11 @@ class AgentCoreCodeInterpreterRunner(SandboxRunner):
         The response carries an event stream under ``stream``; each ``result`` event has
         ``result.structuredContent`` (clean ``stdout``/``stderr``/``exitCode`` for
         execute* tools) and ``result.content[]`` (MCP-style ``text``/``resource`` blocks,
-        used by the file tools). Shapes are from the ``bedrock-agentcore`` botocore model.
+        used by the file tools). Shapes verified against a live AgentCore Code Interpreter
+        and the ``bedrock-agentcore`` botocore model.
         """
         out = {"stdout": "", "stderr": "", "exit_code": 0, "is_error": False,
-               "content": [], "text": ""}
+               "has_structured": False, "content": [], "text": ""}
         text_parts: list[str] = []
         for event in resp.get("stream", []):
             result = event.get("result")
@@ -384,19 +413,25 @@ class AgentCoreCodeInterpreterRunner(SandboxRunner):
                 continue
             if result.get("isError"):
                 out["is_error"] = True
-            sc = result.get("structuredContent") or {}
-            out["stdout"] += sc.get("stdout") or ""
-            out["stderr"] += sc.get("stderr") or ""
-            if sc.get("exitCode") is not None:
-                try:
-                    out["exit_code"] = int(sc["exitCode"])
-                except (TypeError, ValueError):
-                    pass
+            sc = result.get("structuredContent")
+            if sc:
+                out["has_structured"] = True
+                out["stdout"] += sc.get("stdout") or ""
+                out["stderr"] += sc.get("stderr") or ""
+                if sc.get("exitCode") is not None:
+                    try:
+                        out["exit_code"] = int(sc["exitCode"])
+                    except (TypeError, ValueError):
+                        pass
             for block in result.get("content", []) or []:
                 out["content"].append(block)
                 if block.get("type") == "text" and block.get("text"):
                     text_parts.append(block["text"])
-        out["text"] = "\n".join(text_parts)
+        # executeCommand returns terminal CRLF line endings; normalize to match the
+        # local/container runners (plain \n) so output is consistent across runners.
+        out["stdout"] = out["stdout"].replace("\r\n", "\n")
+        out["stderr"] = out["stderr"].replace("\r\n", "\n")
+        out["text"] = "\n".join(text_parts).replace("\r\n", "\n")
         return out
 
     # -- local <-> session file sync ----------------------------------------
@@ -413,26 +448,41 @@ class AgentCoreCodeInterpreterRunner(SandboxRunner):
                     continue
             except OSError:
                 continue
-            entry: dict = {"path": str(rel)}
             try:
-                entry["text"] = p.read_text(encoding="utf-8")
-            except (OSError, UnicodeDecodeError):
-                try:
-                    entry["blob"] = p.read_bytes()   # binary file -> blob (model supports it)
-                except OSError:
-                    continue
+                data = p.read_bytes()
+            except OSError:
+                continue
+            entry: dict = {"path": str(rel)}
+            # Decide text vs binary from the raw bytes — and decode without newline
+            # translation, so CRLF/CR files round-trip byte-for-byte (read_text would
+            # rewrite line endings and make untouched files look changed every run).
+            try:
+                entry["text"] = data.decode("utf-8")
+            except UnicodeDecodeError:
+                entry["blob"] = data             # binary file -> blob (model supports it)
             files.append(entry)
         if files:
             self._invoke(sid, "writeFiles", {"content": files})
 
     def _sync_out(self, sid: str, workdir: Path) -> None:
+        """Pull files the run produced/changed back into the local workspace.
+
+        ``listFiles`` is one level deep and the session's working dir is shared with
+        interpreter internals, so we walk it recursively, skip the baseline (pre-existing)
+        top-level entries, then ``readFiles`` the rest and write only genuinely-changed
+        content back (so unchanged inputs don't get falsely flagged as artifacts).
+        """
         if not self.sync_back:
             return
         try:
-            listing = self._consume(self._invoke(sid, "listFiles", {"directoryPath": "."}))
-            paths = self._listing_paths(listing)
+            baseline = self._baseline.get(workdir.name, set()) | _CI_SYSTEM_NAMES
+            paths = self._walk_remote(sid, ".", baseline)
             if not paths:
                 return
+            if len(paths) > _CI_MAX_SYNC_FILES:
+                logger.warning("AgentCore sync_out: %d files exceed cap %d; syncing first %d",
+                               len(paths), _CI_MAX_SYNC_FILES, _CI_MAX_SYNC_FILES)
+                paths = paths[:_CI_MAX_SYNC_FILES]
             read = self._consume(self._invoke(sid, "readFiles", {"paths": paths}))
             self._write_back(read["content"], workdir)
         except Exception as exc:  # noqa: BLE001
@@ -440,56 +490,79 @@ class AgentCoreCodeInterpreterRunner(SandboxRunner):
             # breaks the run — it just means produced files may not appear locally.
             logger.warning("AgentCore sync_out failed: %s", exc)
 
-    @staticmethod
-    def _safe_rel(path: str) -> str | None:
-        """Return a workspace-relative path, or None if it escapes/looks unsafe."""
-        if not path:
-            return None
-        path = path.lstrip("./")
-        if not path or path.startswith("/") or ".." in Path(path).parts:
-            return None
-        return path
+    def _walk_remote(self, sid: str, dirpath: str, baseline: set[str], depth: int = 0) -> list[str]:
+        """Recursively list the session FS, returning relative file paths worth syncing.
 
-    def _listing_paths(self, listing: dict) -> list[str]:
-        """Best-effort parse of ``listFiles`` output into relative file paths.
-
-        listFiles surfaces entries either as ``resource`` content blocks (with a ``uri``)
-        or as a text block (newline- or JSON-listed). We accept whichever appears and skip
-        anything that doesn't look like a safe relative path.
+        ``listFiles`` returns ``resource_link`` blocks with ``name`` + ``description``
+        ("File"|"Directory"). Baseline/system names are skipped at the top level; nested
+        dirs (our own subdirs) are walked in full.
         """
-        paths: list[str] = []
-        for block in listing.get("content", []):
-            if block.get("type") in ("resource", "resource_link"):
-                uri = block.get("uri") or (block.get("resource") or {}).get("uri") or block.get("name")
-                rel = self._safe_rel(str(uri)) if uri else None
-                if rel:
-                    paths.append(rel)
-            elif block.get("type") == "text" and block.get("text"):
-                for line in block["text"].splitlines():
-                    rel = self._safe_rel(line.strip().strip('",[]'))
-                    if rel:
-                        paths.append(rel)
-        # De-dup, preserve order.
-        seen: set[str] = set()
-        return [p for p in paths if not (p in seen or seen.add(p))]
+        if depth > _CI_MAX_SYNC_DEPTH:
+            return []
+        listing = self._consume(self._invoke(sid, "listFiles", {"directoryPath": dirpath}))
+        files: list[str] = []
+        for block in listing["content"]:
+            name = block.get("name")
+            if not name or "/" in name or name in (".", ".."):
+                continue
+            if name in _IGNORE_DIRS:
+                continue
+            if depth == 0 and name in baseline:
+                continue  # interpreter-internal / pre-existing entry — not ours
+            rel = name if dirpath == "." else f"{dirpath}/{name}"
+            if block.get("description") == "Directory":
+                files.extend(self._walk_remote(sid, rel, baseline, depth + 1))
+            else:
+                files.append(rel)
+            if len(files) >= _CI_MAX_SYNC_FILES:
+                break
+        return files
+
+    @staticmethod
+    def _uri_to_rel(uri: str | None) -> str | None:
+        """Turn a CI ``file:///...`` uri into a safe workspace-relative path, or None."""
+        if not uri:
+            return None
+        s = str(uri)
+        if s.startswith("file://"):
+            s = s[len("file://"):]
+        s = s.lstrip("/")
+        if s.startswith("./"):
+            s = s[2:]
+        if not s or s.startswith("/") or ".." in Path(s).parts:
+            return None
+        return s
 
     def _write_back(self, content: list[dict], workdir: Path) -> None:
-        """Write ``readFiles`` content blocks back into the local workspace."""
+        """Write ``readFiles`` ``resource`` blocks back, skipping unchanged files.
+
+        Each block is ``{"type":"resource","resource":{"uri","text"|"blob",...}}``. We
+        only write when the content differs from what's already on disk, so re-syncing an
+        unchanged input file doesn't bump its mtime and get it mis-detected as an artifact.
+        """
         for block in content:
             res = block.get("resource") if block.get("type") == "resource" else None
-            uri = (res or {}).get("uri") or block.get("uri") or block.get("name")
-            rel = self._safe_rel(str(uri)) if uri else None
+            if res is None:
+                continue
+            rel = self._uri_to_rel(res.get("uri"))
             if not rel:
                 continue
+            text = res.get("text")
+            blob = res.get("blob")
+            if text is not None:
+                data = text.encode("utf-8")
+            elif blob is not None:
+                data = blob if isinstance(blob, (bytes, bytearray)) else bytes(blob)
+            else:
+                continue
             dest = workdir / rel
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            text = (res or {}).get("text", block.get("text"))
-            blob = (res or {}).get("blob", block.get("data"))
             try:
-                if text is not None:
-                    dest.write_text(text, encoding="utf-8")
-                elif blob is not None:
-                    dest.write_bytes(blob if isinstance(blob, (bytes, bytearray)) else bytes(blob))
+                # Skip rewriting unchanged content (comparing raw bytes, no newline
+                # translation) so untouched inputs don't get mis-flagged as artifacts.
+                if dest.exists() and dest.read_bytes() == data:
+                    continue
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_bytes(data)
             except OSError as exc:
                 logger.warning("AgentCore write_back %s failed: %s", rel, exc)
 
@@ -530,15 +603,19 @@ class AgentCoreCodeInterpreterRunner(SandboxRunner):
             self._sync_in(sid, workdir)
             res = self._consume(do_invoke(sid))
             self._sync_out(sid, workdir)
-            exit_code = res["exit_code"]
+            if res["has_structured"]:
+                # execute* tools: trust the clean structuredContent split.
+                stdout, stderr, exit_code = res["stdout"], res["stderr"], res["exit_code"]
+            else:
+                # No structuredContent (unexpected for execute*): fall back to text blocks.
+                stdout, stderr, exit_code = res["text"], "", 0
             # isError without a non-zero code still means failure; surface it so tools'
             # `is_error = exit_code != 0` is correct.
             if res["is_error"] and exit_code == 0:
                 exit_code = 1
-            stdout = res["stdout"] or res["text"]
             return ExecResult(
                 stdout=_truncate(stdout),
-                stderr=_truncate(res["stderr"]),
+                stderr=_truncate(stderr),
                 exit_code=exit_code,
                 duration_s=round(time.monotonic() - start, 3),
                 artifacts=collect_artifacts(workdir, before),

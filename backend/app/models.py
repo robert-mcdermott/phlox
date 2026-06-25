@@ -148,6 +148,7 @@ class Setting(Base):
     key: Mapped[str] = mapped_column(String(100), primary_key=True)
     value: Mapped[dict | list | str | int | float | bool | None] = mapped_column(JSON)
 
+
 class McpServer(Base):
     __tablename__ = "mcp_servers"
 
@@ -165,7 +166,8 @@ class McpServer(Base):
     auth_token: Mapped[str | None] = mapped_column(String(2000), nullable=True)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
-    
+
+
 class ToolPref(Base):
     __tablename__ = "tool_prefs"
 

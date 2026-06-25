@@ -100,6 +100,7 @@ class SettingsUpdate(BaseModel):
     max_tool_rounds: int | None = None
     max_context_tokens: int | None = None
 
+
 # -- mcp -------------------------------------------------------------------
 class McpServerIn(BaseModel):
     name: str
@@ -125,7 +126,8 @@ class McpServerOut(McpServerIn):
     id: str
     connected: bool = False
     tools: list[str] = []
-    
+
+
 # -- tools -----------------------------------------------------------------
 class ToolOut(BaseModel):
     name: str

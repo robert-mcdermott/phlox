@@ -88,6 +88,7 @@ def delete_server(server_id: str, db: Session = Depends(get_db)):
     db.commit()
     return {"deleted": server_id}
 
+
 def _server_dict(server: McpServer) -> dict:
     return {
         "name": server.name,

@@ -38,6 +38,7 @@ _ADDED_COLUMNS: dict[str, dict[str, str]] = {
     "mcp_servers": {"headers": "JSON", "auth_token": "VARCHAR(2000)"},
 }
 
+
 def _ensure_columns() -> None:
     from sqlalchemy import text
 

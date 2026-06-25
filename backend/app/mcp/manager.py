@@ -83,7 +83,7 @@ class McpManager:
                 REGISTRY.register(proxy)
                 tool_names.append(proxy.name)
             return {"name": name, "connected": True, "tools": tool_names}
-            
+
     @staticmethod
     def _build_headers(server: dict) -> dict[str, str] | None:
         """Build HTTP headers for network transports (sse/http) from optional auth config.
@@ -100,6 +100,7 @@ class McpManager:
         if isinstance(explicit, dict):
             headers.update({str(k): str(v) for k, v in explicit.items()})
         return headers or None
+
     async def _serve(self, server: dict):
         """Open and hold a session open until its stop event is set; return tool list."""
         from mcp import ClientSession, StdioServerParameters

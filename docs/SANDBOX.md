@@ -155,6 +155,19 @@ instead of breaking the turn.
 4. Set `sandbox.runner: agentcore` and restart the backend. (`boto3` is already a Phlox
    dependency — it's also used by the Bedrock model provider.)
 
+**Verify it end-to-end.** With AWS creds in your environment, run the live check (it uses a
+throwaway temp data dir and tears its session down afterwards):
+
+```bash
+python scripts/e2e_agentcore.py --region us-west-2        # add --profile NAME if needed
+```
+
+It drives the real tools (`execute_python`/`run_shell`/`write_file`/…) through the runner,
+asserting execution output, file sync in/out, binary round-trip, artifact detection, that
+interpreter system files stay out of the workspace, session reuse, and `close_session`
+teardown — and it fails loudly (rather than silently falling back to local) if AWS is
+misconfigured. Exit code 0 means the feature works against your account.
+
 ### Tuning
 
 | Key | Default | Meaning |

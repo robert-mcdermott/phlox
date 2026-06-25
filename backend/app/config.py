@@ -144,12 +144,12 @@ def get_web_search_config() -> dict[str, Any]:
 
 
 def get_sandbox_config() -> dict[str, Any]:
-    """Code/shell execution sandbox config. ``runner`` is ``local`` or ``container``.
+    """Code/shell execution sandbox config. ``runner`` is ``local``, ``container``, or ``agentcore``.
 
     Admin-editable: the container **limits** (memory/cpus/pids_limit/network/images/engine)
     overlay over the file. The ``runner`` *type* is deliberately **not** overridable here —
-    flipping isolation (local <-> container) at runtime would be a security surprise, so it
-    stays file-only.
+    flipping isolation (local <-> container <-> agentcore) at runtime would be a security
+    surprise, so it stays file-only. The ``agentcore`` settings are likewise file-only.
     """
     from app import app_config
 
@@ -166,6 +166,13 @@ def get_sandbox_config() -> dict[str, Any]:
     container.setdefault("pids_limit", 256)
     container.setdefault("network", "none")  # none | bridge
     cfg["container"] = container
+
+    # AWS Bedrock AgentCore Code Interpreter (remote, off-host microVM). Only consulted
+    # when runner=agentcore; defaults mirror the container block's file-only treatment.
+    ac = dict(cfg.get("agentcore", {}) or {})
+    ac.setdefault("identifier", "aws.codeinterpreter.v1")  # built-in Code Interpreter
+    ac.setdefault("session_timeout_seconds", 900)
+    cfg["agentcore"] = ac
     return cfg
 
 

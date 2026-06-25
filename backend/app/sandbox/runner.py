@@ -15,6 +15,7 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -57,6 +58,17 @@ class SandboxRunner(ABC):
 
     @abstractmethod
     def run_code(self, code: str, language: str, workdir: Path, timeout: int = DEFAULT_TIMEOUT) -> ExecResult: ...
+
+    def close_session(self, workdir: Path) -> None:
+        """Tear down any per-conversation remote session for this workspace.
+
+        A concrete no-op so existing runners are unchanged: ``local`` and ``container``
+        hold no session and inherit this. Remote runners that open a per-workspace
+        session (e.g. the AgentCore runner) override it to release the session
+        deterministically when a conversation is deleted — no leaked sessions, no
+        TTL-reaper hack.
+        """
+        return None
 
 
 def snapshot_dir(workdir: Path) -> dict[str, float]:
@@ -259,21 +271,305 @@ class ContainerRunner(SandboxRunner):
         return ExecResult(stdout="", stderr=f"Unsupported language: {language}", exit_code=2)
 
 
+# ---------------------------------------------------------------------------
+# Remote sandbox (AWS Bedrock AgentCore Code Interpreter)
+# ---------------------------------------------------------------------------
+class AgentCoreCodeInterpreterRunner(SandboxRunner):
+    """Run code/commands in an AWS Bedrock AgentCore Code Interpreter microVM.
+
+    Unlike the local/container runners, agent-generated code runs **off-host** with
+    kernel-level (Firecracker microVM) isolation — a real security upgrade for a
+    hosted/multi-user Phlox, since untrusted code never touches the Phlox host.
+
+    One Code Interpreter session is opened per conversation workspace (keyed by
+    ``workdir.name``) and reused across calls. The **local workspace stays
+    authoritative**: before each run the local files are synced *in*, and after each
+    run files in the session are synced *out* into the local dir — so all of Phlox's
+    local FS tools (read/write/edit/glob/grep) and mtime-based artifact detection keep
+    working untouched. ``close_session()`` tears the session down deterministically when
+    the conversation is deleted. Any AWS error falls back to the local runner so a
+    misconfiguration degrades gracefully instead of breaking the turn.
+    """
+
+    def __init__(self, config: dict):
+        self.cfg = config or {}
+        self.identifier = self.cfg.get("identifier", "aws.codeinterpreter.v1")
+        self.region = self.cfg.get("region")
+        self.profile = self.cfg.get("profile")
+        self.session_timeout = int(self.cfg.get("session_timeout_seconds", 900))
+        # Skip syncing very large files in/out to bound per-call cost (full-sync is O(workspace)).
+        self.max_sync_bytes = int(self.cfg.get("max_sync_file_bytes", 5_000_000))
+        # Sync produced files back into the local workspace after each run (so the local
+        # FS tools + artifact detection see them). Can be disabled for execute-only use.
+        self.sync_back = bool(self.cfg.get("sync_back", True))
+        self._client = None
+        self._sessions: dict[str, str] = {}     # workdir.name -> sessionId
+        self._lock = threading.Lock()
+        self._fallback = LocalSubprocessRunner()
+
+    # -- AWS client / session lifecycle -------------------------------------
+    def _c(self):
+        if self._client is None:
+            import boto3  # already a Phlox dependency (used by the Bedrock provider)
+
+            if self.profile:
+                self._client = boto3.Session(
+                    profile_name=self.profile, region_name=self.region
+                ).client("bedrock-agentcore")
+            else:
+                self._client = boto3.client("bedrock-agentcore", region_name=self.region)
+        return self._client
+
+    def _session_for(self, workdir: Path) -> str:
+        key = workdir.name
+        with self._lock:
+            sid = self._sessions.get(key)
+            if sid:
+                return sid
+        resp = self._c().start_code_interpreter_session(
+            codeInterpreterIdentifier=self.identifier,
+            name=f"phlox-{key}"[:50],
+            sessionTimeoutSeconds=self.session_timeout,
+        )
+        sid = resp["sessionId"]
+        with self._lock:
+            # Another thread may have created one concurrently; keep the first and
+            # drop ours so we don't leak a session.
+            existing = self._sessions.get(key)
+            if existing:
+                other = sid
+            else:
+                self._sessions[key] = sid
+                other = None
+        if other:
+            self._stop(other)
+            return existing
+        return sid
+
+    def _stop(self, sid: str) -> None:
+        try:
+            self._c().stop_code_interpreter_session(
+                codeInterpreterIdentifier=self.identifier, sessionId=sid
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("AgentCore stop_session failed: %s", exc)
+
+    def close_session(self, workdir: Path) -> None:
+        with self._lock:
+            sid = self._sessions.pop(workdir.name, None)
+        if sid:
+            self._stop(sid)
+
+    # -- invoke + event-stream handling -------------------------------------
+    def _invoke(self, sid: str, name: str, arguments: dict):
+        return self._c().invoke_code_interpreter(
+            codeInterpreterIdentifier=self.identifier, sessionId=sid, name=name, arguments=arguments
+        )
+
+    @staticmethod
+    def _consume(resp) -> dict:
+        """Drain an ``invoke_code_interpreter`` response into one result dict.
+
+        The response carries an event stream under ``stream``; each ``result`` event has
+        ``result.structuredContent`` (clean ``stdout``/``stderr``/``exitCode`` for
+        execute* tools) and ``result.content[]`` (MCP-style ``text``/``resource`` blocks,
+        used by the file tools). Shapes are from the ``bedrock-agentcore`` botocore model.
+        """
+        out = {"stdout": "", "stderr": "", "exit_code": 0, "is_error": False,
+               "content": [], "text": ""}
+        text_parts: list[str] = []
+        for event in resp.get("stream", []):
+            result = event.get("result")
+            if not result:
+                continue
+            if result.get("isError"):
+                out["is_error"] = True
+            sc = result.get("structuredContent") or {}
+            out["stdout"] += sc.get("stdout") or ""
+            out["stderr"] += sc.get("stderr") or ""
+            if sc.get("exitCode") is not None:
+                try:
+                    out["exit_code"] = int(sc["exitCode"])
+                except (TypeError, ValueError):
+                    pass
+            for block in result.get("content", []) or []:
+                out["content"].append(block)
+                if block.get("type") == "text" and block.get("text"):
+                    text_parts.append(block["text"])
+        out["text"] = "\n".join(text_parts)
+        return out
+
+    # -- local <-> session file sync ----------------------------------------
+    def _sync_in(self, sid: str, workdir: Path) -> None:
+        files: list[dict] = []
+        for p in workdir.rglob("*"):
+            if not p.is_file():
+                continue
+            rel = p.relative_to(workdir)
+            if any(part in _IGNORE_DIRS for part in rel.parts):
+                continue
+            try:
+                if p.stat().st_size > self.max_sync_bytes:
+                    continue
+            except OSError:
+                continue
+            entry: dict = {"path": str(rel)}
+            try:
+                entry["text"] = p.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                try:
+                    entry["blob"] = p.read_bytes()   # binary file -> blob (model supports it)
+                except OSError:
+                    continue
+            files.append(entry)
+        if files:
+            self._invoke(sid, "writeFiles", {"content": files})
+
+    def _sync_out(self, sid: str, workdir: Path) -> None:
+        if not self.sync_back:
+            return
+        try:
+            listing = self._consume(self._invoke(sid, "listFiles", {"directoryPath": "."}))
+            paths = self._listing_paths(listing)
+            if not paths:
+                return
+            read = self._consume(self._invoke(sid, "readFiles", {"paths": paths}))
+            self._write_back(read["content"], workdir)
+        except Exception as exc:  # noqa: BLE001
+            # Best-effort: the local dir stays authoritative, so a sync-out miss never
+            # breaks the run — it just means produced files may not appear locally.
+            logger.warning("AgentCore sync_out failed: %s", exc)
+
+    @staticmethod
+    def _safe_rel(path: str) -> str | None:
+        """Return a workspace-relative path, or None if it escapes/looks unsafe."""
+        if not path:
+            return None
+        path = path.lstrip("./")
+        if not path or path.startswith("/") or ".." in Path(path).parts:
+            return None
+        return path
+
+    def _listing_paths(self, listing: dict) -> list[str]:
+        """Best-effort parse of ``listFiles`` output into relative file paths.
+
+        listFiles surfaces entries either as ``resource`` content blocks (with a ``uri``)
+        or as a text block (newline- or JSON-listed). We accept whichever appears and skip
+        anything that doesn't look like a safe relative path.
+        """
+        paths: list[str] = []
+        for block in listing.get("content", []):
+            if block.get("type") in ("resource", "resource_link"):
+                uri = block.get("uri") or (block.get("resource") or {}).get("uri") or block.get("name")
+                rel = self._safe_rel(str(uri)) if uri else None
+                if rel:
+                    paths.append(rel)
+            elif block.get("type") == "text" and block.get("text"):
+                for line in block["text"].splitlines():
+                    rel = self._safe_rel(line.strip().strip('",[]'))
+                    if rel:
+                        paths.append(rel)
+        # De-dup, preserve order.
+        seen: set[str] = set()
+        return [p for p in paths if not (p in seen or seen.add(p))]
+
+    def _write_back(self, content: list[dict], workdir: Path) -> None:
+        """Write ``readFiles`` content blocks back into the local workspace."""
+        for block in content:
+            res = block.get("resource") if block.get("type") == "resource" else None
+            uri = (res or {}).get("uri") or block.get("uri") or block.get("name")
+            rel = self._safe_rel(str(uri)) if uri else None
+            if not rel:
+                continue
+            dest = workdir / rel
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            text = (res or {}).get("text", block.get("text"))
+            blob = (res or {}).get("blob", block.get("data"))
+            try:
+                if text is not None:
+                    dest.write_text(text, encoding="utf-8")
+                elif blob is not None:
+                    dest.write_bytes(blob if isinstance(blob, (bytes, bytearray)) else bytes(blob))
+            except OSError as exc:
+                logger.warning("AgentCore write_back %s failed: %s", rel, exc)
+
+    # -- SandboxRunner interface --------------------------------------------
+    def run_command(self, argv: list[str], workdir: Path, timeout: int = DEFAULT_TIMEOUT) -> ExecResult:
+        # Normalize host shell wrappers (cmd /c, /bin/sh -c) to a single command string.
+        if len(argv) >= 3 and argv[0] in ("cmd", "/bin/sh", "sh") and argv[1] in ("/c", "-c"):
+            command = argv[2]
+        else:
+            command = " ".join(argv)
+        return self._run(
+            lambda sid: self._invoke(sid, "executeCommand", {"command": command}),
+            workdir,
+            lambda: self._fallback.run_command(argv, workdir, timeout),
+        )
+
+    def run_code(self, code: str, language: str, workdir: Path, timeout: int = DEFAULT_TIMEOUT) -> ExecResult:
+        if language == "python":
+            lang = "python"
+        elif language in ("node", "javascript"):
+            lang = "javascript"   # AgentCore executeCode language token for Node
+        elif language == "typescript":
+            lang = "typescript"
+        else:
+            return ExecResult(stdout="", stderr=f"Unsupported language: {language}", exit_code=2)
+        return self._run(
+            lambda sid: self._invoke(sid, "executeCode", {"language": lang, "code": code}),
+            workdir,
+            lambda: self._fallback.run_code(code, language, workdir, timeout),
+        )
+
+    def _run(self, do_invoke, workdir: Path, fallback) -> ExecResult:
+        workdir.mkdir(parents=True, exist_ok=True)
+        start = time.monotonic()
+        try:
+            sid = self._session_for(workdir)
+            before = snapshot_dir(workdir)
+            self._sync_in(sid, workdir)
+            res = self._consume(do_invoke(sid))
+            self._sync_out(sid, workdir)
+            exit_code = res["exit_code"]
+            # isError without a non-zero code still means failure; surface it so tools'
+            # `is_error = exit_code != 0` is correct.
+            if res["is_error"] and exit_code == 0:
+                exit_code = 1
+            stdout = res["stdout"] or res["text"]
+            return ExecResult(
+                stdout=_truncate(stdout),
+                stderr=_truncate(res["stderr"]),
+                exit_code=exit_code,
+                duration_s=round(time.monotonic() - start, 3),
+                artifacts=collect_artifacts(workdir, before),
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning("AgentCore runner failed (%s); falling back to local", e)
+            return fallback()
+
+
 _runner: SandboxRunner | None = None
 
 
 def get_runner() -> SandboxRunner:
-    """Return the process-wide sandbox runner, selected by config (local | container)."""
+    """Return the process-wide sandbox runner, selected by config (local | container | agentcore)."""
     global _runner
     if _runner is None:
         from app.config import get_sandbox_config
 
         cfg = get_sandbox_config()
-        if cfg.get("runner") == "container":
+        runner_type = cfg.get("runner")
+        if runner_type == "container":
             try:
                 _runner = ContainerRunner(cfg["container"])
             except Exception as e:  # noqa: BLE001
                 logger.warning("Container runner unavailable (%s); falling back to local", e)
+                _runner = LocalSubprocessRunner()
+        elif runner_type == "agentcore":
+            try:
+                _runner = AgentCoreCodeInterpreterRunner(cfg.get("agentcore", {}))
+            except Exception as e:  # noqa: BLE001
+                logger.warning("AgentCore runner unavailable (%s); falling back to local", e)
                 _runner = LocalSubprocessRunner()
         else:
             _runner = LocalSubprocessRunner()

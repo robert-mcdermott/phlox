@@ -10,8 +10,8 @@ Security:
 - Provider **secrets are never returned** — GET strips them and reports only a
   ``<field>_set`` boolean. PUT preserves the existing secret when the field is left blank,
   so editing a profile doesn't require re-entering its key.
-- The sandbox **runner type** (local vs container) is read-only here — flipping isolation at
-  runtime is unsafe, so it stays file-only.
+- The sandbox **runner type** (local / container / agentcore) is read-only here — flipping
+  isolation at runtime is unsafe, so it stays file-only.
 """
 from __future__ import annotations
 

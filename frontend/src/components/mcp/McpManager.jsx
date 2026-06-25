@@ -2,7 +2,31 @@ import { useEffect, useState } from 'react'
 import { Plus, Trash2, Plug, PlugZap, Loader2 } from 'lucide-react'
 import { api } from '../../api/client'
 
-const BLANK = { name: '', transport: 'stdio', command: '', args: '', url: '' }
+const BLANK = {
+  name: '',
+  transport: 'stdio',
+  command: '',
+  args: '',
+  url: '',
+  authToken: '',
+  headers: '',
+}
+
+function parseHeaders(value) {
+  const text = value.trim()
+  if (!text) return null
+  if (text.startsWith('{')) return JSON.parse(text)
+  return Object.fromEntries(
+    text.split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        const idx = line.indexOf(':')
+        if (idx <= 0) throw new Error(`Invalid header: ${line}`)
+        return [line.slice(0, idx).trim(), line.slice(idx + 1).trim()]
+      }),
+  )
+}
 
 export default function McpManager() {
   const [servers, setServers] = useState([])
@@ -22,7 +46,9 @@ export default function McpManager() {
         transport: form.transport,
         command: form.transport === 'stdio' ? form.command : null,
         args: form.transport === 'stdio' && form.args ? form.args.split(' ').filter(Boolean) : [],
-        url: form.transport === 'sse' ? form.url : null,
+        url: form.transport !== 'stdio' ? form.url : null,
+        auth_token: form.transport !== 'stdio' && form.authToken ? form.authToken : null,
+        headers: form.transport !== 'stdio' ? parseHeaders(form.headers) : null,
       }
       await api.addMcp(body)
       setForm(BLANK)
@@ -98,6 +124,7 @@ export default function McpManager() {
             className="w-full rounded-lg border-border bg-surface text-sm text-content focus:border-accent focus:ring-accent">
             <option value="stdio">stdio (command)</option>
             <option value="sse">SSE (URL)</option>
+            <option value="http">Streamable HTTP (URL)</option>
           </select>
           {form.transport === 'stdio' ? (
             <>
@@ -109,9 +136,19 @@ export default function McpManager() {
                 className="w-full rounded-lg border-border bg-surface text-sm text-content focus:border-accent focus:ring-accent" />
             </>
           ) : (
-            <input placeholder="https://server/sse" value={form.url}
-              onChange={(e) => setForm({ ...form, url: e.target.value })}
-              className="w-full rounded-lg border-border bg-surface text-sm text-content focus:border-accent focus:ring-accent" />
+            <>
+              <input placeholder={form.transport === 'sse' ? 'https://server/sse' : 'https://server/mcp'} value={form.url}
+                onChange={(e) => setForm({ ...form, url: e.target.value })}
+                className="w-full rounded-lg border-border bg-surface text-sm text-content focus:border-accent focus:ring-accent" />
+              <input placeholder="Bearer token (optional)" value={form.authToken}
+                onChange={(e) => setForm({ ...form, authToken: e.target.value })}
+                className="w-full rounded-lg border-border bg-surface text-sm text-content focus:border-accent focus:ring-accent" />
+              <textarea placeholder={'Headers (optional):\nX-API-Key: value'}
+                value={form.headers}
+                onChange={(e) => setForm({ ...form, headers: e.target.value })}
+                rows={3}
+                className="w-full rounded-lg border-border bg-surface text-sm text-content focus:border-accent focus:ring-accent" />
+            </>
           )}
           <button onClick={add} disabled={busy || !form.name}
             className="flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-sm text-accent-fg hover:opacity-90 disabled:opacity-50">

@@ -35,6 +35,7 @@ _ADDED_COLUMNS: dict[str, dict[str, str]] = {
     "conversations": {"user_id": "VARCHAR(32)"},
     "memories": {"user_id": "VARCHAR(32)"},
     "users": {"department": "VARCHAR(200)"},
+    "mcp_servers": {"headers": "JSON", "auth_token": "VARCHAR(2000)"},
 }
 
 

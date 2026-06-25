@@ -62,6 +62,34 @@ def test_tools_list_admin(client):
     assert "write_file" in names and "execute_python" in names and "web_search" in names
 
 
+def test_mcp_http_transport_masks_auth_headers(client):
+    invalid = client.post("/api/mcp", json={"name": "bad-transport", "transport": "websocket"})
+    assert invalid.status_code == 422
+
+    created = client.post(
+        "/api/mcp",
+        json={
+            "name": "remote-http",
+            "transport": "http",
+            "url": "https://example.invalid/mcp",
+            "headers": {"X-API-Key": "secret-key", "Authorization": "Bearer explicit"},
+            "auth_token": "secret-token",
+            "enabled": False,
+        },
+    )
+    assert created.status_code == 200
+    body = created.json()
+    assert body["transport"] == "http"
+    assert body["auth_token"] is None
+    assert body["headers"] == {"X-API-Key": "********", "Authorization": "********"}
+
+    listed = client.get("/api/mcp")
+    assert listed.status_code == 200
+    server = next(s for s in listed.json() if s["name"] == "remote-http")
+    assert server["auth_token"] is None
+    assert server["headers"] == {"X-API-Key": "********", "Authorization": "********"}
+
+
 def test_chat_web_search_advertised_only_when_requested(client, monkeypatch):
     from app.providers.base import StreamDelta
     import app.routers.chat as chat_router

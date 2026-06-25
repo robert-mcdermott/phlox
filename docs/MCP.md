@@ -10,7 +10,8 @@ configure it in the UI (**Settings → MCP Servers**).
 client APIs are async context managers that must stay open between calls, so each connected
 server runs a long-lived coroutine that:
 
-1. opens the transport (`stdio_client` for command servers, `sse_client` for URLs),
+1. opens the transport (`stdio_client` for command servers, `sse_client` for SSE URLs,
+   or `streamablehttp_client` for streamable HTTP URLs),
 2. `initialize()`s a `ClientSession`,
 3. `list_tools()` and keeps the session alive until a stop event fires.
 
@@ -42,6 +43,13 @@ rest of the app keeps working.
   - command: `npx`
   - args: `-y @modelcontextprotocol/server-filesystem C:\some\dir`
 - **SSE**: give it a name and the server URL.
+- **Streamable HTTP**: give it a name and the server URL.
+
+For SSE and streamable HTTP servers, you can also provide an optional bearer token and
+additional HTTP headers. The bearer token is sent as `Authorization: Bearer <token>`.
+Explicit headers are merged on top, so an explicit `Authorization` header overrides the
+bearer token. Stored bearer/header secrets are not returned by the MCP list API; the UI
+only shows masked header values.
 
 After "Add & connect", its tools appear as chips on the server card and in the Tool
 Manager, and the model can call them in the next turn.
@@ -52,6 +60,19 @@ Manager, and the model can call them in the next turn.
 ```json
 { "name": "filesystem", "transport": "stdio",
   "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "."] }
+```
+
+Streamable HTTP with bearer auth:
+```json
+{ "name": "remote", "transport": "http",
+  "url": "https://example.com/mcp", "auth_token": "secret-token" }
+```
+
+SSE with explicit headers:
+```json
+{ "name": "events", "transport": "sse",
+  "url": "https://example.com/sse",
+  "headers": { "X-API-Key": "secret-key" } }
 ```
 
 ## Troubleshooting

@@ -15,6 +15,7 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -57,6 +58,17 @@ class SandboxRunner(ABC):
 
     @abstractmethod
     def run_code(self, code: str, language: str, workdir: Path, timeout: int = DEFAULT_TIMEOUT) -> ExecResult: ...
+
+    def close_session(self, workdir: Path) -> None:
+        """Tear down any per-conversation remote session for this workspace.
+
+        A concrete no-op so existing runners are unchanged: ``local`` and ``container``
+        hold no session and inherit this. Remote runners that open a per-workspace
+        session (e.g. the AgentCore runner) override it to release the session
+        deterministically when a conversation is deleted — no leaked sessions, no
+        TTL-reaper hack.
+        """
+        return None
 
 
 def snapshot_dir(workdir: Path) -> dict[str, float]:
@@ -259,21 +271,382 @@ class ContainerRunner(SandboxRunner):
         return ExecResult(stdout="", stderr=f"Unsupported language: {language}", exit_code=2)
 
 
+# ---------------------------------------------------------------------------
+# Remote sandbox (AWS Bedrock AgentCore Code Interpreter)
+# ---------------------------------------------------------------------------
+# Bounds for syncing the session FS back into the local workspace (the CI session's
+# working dir is shared and pre-populated, so we walk it deliberately rather than wholesale).
+_CI_MAX_SYNC_FILES = 500
+_CI_MAX_SYNC_DEPTH = 8
+# Interpreter-internal top-level entries to never sync back, as a safety net if the
+# per-session baseline capture fails (see ``_session_for``). The dynamic baseline is the
+# primary mechanism; this just guards the heavy/obvious ones.
+_CI_SYSTEM_NAMES = {
+    "node_modules", ".ipython", "log", "run", "package.json", "package-lock.json",
+    "nodejs-js-execution", "nodejs-ts-execution",
+}
+
+
+class AgentCoreCodeInterpreterRunner(SandboxRunner):
+    """Run code/commands in an AWS Bedrock AgentCore Code Interpreter microVM.
+
+    Unlike the local/container runners, agent-generated code runs **off-host** with
+    kernel-level (Firecracker microVM) isolation — a real security upgrade for a
+    hosted/multi-user Phlox, since untrusted code never touches the Phlox host.
+
+    One Code Interpreter session is opened per conversation workspace (keyed by
+    ``workdir.name``) and reused across calls. The **local workspace stays
+    authoritative**: before each run the local files are synced *in*, and after each
+    run files in the session are synced *out* into the local dir — so all of Phlox's
+    local FS tools (read/write/edit/glob/grep) and mtime-based artifact detection keep
+    working untouched. ``close_session()`` tears the session down deterministically when
+    the conversation is deleted. Any AWS error falls back to the local runner so a
+    misconfiguration degrades gracefully instead of breaking the turn.
+    """
+
+    def __init__(self, config: dict):
+        self.cfg = config or {}
+        self.identifier = self.cfg.get("identifier", "aws.codeinterpreter.v1")
+        self.region = self.cfg.get("region")
+        self.profile = self.cfg.get("profile")
+        self.session_timeout = int(self.cfg.get("session_timeout_seconds", 900))
+        # Skip syncing very large files in/out to bound per-call cost (full-sync is O(workspace)).
+        self.max_sync_bytes = int(self.cfg.get("max_sync_file_bytes", 5_000_000))
+        # Sync produced files back into the local workspace after each run (so the local
+        # FS tools + artifact detection see them). Can be disabled for execute-only use.
+        self.sync_back = bool(self.cfg.get("sync_back", True))
+        self._client = None
+        self._sessions: dict[str, str] = {}        # workdir.name -> sessionId
+        self._baseline: dict[str, set[str]] = {}   # workdir.name -> pre-existing top-level entries
+        self._lock = threading.Lock()
+        self._fallback = LocalSubprocessRunner()
+
+    # -- AWS client / session lifecycle -------------------------------------
+    def _c(self):
+        if self._client is None:
+            import boto3  # already a Phlox dependency (used by the Bedrock provider)
+
+            if self.profile:
+                self._client = boto3.Session(
+                    profile_name=self.profile, region_name=self.region
+                ).client("bedrock-agentcore")
+            else:
+                self._client = boto3.client("bedrock-agentcore", region_name=self.region)
+        return self._client
+
+    def _session_for(self, workdir: Path) -> str:
+        key = workdir.name
+        with self._lock:
+            sid = self._sessions.get(key)
+            if sid:
+                return sid
+        resp = self._c().start_code_interpreter_session(
+            codeInterpreterIdentifier=self.identifier,
+            name=f"phlox-{key}"[:50],
+            sessionTimeoutSeconds=self.session_timeout,
+        )
+        sid = resp["sessionId"]
+        # The CI session's working dir is shared and pre-populated (node_modules, the
+        # IPython profile, etc.). Snapshot those top-level names now, before we sync any
+        # workspace files in, so sync-out can tell *our* files from the interpreter's.
+        baseline = self._capture_baseline(sid)
+        with self._lock:
+            # Another thread may have created one concurrently; keep the first and
+            # drop ours so we don't leak a session.
+            existing = self._sessions.get(key)
+            if existing:
+                other = sid
+            else:
+                self._sessions[key] = sid
+                self._baseline[key] = baseline
+                other = None
+        if other:
+            self._stop(other)
+            return existing
+        return sid
+
+    def _capture_baseline(self, sid: str) -> set[str]:
+        try:
+            listing = self._consume(self._invoke(sid, "listFiles", {"directoryPath": "."}))
+            return {b.get("name") for b in listing["content"] if b.get("name")}
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("AgentCore baseline capture failed: %s", exc)
+            return set()
+
+    def _stop(self, sid: str) -> None:
+        try:
+            self._c().stop_code_interpreter_session(
+                codeInterpreterIdentifier=self.identifier, sessionId=sid
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("AgentCore stop_session failed: %s", exc)
+
+    def close_session(self, workdir: Path) -> None:
+        with self._lock:
+            sid = self._sessions.pop(workdir.name, None)
+            self._baseline.pop(workdir.name, None)
+        if sid:
+            self._stop(sid)
+
+    # -- invoke + event-stream handling -------------------------------------
+    def _invoke(self, sid: str, name: str, arguments: dict):
+        return self._c().invoke_code_interpreter(
+            codeInterpreterIdentifier=self.identifier, sessionId=sid, name=name, arguments=arguments
+        )
+
+    @staticmethod
+    def _consume(resp) -> dict:
+        """Drain an ``invoke_code_interpreter`` response into one result dict.
+
+        The response carries an event stream under ``stream``; each ``result`` event has
+        ``result.structuredContent`` (clean ``stdout``/``stderr``/``exitCode`` for
+        execute* tools) and ``result.content[]`` (MCP-style ``text``/``resource`` blocks,
+        used by the file tools). Shapes verified against a live AgentCore Code Interpreter
+        and the ``bedrock-agentcore`` botocore model.
+        """
+        out = {"stdout": "", "stderr": "", "exit_code": 0, "is_error": False,
+               "has_structured": False, "content": [], "text": ""}
+        text_parts: list[str] = []
+        for event in resp.get("stream", []):
+            result = event.get("result")
+            if not result:
+                continue
+            if result.get("isError"):
+                out["is_error"] = True
+            sc = result.get("structuredContent")
+            if sc:
+                out["has_structured"] = True
+                out["stdout"] += sc.get("stdout") or ""
+                out["stderr"] += sc.get("stderr") or ""
+                if sc.get("exitCode") is not None:
+                    try:
+                        out["exit_code"] = int(sc["exitCode"])
+                    except (TypeError, ValueError):
+                        pass
+            for block in result.get("content", []) or []:
+                out["content"].append(block)
+                if block.get("type") == "text" and block.get("text"):
+                    text_parts.append(block["text"])
+        # executeCommand returns terminal CRLF line endings; normalize to match the
+        # local/container runners (plain \n) so output is consistent across runners.
+        out["stdout"] = out["stdout"].replace("\r\n", "\n")
+        out["stderr"] = out["stderr"].replace("\r\n", "\n")
+        out["text"] = "\n".join(text_parts).replace("\r\n", "\n")
+        return out
+
+    # -- local <-> session file sync ----------------------------------------
+    def _sync_in(self, sid: str, workdir: Path) -> None:
+        files: list[dict] = []
+        for p in workdir.rglob("*"):
+            if not p.is_file():
+                continue
+            rel = p.relative_to(workdir)
+            if any(part in _IGNORE_DIRS for part in rel.parts):
+                continue
+            try:
+                if p.stat().st_size > self.max_sync_bytes:
+                    continue
+            except OSError:
+                continue
+            try:
+                data = p.read_bytes()
+            except OSError:
+                continue
+            entry: dict = {"path": str(rel)}
+            # Decide text vs binary from the raw bytes — and decode without newline
+            # translation, so CRLF/CR files round-trip byte-for-byte (read_text would
+            # rewrite line endings and make untouched files look changed every run).
+            try:
+                entry["text"] = data.decode("utf-8")
+            except UnicodeDecodeError:
+                entry["blob"] = data             # binary file -> blob (model supports it)
+            files.append(entry)
+        if files:
+            self._invoke(sid, "writeFiles", {"content": files})
+
+    def _sync_out(self, sid: str, workdir: Path) -> None:
+        """Pull files the run produced/changed back into the local workspace.
+
+        ``listFiles`` is one level deep and the session's working dir is shared with
+        interpreter internals, so we walk it recursively, skip the baseline (pre-existing)
+        top-level entries, then ``readFiles`` the rest and write only genuinely-changed
+        content back (so unchanged inputs don't get falsely flagged as artifacts).
+        """
+        if not self.sync_back:
+            return
+        try:
+            baseline = self._baseline.get(workdir.name, set()) | _CI_SYSTEM_NAMES
+            paths = self._walk_remote(sid, ".", baseline)
+            if not paths:
+                return
+            if len(paths) > _CI_MAX_SYNC_FILES:
+                logger.warning("AgentCore sync_out: %d files exceed cap %d; syncing first %d",
+                               len(paths), _CI_MAX_SYNC_FILES, _CI_MAX_SYNC_FILES)
+                paths = paths[:_CI_MAX_SYNC_FILES]
+            read = self._consume(self._invoke(sid, "readFiles", {"paths": paths}))
+            self._write_back(read["content"], workdir)
+        except Exception as exc:  # noqa: BLE001
+            # Best-effort: the local dir stays authoritative, so a sync-out miss never
+            # breaks the run — it just means produced files may not appear locally.
+            logger.warning("AgentCore sync_out failed: %s", exc)
+
+    def _walk_remote(self, sid: str, dirpath: str, baseline: set[str], depth: int = 0) -> list[str]:
+        """Recursively list the session FS, returning relative file paths worth syncing.
+
+        ``listFiles`` returns ``resource_link`` blocks with ``name`` + ``description``
+        ("File"|"Directory"). Baseline/system names are skipped at the top level; nested
+        dirs (our own subdirs) are walked in full.
+        """
+        if depth > _CI_MAX_SYNC_DEPTH:
+            return []
+        listing = self._consume(self._invoke(sid, "listFiles", {"directoryPath": dirpath}))
+        files: list[str] = []
+        for block in listing["content"]:
+            name = block.get("name")
+            if not name or "/" in name or name in (".", ".."):
+                continue
+            if name in _IGNORE_DIRS:
+                continue
+            if depth == 0 and name in baseline:
+                continue  # interpreter-internal / pre-existing entry — not ours
+            rel = name if dirpath == "." else f"{dirpath}/{name}"
+            if block.get("description") == "Directory":
+                files.extend(self._walk_remote(sid, rel, baseline, depth + 1))
+            else:
+                files.append(rel)
+            if len(files) >= _CI_MAX_SYNC_FILES:
+                break
+        return files
+
+    @staticmethod
+    def _uri_to_rel(uri: str | None) -> str | None:
+        """Turn a CI ``file:///...`` uri into a safe workspace-relative path, or None."""
+        if not uri:
+            return None
+        s = str(uri)
+        if s.startswith("file://"):
+            s = s[len("file://"):]
+        s = s.lstrip("/")
+        if s.startswith("./"):
+            s = s[2:]
+        if not s or s.startswith("/") or ".." in Path(s).parts:
+            return None
+        return s
+
+    def _write_back(self, content: list[dict], workdir: Path) -> None:
+        """Write ``readFiles`` ``resource`` blocks back, skipping unchanged files.
+
+        Each block is ``{"type":"resource","resource":{"uri","text"|"blob",...}}``. We
+        only write when the content differs from what's already on disk, so re-syncing an
+        unchanged input file doesn't bump its mtime and get it mis-detected as an artifact.
+        """
+        for block in content:
+            res = block.get("resource") if block.get("type") == "resource" else None
+            if res is None:
+                continue
+            rel = self._uri_to_rel(res.get("uri"))
+            if not rel:
+                continue
+            text = res.get("text")
+            blob = res.get("blob")
+            if text is not None:
+                data = text.encode("utf-8")
+            elif blob is not None:
+                data = blob if isinstance(blob, (bytes, bytearray)) else bytes(blob)
+            else:
+                continue
+            dest = workdir / rel
+            try:
+                # Skip rewriting unchanged content (comparing raw bytes, no newline
+                # translation) so untouched inputs don't get mis-flagged as artifacts.
+                if dest.exists() and dest.read_bytes() == data:
+                    continue
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_bytes(data)
+            except OSError as exc:
+                logger.warning("AgentCore write_back %s failed: %s", rel, exc)
+
+    # -- SandboxRunner interface --------------------------------------------
+    def run_command(self, argv: list[str], workdir: Path, timeout: int = DEFAULT_TIMEOUT) -> ExecResult:
+        # Normalize host shell wrappers (cmd /c, /bin/sh -c) to a single command string.
+        if len(argv) >= 3 and argv[0] in ("cmd", "/bin/sh", "sh") and argv[1] in ("/c", "-c"):
+            command = argv[2]
+        else:
+            command = " ".join(argv)
+        return self._run(
+            lambda sid: self._invoke(sid, "executeCommand", {"command": command}),
+            workdir,
+            lambda: self._fallback.run_command(argv, workdir, timeout),
+        )
+
+    def run_code(self, code: str, language: str, workdir: Path, timeout: int = DEFAULT_TIMEOUT) -> ExecResult:
+        if language == "python":
+            lang = "python"
+        elif language in ("node", "javascript"):
+            lang = "javascript"   # AgentCore executeCode language token for Node
+        elif language == "typescript":
+            lang = "typescript"
+        else:
+            return ExecResult(stdout="", stderr=f"Unsupported language: {language}", exit_code=2)
+        return self._run(
+            lambda sid: self._invoke(sid, "executeCode", {"language": lang, "code": code}),
+            workdir,
+            lambda: self._fallback.run_code(code, language, workdir, timeout),
+        )
+
+    def _run(self, do_invoke, workdir: Path, fallback) -> ExecResult:
+        workdir.mkdir(parents=True, exist_ok=True)
+        start = time.monotonic()
+        try:
+            sid = self._session_for(workdir)
+            before = snapshot_dir(workdir)
+            self._sync_in(sid, workdir)
+            res = self._consume(do_invoke(sid))
+            self._sync_out(sid, workdir)
+            if res["has_structured"]:
+                # execute* tools: trust the clean structuredContent split.
+                stdout, stderr, exit_code = res["stdout"], res["stderr"], res["exit_code"]
+            else:
+                # No structuredContent (unexpected for execute*): fall back to text blocks.
+                stdout, stderr, exit_code = res["text"], "", 0
+            # isError without a non-zero code still means failure; surface it so tools'
+            # `is_error = exit_code != 0` is correct.
+            if res["is_error"] and exit_code == 0:
+                exit_code = 1
+            return ExecResult(
+                stdout=_truncate(stdout),
+                stderr=_truncate(stderr),
+                exit_code=exit_code,
+                duration_s=round(time.monotonic() - start, 3),
+                artifacts=collect_artifacts(workdir, before),
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning("AgentCore runner failed (%s); falling back to local", e)
+            return fallback()
+
+
 _runner: SandboxRunner | None = None
 
 
 def get_runner() -> SandboxRunner:
-    """Return the process-wide sandbox runner, selected by config (local | container)."""
+    """Return the process-wide sandbox runner, selected by config (local | container | agentcore)."""
     global _runner
     if _runner is None:
         from app.config import get_sandbox_config
 
         cfg = get_sandbox_config()
-        if cfg.get("runner") == "container":
+        runner_type = cfg.get("runner")
+        if runner_type == "container":
             try:
                 _runner = ContainerRunner(cfg["container"])
             except Exception as e:  # noqa: BLE001
                 logger.warning("Container runner unavailable (%s); falling back to local", e)
+                _runner = LocalSubprocessRunner()
+        elif runner_type == "agentcore":
+            try:
+                _runner = AgentCoreCodeInterpreterRunner(cfg.get("agentcore", {}))
+            except Exception as e:  # noqa: BLE001
+                logger.warning("AgentCore runner unavailable (%s); falling back to local", e)
                 _runner = LocalSubprocessRunner()
         else:
             _runner = LocalSubprocessRunner()

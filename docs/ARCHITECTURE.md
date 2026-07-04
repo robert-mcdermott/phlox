@@ -255,7 +255,9 @@ Quick end-to-end checks that the foundation passed (reproduce any of these):
   the built-ins; MCP servers add more).
 - `POST /api/chat` with "Use execute_python to compute sum(1..100)" → streams a
   `tool_call`/`tool_result` (`5050`) then `token`s then `done`.
-- Upload a `.txt` document, then ask "search my documents …" → `search_documents` returns
-  the matching chunk.
+- Upload a `.txt` document, attach it with the paperclip or reference it with `@`, then ask
+  about it → the sent user message shows a document chip and the answer is grounded in the
+  referenced document. Or enable `Search documents` and ask "search my documents …" →
+  `search_documents` returns the matching chunk.
 - Artifacts: ask Python to write `data.csv` → an `artifact` event + downloadable file at
   `/api/files/<conv>?path=data.csv`.

@@ -57,10 +57,16 @@ The things a user *feels* immediately; they make it a real agent, not "chat that
   `providers/openai_provider.py` + `bedrock_provider.py`, `attachments.py`,
   `routers/attachments.py`, `Composer.jsx`, `Message.jsx`.
 - [x] **Per-conversation document scoping.** Documents can be global (KB) or scoped to a
-  conversation; the Composer's upload scopes to the active chat; `search_documents` filters
-  to global + current-conversation docs via a Qdrant payload filter. _Implemented in:_
-  `Document.conversation_id`, `rag/store.py` scope filter, `rag/retrieve.py`,
-  `routers/documents.py`.
+  conversation; `search_documents` filters to global + current-conversation docs via a
+  Qdrant payload filter. _Implemented in:_ `Document.conversation_id`, `rag/store.py`
+  scope filter, `rag/retrieve.py`, `routers/documents.py`.
+- [x] **Explicit document search + message references.** The Composer has a per-prompt
+  `Search documents` toggle, chat paperclip uploads become direct document references on
+  the draft message, and `@` opens a picker for ready library documents. Referenced
+  documents persist in `Message.attachments`, inject bounded source excerpts for that turn,
+  and can scope `search_documents` by document ID. _Implemented in:_ `routers/chat.py`,
+  `schemas.py`, `agent/tools/docs.py`, `rag/retrieve.py`, `rag/store.py`, `Composer.jsx`,
+  `Message.jsx`, store `sendMessage`.
 - [x] **Opt-in live web search.** `web_search` discovers current web results with
   zero-config ddgs by default, optional SearXNG via `web_search.searxng_url` /
   `SEARXNG_URL`, and a per-prompt Composer toggle keeps the tool unadvertised unless the

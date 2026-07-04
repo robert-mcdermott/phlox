@@ -26,9 +26,10 @@ models).
 - 🧰 **Code execution** with captured output and **artifacts** shown inline + a
   **Workspace Files** panel to browse/download everything the agent created.
 - 🗂️ **Workspace checkpoints** — git-backed snapshots with one-click restore.
-- 📚 **Documents / RAG** — upload PDF/DOCX/TXT/MD/code; **hybrid (dense+sparse) search**
-  over **Qdrant** with reranking + citations; global or per-conversation scoping. Works
-  offline via a fallback embedder.
+- 📚 **Documents / RAG** — upload PDF/DOCX/TXT/MD/code; explicitly search the document
+  library per prompt, attach documents to a specific message, or reference existing
+  documents with `@`; **hybrid (dense+sparse) search** over **Qdrant** with reranking +
+  citations; global or per-conversation scoping. Works offline via a fallback embedder.
 - 🌐 **Opt-in live web search** — a per-prompt composer toggle exposes `web_search`
   backed by zero-config `ddgs` (or optional SearXNG), so the agent can discover current
   sources before fetching pages with `web_fetch`.
@@ -64,7 +65,8 @@ models).
   Night/Sandstone/**Terminal** (CRT phosphor-green), instant switching. See
   [docs/THEMING.md](docs/THEMING.md).
 - 🛡️ **Per-tool permissions** — `auto | ask | deny`, with an "Agent mode" toggle.
-  Live web search is a separate per-prompt toggle and is off by default.
+  Live web and document-library search are separate per-prompt toggles and are off by
+  default unless the user directly references a document.
 
 ## Documentation
 

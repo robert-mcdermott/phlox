@@ -99,10 +99,12 @@ deals with provider-specific shapes.
   default policy (`auto|ask|deny`); read-only tools are `auto`, mutating/exec tools are
   `ask`. "Agent mode" in the composer sets `auto_approve`, which promotes `ask`→`allow`
   for that turn. Users override per-tool in the Tool Manager (persisted in `ToolPref`).
-- **Live web search is opt-in per prompt.** `web_search` is registered like other tools,
-  but `routers/chat.py` passes an `allowed_tools` set to `AgentSession` and removes
-  `web_search` unless the composer request has `web_search: true`. The tool uses ddgs by
-  default and can use SearXNG via `web_search.searxng_url` / `SEARXNG_URL`.
+- **Live web and document-library search are opt-in per prompt.** `web_search` and
+  `search_documents` are registered like other tools, but `routers/chat.py` passes an
+  `allowed_tools` set to `AgentSession` and removes them unless the composer request opts
+  in (`web_search: true`, `document_search: true`) or the user directly references a
+  document on the message. Web search uses ddgs by default and can use SearXNG via
+  `web_search.searxng_url` / `SEARXNG_URL`.
 - **Sandbox is a swappable interface** (`sandbox/runner.py`). `LocalSubprocessRunner`
   (host, fast) and `ContainerRunner` (ephemeral Podman/Docker container with CPU/mem/PID
   limits + network isolation, workspace bind-mounted) are selected by `sandbox.runner` in
@@ -146,7 +148,10 @@ deals with provider-specific shapes.
   tools+vision.
 - **Per-conversation documents** (`Document.conversation_id`): documents are global (KB) or
   scoped to one conversation; `search_documents` filters to global + the current
-  conversation via a Qdrant payload filter (`rag/store.py::_scope_filter`).
+  conversation via a Qdrant payload filter (`rag/store.py::_scope_filter`). User messages
+  can also persist direct document references in `Message.attachments`; those references
+  inject bounded source excerpts for that turn and let the model search only those
+  document IDs if it needs more context.
 - **Steering** (frontend store): a message typed while a turn streams is queued and
   auto-sent when the turn completes; Stop + approval pause/resume cover interruption.
 - **Self-healing model setting** (`runtime_settings.py::_heal_model`): if the DB's active

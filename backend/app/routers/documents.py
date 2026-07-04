@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.auth.deps import get_current_user, require_admin
 from app.config import UPLOADS_DIR
 from app.database import SessionLocal, get_db
-from app.models import Document, User
+from app.models import Conversation, Document, User
 from app.rag.ingest import ingest_document
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
@@ -48,6 +48,14 @@ def _owned_docs(db: Session, user: User):
     return db.query(Document).filter(Document.user_id == user.id)
 
 
+def _ensure_owned_conversation(db: Session, conversation_id: str | None, user: User) -> None:
+    if not conversation_id:
+        return
+    conv = db.get(Conversation, conversation_id)
+    if not conv or conv.user_id != user.id:
+        raise HTTPException(404, "Conversation not found")
+
+
 @router.get("", response_model=list[DocumentOut])
 def list_documents(
     conversation_id: str | None = None,
@@ -71,6 +79,7 @@ async def upload_document(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    _ensure_owned_conversation(db, conversation_id, user)
     doc = Document(
         filename=file.filename or "upload",
         mime=file.content_type,

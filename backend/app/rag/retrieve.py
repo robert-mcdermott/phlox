@@ -23,11 +23,13 @@ CANDIDATE_MULTIPLIER = 4  # fetch this many * top_k before reranking
 def search_chunks(
     db: Session, query: str, top_k: int = 5,
     conversation_id: str | None = None, user_id: str | None = None,
+    document_ids: list[str] | None = None,
 ) -> list[dict]:  # noqa: ARG001
     """Return [{score, text, filename, ordinal, document_id}] for the best matches.
 
     Restricted to ``user_id``'s documents (+ legacy unowned), and if ``conversation_id`` is
-    given, to global documents plus that conversation's scoped documents.
+    given, to global documents plus that conversation's scoped documents. ``document_ids``
+    can narrow retrieval further for explicit user references.
     """
     dense = embed_query(query)
     sparse = sparse_embed(query)
@@ -35,7 +37,7 @@ def search_chunks(
     try:
         hits = get_vector_store().search(
             dense, sparse, limit=candidate_n,
-            conversation_id=conversation_id, user_id=user_id,
+            conversation_id=conversation_id, user_id=user_id, document_ids=document_ids,
         )
     except Exception as e:  # noqa: BLE001
         logger.warning("Vector search failed: %s", e)
@@ -51,6 +53,7 @@ def search_chunks(
                 "filename": p.get("filename", ""),
                 "ordinal": p.get("ordinal", 0),
                 "document_id": p.get("document_id", ""),
+                "chunk_id": p.get("chunk_id", ""),
             }
         )
 
@@ -87,6 +90,7 @@ def reindex_all(db: Session) -> int:
 def build_chunk_payload(chunk, filename, conversation_id, user_id) -> dict:
     """Qdrant payload for a chunk. Omit empty scope keys so IsEmpty filters match."""
     p = {
+        "chunk_id": chunk.id,
         "document_id": chunk.document_id,
         "filename": filename,
         "ordinal": chunk.ordinal,

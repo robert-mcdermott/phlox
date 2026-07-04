@@ -44,10 +44,10 @@ function BudgetBanner() {
 }
 
 const SUGGESTIONS = [
-  'Write a Python script to plot a sine wave and run it',
-  'Search my uploaded documents for the key findings',
-  'Explain how this codebase is structured',
-  'Create a CSV of sample data and summarize it',
+  { text: 'Write a Python script to plot a sine wave and run it' },
+  { text: 'Search my uploaded documents for the key findings', documentSearch: true },
+  { text: 'Explain how this codebase is structured' },
+  { text: 'Create a CSV of sample data and summarize it' },
 ]
 
 function Welcome() {
@@ -63,11 +63,11 @@ function Welcome() {
       <div className="grid w-full max-w-2xl grid-cols-1 gap-2 sm:grid-cols-2">
         {SUGGESTIONS.map((s) => (
           <button
-            key={s}
-            onClick={() => send(s)}
+            key={s.text}
+            onClick={() => send(s.text, { documentSearch: Boolean(s.documentSearch) })}
             className="rounded-xl border border-border bg-surface px-4 py-3 text-left text-sm text-content hover:border-accent"
           >
-            {s}
+            {s.text}
           </button>
         ))}
       </div>

@@ -36,8 +36,8 @@ export default function DocumentsPanel() {
     <div>
       <h3 className="mb-1 text-sm font-semibold text-content">Knowledge base</h3>
       <p className="mb-4 text-xs text-muted">
-        Upload PDFs, Word docs, text, or code. The assistant can search them via the
-        <code className="mx-1 rounded bg-surface-3 px-1">search_documents</code> tool.
+        Upload PDFs, Word docs, text, or code. In chat, use Search documents for library
+        lookup, or attach/reference specific documents for a single message.
       </p>
 
       <label className="mb-4 flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-border bg-surface px-4 py-8 text-center hover:border-accent">

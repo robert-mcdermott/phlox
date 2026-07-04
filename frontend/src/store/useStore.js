@@ -21,7 +21,7 @@ export const useStore = create((set, get) => ({
   live: null, // emptyLive() while streaming
   abortFn: null,
   error: null,
-  queued: null, // a follow-up message queued while streaming {text, images, autoApprove, webSearch}
+  queued: null, // a follow-up queued while streaming {text, images, documentRefs, ...}
   lastUsage: null, // {input, output, total} token usage from the last model response
   budget: null, // monthly budget status for the signed-in user (or null when none applies)
 
@@ -181,18 +181,40 @@ export const useStore = create((set, get) => ({
   },
 
   // -- sending a message ---------------------------------------------------
-  async sendMessage(text, { autoApprove = true, webSearch = false, images = [] } = {}) {
-    if (!text.trim() && images.length === 0) return
+  async sendMessage(
+    text,
+    {
+      autoApprove = true,
+      webSearch = false,
+      documentSearch = false,
+      images = [],
+      documentIds = [],
+      documentRefs = [],
+    } = {},
+  ) {
+    if (!text.trim() && images.length === 0 && documentIds.length === 0) return
     // Steering: if a turn is in flight, queue this as a follow-up to send when it finishes.
     if (get().streaming) {
-      set({ queued: { text, images, autoApprove, webSearch } })
+      set({ queued: { text, images, documentIds, documentRefs, autoApprove, webSearch, documentSearch } })
       return
     }
+    const attachments = [
+      ...images.map((url, idx) => ({ type: 'image', idx, url })),
+      ...documentRefs.map((doc) => ({
+        type: 'document',
+        document_id: doc.id || doc.document_id,
+        filename: doc.filename,
+        mime: doc.mime,
+        size_bytes: doc.size_bytes,
+        n_chunks: doc.n_chunks,
+        status: doc.status,
+      })),
+    ]
     const userMsg = {
       id: `tmp-${Date.now()}`,
       role: 'user',
       content: text,
-      attachments: images.map((url, idx) => ({ type: 'image', idx, url })),
+      attachments,
     }
     set((s) => ({
       messages: [...s.messages, userMsg],
@@ -206,6 +228,8 @@ export const useStore = create((set, get) => ({
       message: text,
       auto_approve: autoApprove,
       web_search: webSearch,
+      document_search: documentSearch,
+      document_ids: documentIds,
       images,
     }
 
@@ -339,7 +363,10 @@ export const useStore = create((set, get) => ({
       get().sendMessage(q.text, {
         autoApprove: q.autoApprove,
         webSearch: q.webSearch,
+        documentSearch: q.documentSearch,
         images: q.images,
+        documentIds: q.documentIds || [],
+        documentRefs: q.documentRefs || [],
       })
     }
   },

@@ -41,6 +41,7 @@ class VectorStore(ABC):
     def search(
         self, dense: list[float], sparse: dict, limit: int,
         conversation_id: str | None = None, user_id: str | None = None,
+        document_ids: list[str] | None = None,
     ) -> list[dict[str, Any]]:
         """Hybrid search; returns up to ``limit`` fused [{score, payload}].
 
@@ -148,8 +149,13 @@ class QdrantVectorStore(VectorStore):
         with self._lock:
             self._client.upsert(collection_name=self.collection, points=points)
 
-    def _scope_filter(self, user_id: str | None, conversation_id: str | None):
-        """Restrict to (the user's docs + legacy unowned) AND (global + this conversation)."""
+    def _scope_filter(
+        self,
+        user_id: str | None,
+        conversation_id: str | None,
+        document_ids: list[str] | None = None,
+    ):
+        """Restrict to user/conversation scope and optionally specific document ids."""
         from qdrant_client.models import FieldCondition, Filter, IsEmptyCondition, MatchValue, PayloadField
 
         must = []
@@ -165,15 +171,28 @@ class QdrantVectorStore(VectorStore):
                     ]
                 )
             )
+        clean_doc_ids = [d for d in (document_ids or []) if d]
+        if len(clean_doc_ids) == 1:
+            must.append(FieldCondition(key="document_id", match=MatchValue(value=clean_doc_ids[0])))
+        elif clean_doc_ids:
+            must.append(
+                Filter(
+                    should=[
+                        FieldCondition(key="document_id", match=MatchValue(value=document_id))
+                        for document_id in clean_doc_ids
+                    ]
+                )
+            )
         return Filter(must=must) if must else None
 
     def search(
         self, dense: list[float], sparse: dict, limit: int,
         conversation_id: str | None = None, user_id: str | None = None,
+        document_ids: list[str] | None = None,
     ) -> list[dict[str, Any]]:
         from qdrant_client.models import SparseVector
 
-        qfilter = self._scope_filter(user_id, conversation_id)
+        qfilter = self._scope_filter(user_id, conversation_id, document_ids)
         with self._lock:
             if not self._client.collection_exists(self.collection):
                 return []

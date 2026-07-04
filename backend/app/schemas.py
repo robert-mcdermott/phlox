@@ -65,6 +65,10 @@ class ChatRequest(BaseModel):
     auto_approve: bool = True
     # When true, advertise web_search to the model for this turn.
     web_search: bool = False
+    # When true, advertise search_documents and instruct the model to use it this turn.
+    document_search: bool = False
+    # Uploaded/library documents directly referenced by this user message.
+    document_ids: list[str] = []
     # When true, re-run the existing history without appending a new user message
     # (used by "regenerate" after the last assistant turn was deleted).
     regenerate: bool = False

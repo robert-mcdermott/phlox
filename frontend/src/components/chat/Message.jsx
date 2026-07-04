@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Copy, Check, Brain, Pencil, RefreshCw, X } from 'lucide-react'
+import { Copy, Check, Brain, Pencil, RefreshCw, FileText } from 'lucide-react'
 import Markdown from '../markdown/Markdown'
 import ToolCallCard from './ToolCallCard'
 import ArtifactViewer from './ArtifactViewer'
@@ -51,6 +51,7 @@ export default function Message({ message, conversationId, isLast }) {
 
   if (message.role === 'user') {
     const images = (message.attachments || []).filter((a) => a.type === 'image')
+    const documents = (message.attachments || []).filter((a) => a.type === 'document')
     const canEdit = !streaming && !String(message.id).startsWith('tmp-')
     if (editing) {
       return (
@@ -88,6 +89,20 @@ export default function Message({ message, conversationId, isLast }) {
                 <a key={i} href={img.url} target="_blank" rel="noreferrer">
                   <img src={img.url} alt="attachment" className="max-h-48 rounded-xl border border-border object-cover" />
                 </a>
+              ))}
+            </div>
+          )}
+          {documents.length > 0 && (
+            <div className="flex max-w-full flex-wrap justify-end gap-2">
+              {documents.map((doc) => (
+                <div
+                  key={doc.document_id || doc.filename}
+                  className="flex max-w-[18rem] items-center gap-1.5 rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs text-content"
+                  title={doc.filename}
+                >
+                  <FileText size={14} className="shrink-0 text-accent" />
+                  <span className="truncate">{doc.filename || 'Document'}</span>
+                </div>
               ))}
             </div>
           )}

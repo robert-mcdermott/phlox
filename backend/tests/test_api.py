@@ -83,10 +83,83 @@ def test_chat_web_search_advertised_only_when_requested(client, monkeypatch):
     r = client.post("/api/chat", json={"message": "hello"})
     assert r.status_code == 200
     assert seen_tools and "web_search" not in seen_tools[-1]
+    assert "search_documents" not in seen_tools[-1]
 
     r = client.post("/api/chat", json={"message": "hello", "web_search": True})
     assert r.status_code == 200
     assert "web_search" in seen_tools[-1]
+    assert "search_documents" not in seen_tools[-1]
+
+    r = client.post("/api/chat", json={"message": "hello", "document_search": True})
+    assert r.status_code == 200
+    assert "search_documents" in seen_tools[-1]
+
+
+def test_chat_document_reference_persisted_and_prefetched(client, monkeypatch):
+    from app.auth.deps import LOCAL_USER_ID
+    from app.database import SessionLocal
+    from app.models import DocChunk, Document, Message
+    from app.providers.base import StreamDelta
+    import app.routers.chat as chat_router
+
+    seen = []
+
+    class CaptureProvider:
+        model = "capture"
+        supports_tools = True
+
+        def stream(self, messages, tools, params):  # noqa: ARG002
+            seen.append({"messages": messages, "tools": {tool.name for tool in tools}})
+            yield StreamDelta(type="text", text="ok")
+            yield StreamDelta(type="done", stop_reason="stop")
+
+    monkeypatch.setattr(chat_router, "build_provider", lambda profile, model=None: CaptureProvider())
+    monkeypatch.setattr(chat_router, "_build_fallback", lambda active_profile: None)
+
+    s = SessionLocal()
+    try:
+        doc = Document(
+            user_id=LOCAL_USER_ID,
+            filename="Policy.pdf",
+            mime="application/pdf",
+            size_bytes=1234,
+            n_chunks=2,
+            status="ready",
+        )
+        s.add(doc)
+        s.commit()
+        s.refresh(doc)
+        s.add(DocChunk(document_id=doc.id, ordinal=0, text="Apollo launch plan requires a checklist."))
+        s.add(DocChunk(document_id=doc.id, ordinal=1, text="The checklist owner is Mission Ops."))
+        s.commit()
+        doc_id = doc.id
+    finally:
+        s.close()
+
+    r = client.post(
+        "/api/chat",
+        json={"message": "Summarize @Policy", "document_ids": [doc_id]},
+    )
+    assert r.status_code == 200
+    assert seen and "search_documents" in seen[-1]["tools"]
+    system_prompt = seen[-1]["messages"][0]["content"]
+    assert "Referenced documents for the current user message" in system_prompt
+    assert "Policy.pdf" in system_prompt
+    assert "Apollo launch plan requires a checklist" in system_prompt
+
+    s = SessionLocal()
+    try:
+        msg = (
+            s.query(Message)
+            .filter(Message.role == "user", Message.content == "Summarize @Policy")
+            .order_by(Message.created_at.desc())
+            .first()
+        )
+        assert msg is not None
+        docs = [a for a in (msg.attachments or []) if a.get("type") == "document"]
+        assert docs and docs[0]["document_id"] == doc_id and docs[0]["filename"] == "Policy.pdf"
+    finally:
+        s.close()
 
 
 def test_usage_summary(client):

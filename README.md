@@ -25,6 +25,8 @@ models).
 - 🤝 **Human-in-the-loop approvals** — pause on sensitive tools, approve/deny, resume.
 - 🧰 **Code execution** with captured output and **artifacts** shown inline + a
   **Workspace Files** panel to browse/download everything the agent created.
+- 🖥️ **Artifact canvas** — HTML and Markdown files the agent writes open in a live,
+  resizable side panel (sandboxed preview + raw-source toggle) instead of a plain download.
 - 🗂️ **Workspace checkpoints** — git-backed snapshots with one-click restore.
 - 📚 **Documents / RAG** — upload PDF/DOCX/TXT/MD/code; explicitly search the document
   library per prompt, attach documents to a specific message, or reference existing

@@ -113,4 +113,10 @@ export const api = {
   fileUrl: (conversationId, path) =>
     `/api/files/${conversationId}?path=${encodeURIComponent(path)}`,
   listWorkspaceFiles: (conversationId) => req('GET', `/api/files/${conversationId}/list`),
+  // Raw text content of a workspace file, for the artifact canvas preview.
+  getFileText: async (conversationId, path) => {
+    const res = await fetch(api.fileUrl(conversationId, path), { headers: { ...authHeaders() } })
+    if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`)
+    return res.text()
+  },
 }

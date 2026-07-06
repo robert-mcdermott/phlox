@@ -177,12 +177,32 @@ deals with provider-specific shapes.
 | **Theme** | `theme/tokens.css`, `presets.js` | CSS-variable token layer + theme catalog (FH default) |
 | **Layout** | `components/layout/Header.jsx`, `Sidebar.jsx` | FH logo header, conversation list, nav |
 | **Chat** | `components/chat/*` | `Message`, `ToolCallCard`, `ArtifactViewer`, `Composer`; `pages/ChatPage.jsx` |
+| **Canvas** | `components/canvas/CanvasPanel.jsx`, `utils/canvas.js` | Side-panel live preview of html/markdown/text artifacts (see below) |
 | **Markdown** | `components/markdown/Markdown.jsx` | react-markdown + GFM + syntax highlight + copy |
 | **Settings** | `components/settings/*`, `documents/*`, `mcp/*`, `tools/*` | Drawer with user tabs (Model, Appearance, Documents, Memory, API Keys) + admin tabs (Users, Usage & Cost, **Budgets**, **Configuration**, Authentication, MCP, Tools) |
 
 The frontend renders a rich turn: collapsible **tool cards** (args + results), a
 **reasoning** disclosure, inline **artifacts** (images render, files download), and
 streamed markdown with highlighted, copyable code.
+
+### Artifact canvas
+Files the agent writes (`write_file`/`edit_file`/code-exec output) are classified by
+extension in `utils/canvas.js` (`canvasKind`): `.html`/`.htm` → **html**,
+`.md`/`.markdown` → **markdown**, any other non-binary extension → **code** (plain-text
+preview); images and known binary formats (pdf, zip, docx, …) are excluded and stay
+download-only. The store (`useStore.js`) auto-opens `CanvasPanel` the first time an
+eligible `artifact` SSE event arrives in a turn, and re-fetches in place if the agent
+rewrites the same path later in the same turn; a different path never yanks the panel
+away from what the user is looking at — they switch via the "View" (eye icon) button on
+an artifact chip or in the Workspace Files modal. `CanvasPanel` fetches the raw file text
+itself (`api.getFileText`, a plain authenticated `fetch`, not an `<img>`/`<iframe src>`
+load) because `/api/files/<conv>` sends `Content-Disposition: attachment`, which browsers
+refuse to render inline in a frame. HTML previews render via
+`<iframe sandbox="allow-scripts allow-forms allow-popups allow-modals" srcDoc={text}>` —
+omitting `allow-same-origin` keeps the preview in an opaque, cross-origin sandbox: scripts
+in agent-generated pages run, but can't read the parent app's cookies/storage/DOM. Both
+html and markdown have a Preview/Source toggle; the panel width is user-resizable via a
+drag handle on its left edge.
 
 ## 5. Data model (SQLite, `models.py`)
 
@@ -261,3 +281,6 @@ Quick end-to-end checks that the foundation passed (reproduce any of these):
   `search_documents` returns the matching chunk.
 - Artifacts: ask Python to write `data.csv` → an `artifact` event + downloadable file at
   `/api/files/<conv>?path=data.csv`.
+- Artifact canvas: ask the agent to `write_file` an `.html` or `.md` file → the canvas
+  panel auto-opens with a live preview (Preview/Source toggle for html); the "View" button
+  on an artifact chip or in the Workspace Files modal reopens any prior one.

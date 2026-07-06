@@ -150,7 +150,16 @@ The things a user *feels* immediately; they make it a real agent, not "chat that
   Markdown. _Implemented in:_ `Sidebar.jsx`, store `exportConversation`.
 - [x] **Richer artifacts.** **Mermaid** diagrams + **KaTeX** math in markdown; image
   **lightbox**. _Implemented in:_ `markdown/Markdown.jsx`, `markdown/Mermaid.jsx`,
-  `chat/ArtifactViewer.jsx`. (HTML/React live preview still TODO.)
+  `chat/ArtifactViewer.jsx`.
+- [x] **Artifact canvas.** HTML/Markdown/text artifacts open in a resizable, live-updating
+  side panel instead of just a download — HTML renders in a sandboxed `<iframe srcDoc>`
+  (`allow-scripts`, no `allow-same-origin`, so generated pages can't reach the app's
+  session), with a Preview/Source toggle for html + markdown. Auto-opens on the first
+  eligible artifact per turn; a "View" button on artifact chips and in the Workspace Files
+  modal opens any other one. _Implemented in:_ `utils/canvas.js`,
+  `components/canvas/CanvasPanel.jsx`, store `canvas`/`openCanvasArtifact`/`closeCanvas`,
+  `ArtifactViewer.jsx`, `WorkspaceFilesModal.jsx`. (React/JSX live preview — i.e. compiling
+  a component artifact, not just static html — still TODO.)
 - [x] **Prompt caching.** Bedrock cache points on the system prompt + tool defs
   (opt-in `prompt_cache: true` per profile; Claude models). OpenAI auto-caches.
   _Implemented in:_ `providers/bedrock_provider.py`.
@@ -189,7 +198,7 @@ Deferred until the app is used with real/sensitive data. **Gates any PHI use.**
 
 ### Status
 **Tiers 1, 2, 3, and 4 are complete.** Remaining Tier 4 nice-to-haves: full
-conversation-branch tree, HTML/React live artifact previews, command palette, voice.
+conversation-branch tree, React/JSX live artifact previews, command palette, voice.
 **API gateway Phase 1 is complete; Phase 2 (`/v1/agent/completions`) is next.**
 **Postgres and PHI/data-governance are Tier 5**, deferred until a sensitive-data
 deployment.

@@ -3,6 +3,7 @@ import Sidebar from './components/layout/Sidebar'
 import Header from './components/layout/Header'
 import ChatPage from './pages/ChatPage'
 import LoginScreen from './components/auth/LoginScreen'
+import CanvasPanel from './components/canvas/CanvasPanel'
 import { useStore } from './store/useStore'
 
 // Lazy-loaded: the settings drawer pulls in the admin/user management UI and is only
@@ -16,6 +17,7 @@ export default function App() {
   const authConfig = useStore((s) => s.authConfig)
   const user = useStore((s) => s.user)
   const newConversation = useStore((s) => s.newConversation)
+  const canvas = useStore((s) => s.canvas)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsTab, setSettingsTab] = useState('providers')
   const [sidebarOpen, setSidebarOpen] = useState(true)
@@ -39,6 +41,7 @@ export default function App() {
         setSidebarOpen((v) => !v)
       } else if (e.key === 'Escape') {
         setSettingsOpen(false)
+        useStore.getState().closeCanvas()
       }
     }
     window.addEventListener('keydown', onKey)
@@ -68,6 +71,7 @@ export default function App() {
         />
         <ChatPage onOpenSettings={openSettings} />
       </div>
+      {canvas && <CanvasPanel />}
       {settingsOpen && (
         <Suspense fallback={null}>
           <SettingsDrawer initialTab={settingsTab} onClose={() => setSettingsOpen(false)} />

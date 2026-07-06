@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
-import { X, FolderOpen, Download, Image as ImageIcon, FileText, Loader2, RefreshCw } from 'lucide-react'
+import { X, FolderOpen, Download, Image as ImageIcon, FileText, Loader2, RefreshCw, Eye } from 'lucide-react'
 import { api } from '../../api/client'
+import { canvasKind } from '../../utils/canvas'
+import { useStore } from '../../store/useStore'
 
 const IMAGE_EXTS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg']
 
@@ -13,6 +15,7 @@ function fmtSize(n) {
 export default function WorkspaceFilesModal({ conversationId, onClose }) {
   const [files, setFiles] = useState([])
   const [loading, setLoading] = useState(true)
+  const openCanvasArtifact = useStore((s) => s.openCanvasArtifact)
 
   const load = () => {
     setLoading(true)
@@ -54,11 +57,10 @@ export default function WorkspaceFilesModal({ conversationId, onClose }) {
               {files.map((f) => {
                 const url = api.fileUrl(conversationId, f.path)
                 const isImg = IMAGE_EXTS.includes((f.ext || '').toLowerCase())
+                const viewable = !isImg && canvasKind(f.ext)
                 return (
-                  <a
+                  <div
                     key={f.path}
-                    href={url}
-                    download={f.name}
                     className="flex items-center gap-3 rounded-lg border border-border bg-surface px-3 py-2 hover:border-accent"
                   >
                     {isImg ? (
@@ -70,8 +72,19 @@ export default function WorkspaceFilesModal({ conversationId, onClose }) {
                       <div className="truncate text-sm text-content">{f.path}</div>
                       <div className="text-[11px] text-muted">{fmtSize(f.size)}</div>
                     </div>
-                    {isImg ? <ImageIcon size={15} className="text-muted" /> : <Download size={15} className="text-muted" />}
-                  </a>
+                    {viewable && (
+                      <button
+                        onClick={() => { openCanvasArtifact(f, conversationId); onClose() }}
+                        className="shrink-0 rounded p-1 text-muted hover:text-accent"
+                        title="Open in canvas"
+                      >
+                        <Eye size={15} />
+                      </button>
+                    )}
+                    <a href={url} download={f.name} className="shrink-0 rounded p-1 text-muted hover:text-accent" title="Download">
+                      {isImg ? <ImageIcon size={15} /> : <Download size={15} />}
+                    </a>
+                  </div>
                 )
               })}
             </div>

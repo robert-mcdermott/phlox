@@ -43,7 +43,10 @@ class WordCount(Tool):
 ### `ToolResult` fields
 - `content: str` — text the model sees (keep it bounded; large outputs get truncated)
 - `artifacts: list[dict]` — files to surface to the UI, each
-  `{name, path, ext, size}` **relative to the workspace** (the harness adds the URL)
+  `{name, path, ext, size}` **relative to the workspace** (the harness adds the URL).
+  `.html`/`.htm` and `.md`/`.markdown` artifacts auto-open in the live **artifact canvas**
+  (`frontend/src/utils/canvas.js::canvasKind`); other non-binary extensions get a
+  plain-text canvas preview; images and known binary formats stay download-only.
 - `is_error: bool`
 
 Rules of thumb: **stay inside the workspace** (use `resolve_in_workspace`); never block

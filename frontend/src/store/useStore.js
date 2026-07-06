@@ -3,6 +3,7 @@ import { api } from '../api/client'
 import { streamChat } from '../api/sse'
 import { setToken } from '../api/token'
 import { applyTheme, initialTheme } from '../theme/presets'
+import { canvasKind } from '../utils/canvas'
 
 // Shape of the in-progress assistant turn assembled from SSE events.
 function emptyLive() {
@@ -24,6 +25,12 @@ export const useStore = create((set, get) => ({
   queued: null, // a follow-up queued while streaming {text, images, documentRefs, ...}
   lastUsage: null, // {input, output, total} token usage from the last model response
   budget: null, // monthly budget status for the signed-in user (or null when none applies)
+
+  // -- artifact canvas -------------------------------------------------------
+  // Side-panel preview of a workspace artifact (html/markdown/text), or null when closed.
+  // { conversationId, path, name, ext, kind, nonce } — `nonce` bumps to force a re-fetch
+  // when the same file is rewritten later in the same turn.
+  canvas: null,
 
   // -- auth ----------------------------------------------------------------
   authConfig: null, // {enabled, allow_registration, entra_enabled}
@@ -90,7 +97,7 @@ export const useStore = create((set, get) => ({
 
   logout() {
     setToken(null)
-    set({ user: null, conversations: [], messages: [], activeId: null, live: null })
+    set({ user: null, conversations: [], messages: [], activeId: null, live: null, canvas: null })
   },
 
   async loadConversations() {
@@ -133,16 +140,16 @@ export const useStore = create((set, get) => ({
   async selectConversation(id) {
     if (get().streaming) get().stopStreaming()
     if (!id) {
-      set({ activeId: null, messages: [], live: null })
+      set({ activeId: null, messages: [], live: null, canvas: null })
       return
     }
     const conv = await api.getConversation(id)
-    set({ activeId: id, messages: conv.messages, live: null })
+    set({ activeId: id, messages: conv.messages, live: null, canvas: null })
   },
 
   newConversation() {
     if (get().streaming) get().stopStreaming()
-    set({ activeId: null, messages: [], live: null, error: null })
+    set({ activeId: null, messages: [], live: null, error: null, canvas: null })
   },
 
   async deleteConversation(id) {
@@ -280,6 +287,7 @@ export const useStore = create((set, get) => ({
     set((s) => {
       if (!s.live) return {}
       const live = { ...s.live }
+      let canvas
       switch (ev.type) {
         case 'conversation':
           return { activeId: ev.id }
@@ -319,9 +327,21 @@ export const useStore = create((set, get) => ({
           )
           live.status = ''
           break
-        case 'artifact':
+        case 'artifact': {
           live.artifacts = [...live.artifacts, { name: ev.name, path: ev.path, ext: ev.ext, url: ev.url }]
+          // Auto-open the canvas the first time a viewable (html/markdown/text) artifact
+          // shows up; if it's already open on this same file, bump nonce to re-fetch the
+          // latest content (e.g. the agent iterated on the same file).
+          const kind = canvasKind(ev.ext)
+          if (kind) {
+            if (!s.canvas) {
+              canvas = { conversationId: s.activeId, path: ev.path, name: ev.name, ext: ev.ext, kind, nonce: Date.now() }
+            } else if (s.canvas.conversationId === s.activeId && s.canvas.path === ev.path) {
+              canvas = { ...s.canvas, nonce: Date.now() }
+            }
+          }
           break
+        }
         case 'approval_request':
           live.pendingApproval = { pendingId: ev.pending_id, calls: ev.calls }
           live.status = ''
@@ -331,8 +351,20 @@ export const useStore = create((set, get) => ({
         default:
           break
       }
-      return { live }
+      return canvas !== undefined ? { live, canvas } : { live }
     })
+  },
+
+  // Open the canvas on a workspace artifact (e.g. from the "View" button on an artifact
+  // chip, or a file in the workspace files modal). No-op for non-viewable extensions.
+  openCanvasArtifact(art, conversationId) {
+    const kind = canvasKind(art.ext)
+    if (!kind) return
+    set({ canvas: { conversationId, path: art.path, name: art.name, ext: art.ext, kind, nonce: Date.now() } })
+  },
+
+  closeCanvas() {
+    set({ canvas: null })
   },
 
   async _finalize() {

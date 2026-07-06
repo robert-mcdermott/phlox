@@ -1,5 +1,7 @@
 import { useState } from 'react'
-import { Download, FileText, Image as ImageIcon, X } from 'lucide-react'
+import { Download, Eye, FileText, Image as ImageIcon, X } from 'lucide-react'
+import { canvasKind } from '../../utils/canvas'
+import { useStore } from '../../store/useStore'
 
 const IMAGE_EXTS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg']
 
@@ -16,17 +18,28 @@ function Lightbox({ url, name, onClose }) {
 
 export default function ArtifactViewer({ artifacts, conversationId }) {
   const [lightbox, setLightbox] = useState(null)
+  const openCanvasArtifact = useStore((s) => s.openCanvasArtifact)
   if (!artifacts || artifacts.length === 0) return null
   return (
     <div className="mt-2 flex flex-wrap gap-3">
       {artifacts.map((a, i) => {
         const url = a.url || `/api/files/${conversationId}?path=${encodeURIComponent(a.path)}`
         const isImage = IMAGE_EXTS.includes((a.ext || '').toLowerCase())
+        const viewable = !isImage && canvasKind(a.ext)
         return (
           <div key={i} className="overflow-hidden rounded-lg border border-border bg-surface-2">
             {isImage ? (
               <button onClick={() => setLightbox({ url, name: a.name })} title="Click to enlarge">
                 <img src={url} alt={a.name} className="max-h-72 max-w-xs cursor-zoom-in object-contain" />
+              </button>
+            ) : viewable ? (
+              <button
+                onClick={() => openCanvasArtifact(a, conversationId)}
+                className="flex items-center gap-2 px-3 py-4 hover:bg-surface-3"
+                title="Open in canvas"
+              >
+                <Eye size={20} className="text-accent" />
+                <span className="text-sm text-content">{a.name}</span>
               </button>
             ) : (
               <div className="flex items-center gap-2 px-3 py-4">

@@ -154,12 +154,16 @@ class McpServer(Base):
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
     name: Mapped[str] = mapped_column(String(100), unique=True)
-    transport: Mapped[str] = mapped_column(String(20), default="stdio")  # stdio | sse
-    # stdio: command + args + env ; sse: url
+    transport: Mapped[str] = mapped_column(String(20), default="stdio")  # stdio | sse | http
+    # stdio: command + args + env ; sse/http: url (+ optional headers / auth_token)
     command: Mapped[str | None] = mapped_column(String(500), nullable=True)
     args: Mapped[list | None] = mapped_column(JSON, nullable=True)
     env: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Optional auth for network transports (sse/http). ``auth_token`` is sent as
+    # ``Authorization: Bearer <token>``; ``headers`` are merged on top (and override it).
+    headers: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    auth_token: Mapped[str | None] = mapped_column(String(2000), nullable=True)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 

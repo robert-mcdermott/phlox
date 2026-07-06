@@ -102,6 +102,15 @@ def delete_conversation(
     db.delete(conv)
     db.commit()
     ws = WORKSPACES_DIR / conversation_id
+    # Tear down any per-conversation remote sandbox session before removing the local
+    # workspace. No-op for the local/container runners; the remote runner uses this to
+    # release its session deterministically (keyed by the workspace dir name).
+    try:
+        from app.sandbox.runner import get_runner
+
+        get_runner().close_session(ws)
+    except Exception:  # noqa: BLE001
+        pass
     if ws.exists():
         shutil.rmtree(ws, ignore_errors=True)
     return {"deleted": conversation_id}

@@ -14,6 +14,12 @@ from app.schemas import McpServerIn, McpServerOut
 router = APIRouter(prefix="/api/mcp", tags=["mcp"], dependencies=[Depends(require_admin)])
 
 
+def _masked_headers(headers: dict | None) -> dict[str, str] | None:
+    if not headers:
+        return None
+    return {str(k): "********" for k in headers}
+
+
 def _to_out(server: McpServer) -> McpServerOut:
     connected = server.name in mcp_manager.connected_servers()
     from app.agent.registry import REGISTRY
@@ -27,11 +33,12 @@ def _to_out(server: McpServer) -> McpServerOut:
         args=server.args,
         env=server.env,
         url=server.url,
+        headers=_masked_headers(server.headers),
+        auth_token=None,  # never echo bearer/header secrets back to clients
         enabled=server.enabled,
         connected=connected,
         tools=tools,
     )
-
 
 @router.get("", response_model=list[McpServerOut])
 def list_servers(db: Session = Depends(get_db)):
@@ -90,4 +97,6 @@ def _server_dict(server: McpServer) -> dict:
         "args": server.args,
         "env": server.env,
         "url": server.url,
+        "headers": server.headers,
+        "auth_token": server.auth_token,
     }

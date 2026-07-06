@@ -84,6 +84,23 @@ class McpManager:
                 tool_names.append(proxy.name)
             return {"name": name, "connected": True, "tools": tool_names}
 
+    @staticmethod
+    def _build_headers(server: dict) -> dict[str, str] | None:
+        """Build HTTP headers for network transports (sse/http) from optional auth config.
+
+        ``auth_token`` becomes ``Authorization: Bearer <token>``; explicit ``headers`` are
+        merged on top (and override it). Returns ``None`` when nothing is configured, so the
+        transport is invoked exactly as before.
+        """
+        headers: dict[str, str] = {}
+        token = server.get("auth_token")
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        explicit = server.get("headers") or {}
+        if isinstance(explicit, dict):
+            headers.update({str(k): str(v) for k, v in explicit.items()})
+        return headers or None
+
     async def _serve(self, server: dict):
         """Open and hold a session open until its stop event is set; return tool list."""
         from mcp import ClientSession, StdioServerParameters
@@ -96,10 +113,25 @@ class McpManager:
 
         async def _runner():
             try:
-                if server.get("transport", "stdio") == "sse":
+                transport = server.get("transport", "stdio")
+                if transport == "http":
+                    from mcp.client.streamable_http import streamablehttp_client
+
+                    headers = self._build_headers(server)
+                    # streamablehttp_client yields a THIRD value (a get_session_id
+                    # callback) that the sse/stdio transports do not — we don't use it.
+                    async with streamablehttp_client(server["url"], headers=headers) as (read, write, _):
+                        async with ClientSession(read, write) as session:
+                            await session.initialize()
+                            self._sessions[name] = session
+                            tools = (await session.list_tools()).tools
+                            ready.set_result(tools)
+                            await stop.wait()
+                elif transport == "sse":
                     from mcp.client.sse import sse_client
 
-                    async with sse_client(server["url"]) as (read, write):
+                    headers = self._build_headers(server)
+                    async with sse_client(server["url"], headers=headers) as (read, write):
                         async with ClientSession(read, write) as session:
                             await session.initialize()
                             self._sessions[name] = session

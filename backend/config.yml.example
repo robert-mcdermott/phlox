@@ -157,6 +157,10 @@ web_search:
 # Code/shell execution sandbox.
 #   runner: local      -> run on the host (fast, trusts the host; fine for single-user/dev)
 #   runner: container  -> run in an ephemeral, resource-limited container per execution.
+#   runner: agentcore  -> run OFF-HOST in an AWS Bedrock AgentCore Code Interpreter microVM
+#                         (kernel-level Firecracker isolation; untrusted code never touches
+#                         the Phlox host). Needs AWS creds + the IAM actions below. Falls
+#                         back to local on any AWS error.
 # The container runner targets the Docker-compatible CLI, so it works with Podman
 # (including Podman's Docker-compat mode) and Docker, on Windows/macOS/Linux. Required for
 # untrusted / multi-user execution. Falls back to local if no engine is found.
@@ -173,6 +177,19 @@ sandbox:
     cpus: "1.0"
     pids_limit: 256
     network: none                # none (most secure) | bridge (allow network, e.g. pip)
+  # Only used when runner: agentcore. FILE-ONLY. The local workspace stays authoritative —
+  # files are synced into the session before each run and produced files synced back out, so
+  # all of Phlox's file tools + artifact detection keep working. Uses the default AWS
+  # credential chain (env / shared config / instance role), or set `profile:` for a named one.
+  # IAM: bedrock-agentcore:StartCodeInterpreterSession, :InvokeCodeInterpreter,
+  #      :StopCodeInterpreterSession.
+  agentcore:
+    identifier: aws.codeinterpreter.v1   # built-in Code Interpreter
+    region: us-west-2                    # a region where Code Interpreter is available
+    # profile:                           # optional named AWS profile; else the default chain
+    session_timeout_seconds: 900         # idle session TTL (also torn down on conversation delete)
+    # max_sync_file_bytes: 5000000       # skip syncing files larger than this (bounds per-call cost)
+    # sync_back: true                    # sync session-produced files back into the local workspace
 
 # Vector store for document/RAG search. FILE-ONLY (not in the admin UI). Default is Qdrant in
 # embedded file-based mode (no server needed; works the same on Windows/macOS/Linux). To scale

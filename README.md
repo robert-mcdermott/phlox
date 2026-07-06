@@ -59,8 +59,9 @@ models).
 - ⚙️ **Live admin configuration** — edit provider profiles (keys write-only), model
   pricing, resilience, generation defaults, and sandbox limits from an admin-only
   **Configuration** panel, applied without a server restart. `config.yml` remains the seed.
-- 📦 **Container sandbox** — run code in an isolated **Podman/Docker** container with
-  resource limits + network isolation. See [docs/SANDBOX.md](docs/SANDBOX.md).
+- 📦 **Container / remote sandbox** — run code in an isolated **Podman/Docker** container
+  (resource limits + network isolation), or **off-host** in an AWS Bedrock AgentCore Code
+  Interpreter microVM (kernel-level isolation). See [docs/SANDBOX.md](docs/SANDBOX.md).
 - 🎨 **Theming** — Phlox Dark (default) + Phlox Light/Light/Dark/Fred Hutch/Hutch
   Night/Sandstone/**Terminal** (CRT phosphor-green), instant switching. See
   [docs/THEMING.md](docs/THEMING.md).
@@ -77,7 +78,7 @@ models).
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Production deployment on Linux (Ubuntu/RHEL) under **systemd** |
 | [docs/DOCKER.md](docs/DOCKER.md) | Running Phlox in a container (**Docker or Podman**) |
 | [docs/AUTH.md](docs/AUTH.md) | Local accounts, roles, multi-user isolation, **Entra ID SSO** setup |
-| [docs/SANDBOX.md](docs/SANDBOX.md) | Local vs **Podman/Docker container** code-execution sandbox |
+| [docs/SANDBOX.md](docs/SANDBOX.md) | Code-execution sandbox: **local** vs **Podman/Docker container** vs **AWS AgentCore** (off-host microVM) |
 | [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md) | Token usage/cost, structured logs, OpenTelemetry tracing |
 | [docs/BUDGETS.md](docs/BUDGETS.md) | Monthly spend budgets per user/department: warnings + enforcement |
 | [docs/API_GATEWAY.md](docs/API_GATEWAY.md) | OpenAI-compatible API gateway: API keys + `/v1/*` endpoints |
@@ -181,7 +182,9 @@ access — see [docs/AUTH.md](docs/AUTH.md). To run single-user with no login, s
 
 By default code runs in a **local subprocess** (fast, trusts the host). For isolation, set
 `sandbox.runner: container` to run each execution in an ephemeral **Podman/Docker**
-container with CPU/memory/PID limits and network isolation. For data-analysis workloads you
+container with CPU/memory/PID limits and network isolation, or `sandbox.runner: agentcore`
+to run it **off-host** in an AWS Bedrock AgentCore Code Interpreter microVM (Firecracker,
+kernel-level isolation — no local Docker needed). For data-analysis workloads you
 can optionally build the **batteries-included images** (numpy/pandas/matplotlib/… preinstalled)
 so the agent doesn't pip-install packages on every run — see [docs/SANDBOX.md](docs/SANDBOX.md).
 
@@ -231,7 +234,8 @@ cd backend && uv run python -m evals.run_evals
   `PHLOX_JWT_SECRET`) before any shared use. Data is isolated per user; admin features
   are role-gated.
 - **Sandbox:** the local runner trusts the host (fine for single-user/local). For
-  untrusted/multi-user execution use `sandbox.runner: container` ([docs/SANDBOX.md](docs/SANDBOX.md)).
+  untrusted/multi-user execution use `sandbox.runner: container` (on-host, isolated) or
+  `sandbox.runner: agentcore` (off-host AWS microVM) ([docs/SANDBOX.md](docs/SANDBOX.md)).
 - Mutating/execution tools default to the **`ask`** permission policy; "Agent mode"
   auto-approves for a turn.
 - **Sensitive data (PHI):** Postgres, audit logging, secrets management, and data

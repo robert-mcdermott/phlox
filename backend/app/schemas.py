@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 
 # -- conversations / messages ---------------------------------------------
@@ -108,12 +108,22 @@ class SettingsUpdate(BaseModel):
 # -- mcp -------------------------------------------------------------------
 class McpServerIn(BaseModel):
     name: str
-    transport: str = "stdio"
+    transport: str = "stdio"  # stdio | sse | http
     command: str | None = None
     args: list[str] | None = None
     env: dict[str, str] | None = None
     url: str | None = None
+    # Optional auth for network transports (sse/http).
+    headers: dict[str, str] | None = None
+    auth_token: str | None = None  # sent as "Authorization: Bearer <token>"
     enabled: bool = True
+
+    @field_validator("transport")
+    @classmethod
+    def _check_transport(cls, v: str) -> str:
+        if v not in ("stdio", "sse", "http"):
+            raise ValueError("transport must be one of: stdio, sse, http")
+        return v
 
 
 class McpServerOut(McpServerIn):

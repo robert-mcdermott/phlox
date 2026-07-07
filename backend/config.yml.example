@@ -200,3 +200,11 @@ vector_store:
   # url: http://localhost:6333 # uncomment to use a Qdrant server instead of `path`
   # api_key: ""                # for Qdrant Cloud / secured servers
   collection: doc_chunks
+
+# Primary database. FILE-ONLY (not in the admin UI). Default is a SQLite file under
+# data/phlox.db — nothing to configure. To deploy against Postgres instead, either set
+# the DATABASE_URL env var (takes precedence over this) or uncomment `url:` below. Needs
+# the `postgres` extra installed (bundled in the Docker image; `uv sync --extra postgres`
+# for a host install).
+# database:
+#   url: "postgresql+psycopg://phlox:phlox@localhost:5432/phlox"

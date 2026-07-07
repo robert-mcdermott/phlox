@@ -88,4 +88,5 @@ auth:
 ## Notes / next
 - The default dev secret and `admin/admin` are **for dev only** — set a real secret and
   change the admin password before any shared use.
-- Postgres + audit logging + secrets management are **Tier 5** (sensitive-data deployment).
+- Audit logging + secrets management are **Tier 5** (sensitive-data deployment). Postgres
+  is available now (`DATABASE_URL`, see [DOCKER.md](DOCKER.md)) if you want it sooner.

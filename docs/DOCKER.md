@@ -163,6 +163,7 @@ podman run -d --name phlox \
 | `SEARXNG_URL` | — | Optional: use SearXNG for web search instead of the default ddgs |
 | `PHLOX_CONFIG` | `/app/backend/config.yml` | Config path. Left at default so the mounted `backend/config.yml` is used — override only for an unusual layout |
 | `PHLOX_DATA` | `/app/backend/data` | Data root. Left at default so the mounted `backend/data/` is used — override only for an unusual layout |
+| `DATABASE_URL` | — (SQLite under `PHLOX_DATA`) | Set to deploy against Postgres instead, e.g. `postgresql+psycopg://user:pass@host:5432/phlox` — see below |
 
 ---
 
@@ -186,17 +187,29 @@ vector_store:
 SQLite remains the source of truth, so you can rebuild the index after switching
 (`reindex_all`). `vector_store` is a bootstrap setting — change it in the file and restart.
 
-## Optional: Postgres (future / Tier 5)
+## Optional: Postgres (instead of SQLite)
 
-A `postgres` service is included behind a profile for when the Postgres backend lands:
+Phlox defaults to a SQLite file under `backend/data/` — nothing to configure. To point it
+at Postgres instead, set `DATABASE_URL`. The image already bundles the `psycopg` driver, so
+no rebuild is needed to switch.
+
+A `postgres` service is included behind a profile if you want Compose to run it for you:
 
 ```bash
+export DATABASE_URL="postgresql+psycopg://phlox:phlox@postgres:5432/phlox"
 docker compose --profile with-postgres up -d --build
 ```
 
-Phlox would connect via the service name `postgres:5432` (Docker's internal DNS) — no
+Phlox connects via the service name `postgres:5432` (Docker's internal DNS) — no
 `localhost` involved. A Postgres running on the **host** instead would use
-`host.docker.internal:5432`, exactly like the local-LLM case above.
+`host.docker.internal:5432` (`DATABASE_URL=postgresql+psycopg://user:pass@host.docker.internal:5432/phlox`),
+exactly like the local-LLM case above. Running Phlox directly on the host (no container)
+works the same way — just export `DATABASE_URL` before starting uvicorn, pointed at
+`localhost:5432` instead.
+
+Tables and any schema updates are created/applied automatically at startup — no separate
+migration step. Switching backends does **not** migrate existing data between them; pick
+one at deployment time (or migrate data out-of-band if you need to move later).
 
 ---
 

@@ -1,4 +1,4 @@
-"""SQLAlchemy ORM models (SQLite).
+"""SQLAlchemy ORM models (SQLite by default; Postgres also supported).
 
 Tables
 ------
@@ -213,8 +213,11 @@ class UsageLedger(Base):
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
     # The assistant Message this row was derived from; unique so backfill is idempotent.
-    # Not a ForeignKey: the source message may be deleted while this row must persist.
-    message_id: Mapped[str | None] = mapped_column(String(32), unique=True, nullable=True)
+    # Not a ForeignKey: the source message may be deleted while this row must persist. Wider
+    # than the usual id column: the gateway path stores a synthetic "chatcmpl-<uuid32>" id
+    # (41 chars) here instead of a Message.id. SQLite ignores the declared VARCHAR length
+    # (stores it regardless), but Postgres enforces it strictly and rejects the insert.
+    message_id: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True)
     conversation_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     # Identity snapshot (frozen at write time; survives user deletion).
     user_id: Mapped[str | None] = mapped_column(String(32), index=True, nullable=True)

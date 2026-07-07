@@ -240,9 +240,11 @@ cd backend && uv run python -m evals.run_evals
   `sandbox.runner: agentcore` (off-host AWS microVM) ([docs/SANDBOX.md](docs/SANDBOX.md)).
 - Mutating/execution tools default to the **`ask`** permission policy; "Agent mode"
   auto-approves for a turn.
-- **Sensitive data (PHI):** Postgres, audit logging, secrets management, and data
-  governance are tracked as **Tier 5** in the [roadmap](docs/ROADMAP.md) and are required
-  before any deployment touching sensitive data.
+- **Database:** SQLite by default; set `DATABASE_URL` to deploy against Postgres instead
+  ([docs/DOCKER.md](docs/DOCKER.md)).
+- **Sensitive data (PHI):** audit logging, secrets management, and data governance are
+  tracked as **Tier 5** in the [roadmap](docs/ROADMAP.md) and are required before any
+  deployment touching sensitive data.
 
 ## License
 

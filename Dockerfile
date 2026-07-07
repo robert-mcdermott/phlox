@@ -7,9 +7,10 @@
 # Stage 2 installs the FastAPI backend (via uv) and serves both the API and the
 # built SPA from one process on one port (8000).
 #
-# Persistent data (SQLite DB + embedded Qdrant + workspaces/uploads/attachments)
-# and the runtime config.yml live OUTSIDE the image on mounted volumes — the project's
-# own backend/config.yml and backend/data/ are bind-mounted in. See docs/DOCKER.md.
+# Persistent data (SQLite DB by default, or Postgres via DATABASE_URL + embedded Qdrant +
+# workspaces/uploads/attachments) and the runtime config.yml live OUTSIDE the image on
+# mounted volumes — the project's own backend/config.yml and backend/data/ are bind-mounted
+# in. See docs/DOCKER.md.
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ── Stage 1: build the frontend ──────────────────────────────────────────────
@@ -52,9 +53,11 @@ ENV UV_PROJECT_ENVIRONMENT=/app/backend/.venv \
     PATH="/app/backend/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1
 
-# Install Python deps first (cached unless pyproject/uv.lock change).
+# Install Python deps first (cached unless pyproject/uv.lock change). Includes the
+# `postgres` extra (psycopg) so DATABASE_URL can point at Postgres with no rebuild —
+# SQLite (the default) needs no driver, so this only adds a few MB either way.
 COPY backend/pyproject.toml backend/uv.lock ./
-RUN uv sync --frozen --no-dev --no-install-project
+RUN uv sync --frozen --no-dev --no-install-project --extra postgres
 
 # App source.
 COPY backend/app ./app

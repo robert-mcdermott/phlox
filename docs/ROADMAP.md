@@ -188,8 +188,10 @@ See [API_GATEWAY.md](API_GATEWAY.md).
 
 Deferred until the app is used with real/sensitive data. **Gates any PHI use.**
 
-- [ ] **Postgres.** Move off SQLite for concurrency/scale (SQLAlchemy already abstracts
-  it; the `_ensure_columns` dev-migration shim is replaced by Alembic here).
+- [x] **Postgres.** Optional backend for concurrency/scale — SQLite remains the default;
+  set `DATABASE_URL` to opt into Postgres (see [DOCKER.md](DOCKER.md)). The
+  `_ensure_columns` dev-migration shim now branches per dialect; replacing it with Alembic
+  is still open, and matters more once real schema migrations (not just added columns) show up.
 - [ ] **Data governance / PHI.** Audit logging, secrets out of `config.yml` (vault/env),
   PII/PHI policy, provider data-retention controls, encryption at rest, BAA-compliant
   provider configuration.
@@ -200,8 +202,8 @@ Deferred until the app is used with real/sensitive data. **Gates any PHI use.**
 **Tiers 1, 2, 3, and 4 are complete.** Remaining Tier 4 nice-to-haves: full
 conversation-branch tree, React/JSX live artifact previews, command palette, voice.
 **API gateway Phase 1 is complete; Phase 2 (`/v1/agent/completions`) is next.**
-**Postgres and PHI/data-governance are Tier 5**, deferred until a sensitive-data
-deployment.
+**Postgres support is done (optional, opt-in via `DATABASE_URL`); PHI/data-governance
+remains Tier 5**, deferred until a sensitive-data deployment.
 
 See [AUTH.md](AUTH.md) (auth/SSO), [SANDBOX.md](SANDBOX.md) (container sandbox),
 [OBSERVABILITY.md](OBSERVABILITY.md) (logging/usage/tracing), and

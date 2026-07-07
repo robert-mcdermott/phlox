@@ -29,6 +29,9 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["ruff>=0.8.0", "pytest>=8.3.0"]
+# Only needed when deploying with DATABASE_URL pointed at Postgres (SQLite, the
+# default, needs no extra driver).
+postgres = ["psycopg[binary]>=3.2.0"]
 
 [tool.ruff]
 line-length = 100

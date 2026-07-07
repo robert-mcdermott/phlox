@@ -103,8 +103,9 @@ profiles:
     supports_tools: true
 ```
 
-Leave `vector_store` at the embedded default (no Postgres / no Qdrant server in the current
-project state). Review `auth` and the sandbox section (see §8).
+Leave `vector_store` at the embedded default (no Qdrant server) unless you're scaling out.
+The database defaults to SQLite too — see [§5d](#5d-optional-postgres-instead-of-sqlite) to
+use Postgres instead. Review `auth` and the sandbox section (see §8).
 
 > **Config precedence:** `config.yml` is only the **seed for a fresh database**. Once a
 > provider profile is edited in the app's **Settings → (Admin) Configuration** panel, that
@@ -126,13 +127,39 @@ Keep this value **stable** — changing it invalidates all existing login sessio
 
 ### 5c. Data directory ownership
 
-The app writes the SQLite DB, embedded Qdrant index, workspaces, uploads, and attachments
-under `backend/data/`. Make sure the service user owns the tree:
+The app writes the SQLite DB (unless you're using Postgres — see below), embedded Qdrant
+index, workspaces, uploads, and attachments under `backend/data/`. Make sure the service
+user owns the tree:
 
 ```bash
 sudo install -d -o phlox -g phlox /opt/phlox/app/backend/data
 sudo chown -R phlox:phlox /opt/phlox/app
 ```
+
+### 5d. Optional: Postgres instead of SQLite
+
+SQLite (a single file under `backend/data/`) is the default and needs no setup. For a
+deployment that wants a separate, network-reachable database — easier off-box backups,
+multiple app instances, an existing Postgres you already run — point Phlox at it instead:
+
+1. Install the driver into the backend venv (skip this if you already ran `uv sync` with
+   the extra):
+   ```bash
+   cd /opt/phlox/app/backend
+   sudo -u phlox uv sync --frozen --no-dev --extra postgres
+   ```
+2. Add `DATABASE_URL` to the same env file as the JWT secret:
+   ```bash
+   printf 'DATABASE_URL=postgresql+psycopg://phlox:yourpassword@dbhost:5432/phlox\n' \
+     | sudo tee -a /etc/phlox/phlox.env >/dev/null
+   ```
+   (`localhost` works if Postgres runs on the same box.) `DATABASE_URL` takes precedence
+   over any `database.url` set in `config.yml` — use whichever you find easier to manage;
+   the env var is usually the better fit alongside the JWT secret above.
+3. Restart: `sudo systemctl restart phlox`. Tables are created automatically on first boot
+   against the new database — there's no separate migration step, but it starts **empty**;
+   this doesn't migrate existing SQLite data over (do that out-of-band, e.g.
+   `pgloader`, if you're moving an existing deployment rather than starting fresh).
 
 ## 6. systemd service
 
@@ -276,9 +303,10 @@ sudo -u phlox sh -c 'cd frontend && npm ci && npm run build'     # rebuild SPA
 sudo systemctl restart phlox
 ```
 
-The SQLite schema migrates on startup; `backend/data/` persists across upgrades. Back it up by
-copying `backend/config.yml` + `backend/data/` while the service is stopped (or snapshot the
-DB file).
+The schema migrates on startup on either backend; `backend/data/` persists across upgrades.
+Back it up by copying `backend/config.yml` + `backend/data/` while the service is stopped (or
+snapshot the DB file) — or, on Postgres, back up the database itself (`pg_dump` et al.) instead
+of `backend/data/`.
 
 ---
 
@@ -299,6 +327,7 @@ DB file).
 - [ ] TLS reverse proxy in front; app bound to `127.0.0.1`
 - [ ] Provider `endpoint` set to `localhost` and a real `model:` pulled
 - [ ] Decided sandbox mode (`local` for trusted single-user, `container` for untrusted)
-- [ ] `backend/data/` backed up on a schedule
+- [ ] Decided database: SQLite (default) or Postgres (`DATABASE_URL`) — see §5d
+- [ ] `backend/data/` (or the Postgres database, if used) backed up on a schedule
 - [ ] Single process only (no `--workers`, one instance per data dir)
 ```

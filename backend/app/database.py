@@ -1,4 +1,9 @@
-"""SQLAlchemy engine + session setup (SQLite)."""
+"""SQLAlchemy engine + session setup.
+
+Defaults to SQLite (a single file under ``DATA_DIR``); set ``DATABASE_URL`` (or
+``database.url`` in config.yml) to deploy against Postgres instead. See
+``app.config.get_database_url``.
+"""
 from __future__ import annotations
 
 from collections.abc import Iterator
@@ -6,11 +11,16 @@ from collections.abc import Iterator
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.config import DB_PATH
+from app.config import get_database_url
+
+DATABASE_URL = get_database_url()
+IS_SQLITE = DATABASE_URL.startswith("sqlite")
+
+_connect_args = {"check_same_thread": False} if IS_SQLITE else {}
 
 ENGINE = create_engine(
-    f"sqlite:///{DB_PATH}",
-    connect_args={"check_same_thread": False},
+    DATABASE_URL,
+    connect_args=_connect_args,
     future=True,
 )
 
@@ -26,9 +36,9 @@ def get_db() -> Iterator[Session]:
         db.close()
 
 
-# Columns added after the initial schema. SQLite create_all() won't ALTER existing
-# tables, so we add any missing columns idempotently at startup. (A real migration tool
-# like Alembic is the Tier-3 upgrade; this keeps dev data intact in the meantime.)
+# Columns added after the initial schema. create_all() won't ALTER existing tables on
+# either backend, so we add any missing columns idempotently at startup. (A real migration
+# tool like Alembic is the Tier-3 upgrade; this keeps dev data intact in the meantime.)
 _ADDED_COLUMNS: dict[str, dict[str, str]] = {
     "messages": {"attachments": "JSON", "usage": "JSON"},
     "documents": {"conversation_id": "VARCHAR(32)", "user_id": "VARCHAR(32)"},
@@ -39,12 +49,24 @@ _ADDED_COLUMNS: dict[str, dict[str, str]] = {
 }
 
 
+def _existing_columns(conn, table: str) -> set[str]:
+    from sqlalchemy import text
+
+    if IS_SQLITE:
+        return {row[1] for row in conn.execute(text(f"PRAGMA table_info({table})"))}
+    rows = conn.execute(
+        text("SELECT column_name FROM information_schema.columns WHERE table_name = :t"),
+        {"t": table},
+    )
+    return {row[0] for row in rows}
+
+
 def _ensure_columns() -> None:
     from sqlalchemy import text
 
     with ENGINE.begin() as conn:
         for table, cols in _ADDED_COLUMNS.items():
-            existing = {row[1] for row in conn.execute(text(f"PRAGMA table_info({table})"))}
+            existing = _existing_columns(conn, table)
             for name, sqltype in cols.items():
                 if name not in existing:
                     conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {sqltype}"))

@@ -25,6 +25,7 @@ WORKSPACES_DIR = DATA_DIR / "workspaces"
 UPLOADS_DIR = DATA_DIR / "uploads"
 ATTACHMENTS_DIR = DATA_DIR / "attachments"
 DB_PATH = DATA_DIR / "phlox.db"
+SQLITE_URL = f"sqlite:///{DB_PATH}"
 
 for _d in (DATA_DIR, WORKSPACES_DIR, UPLOADS_DIR, ATTACHMENTS_DIR):
     _d.mkdir(parents=True, exist_ok=True)
@@ -207,6 +208,21 @@ def get_vector_store_config() -> dict[str, Any]:
             p = (BACKEND_DIR / raw).resolve()
         cfg["path"] = str(p)
     return cfg
+
+
+def get_database_url() -> str:
+    """The SQLAlchemy database URL. SQLite (under ``DATA_DIR``) out of the box.
+
+    To deploy against Postgres instead, set the ``DATABASE_URL`` env var (e.g.
+    ``postgresql+psycopg://user:pass@host:5432/phlox``) or a ``database.url`` in
+    config.yml. This is a bootstrap/deployment choice like ``vector_store``, so it is
+    file/env-only — not admin-editable from the UI.
+    """
+    env_url = os.environ.get("DATABASE_URL")
+    if env_url:
+        return env_url
+    cfg = load_config().get("database", {}) or {}
+    return cfg.get("url") or SQLITE_URL
 
 
 DEFAULT_SYSTEM_PROMPT = (

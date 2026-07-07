@@ -38,7 +38,22 @@ class WordCount(Tool):
 - `ctx.conversation_id` — the conversation
 - `ctx.workspace` — `Path` to the per-conversation working dir (sandbox root)
 - `ctx.db` — a SQLAlchemy `Session`
+- `ctx.user_id` — the owning user, or `None` when auth is disabled
 - `ctx.runner` — the `SandboxRunner` (use for executing commands/code)
+- `ctx.auto_approve` — whether the current turn has "Agent mode" on. If your tool
+  delegates to a nested `AgentSession` (like `spawn_subagent`), pass this through rather
+  than hardcoding a policy — don't let a tool grant itself permissions the user didn't
+  give the turn.
+- `ctx.progress` — `Callable[[str], None] | None`. For a long-running tool, call it with
+  each chunk of output as you produce it and it streams to the UI live as a
+  `tool_progress` event instead of only appearing when `run` returns. `run_shell` /
+  `execute_python` / `execute_node` forward it to `ctx.runner.run_command`/`run_code` as
+  `on_output=ctx.progress` — follow that pattern for anything wrapping a subprocess.
+- `ctx.cancel_event` — `threading.Event | None`, set when the turn is cancelled (timeout
+  or the user's Stop). A long-running tool should poll it and stop promptly; pass it
+  through to `ctx.runner.run_command`/`run_code` as `cancel_event=ctx.cancel_event` if
+  you're wrapping a subprocess — the local/container runners already kill the whole
+  process tree when it's set, not just the immediate child.
 
 ### `ToolResult` fields
 - `content: str` — text the model sees (keep it bounded; large outputs get truncated)
@@ -78,6 +93,12 @@ That's it. On next startup the tool is registered, a `ToolPref` row is seeded wi
 - `deny` tools never run.
 
 Mutating or executing tools should default to `ask`. Read-only tools can be `auto`.
+
+If your tool is only ever driven by an unattended nested session (there's no human to
+answer an approval pause — `spawn_subagent` is the only current example), build its
+`PermissionGate` with `interactive=False`. That makes `ask` resolve to `deny` instead of
+either hanging on an unanswerable pause or silently becoming `allow` — an unattended
+tool call must never grant itself a permission the surrounding turn didn't have.
 
 Some built-in tools also need per-turn user intent, not just a global tool preference.
 For those, keep the tool registered normally, but pass an `allowed_tools` set into

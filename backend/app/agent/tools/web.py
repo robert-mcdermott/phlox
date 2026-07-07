@@ -1,18 +1,71 @@
 """Web fetch/search tools."""
 from __future__ import annotations
 
+import ipaddress
 import json
 import re
+import socket
 from typing import Any
+from urllib.parse import urlparse
 
 from app.agent.tools.base import Tool, ToolContext, ToolResult
-from app.config import get_web_search_config
+from app.config import get_web_fetch_config, get_web_search_config
 
 MAX_CHARS = 20_000
 MAX_SEARCH_RESULTS = 10
 DEFAULT_SEARCH_RESULTS = 5
 MAX_SEARCH_TITLE_CHARS = 200
 MAX_SEARCH_SNIPPET_CHARS = 500
+MAX_REDIRECTS = 5
+
+
+def _host_allowlisted(host: str, allowlist: list[str]) -> bool:
+    for raw in allowlist:
+        entry = str(raw or "").strip()
+        if not entry:
+            continue
+        if entry.lower() == host.lower():
+            return True
+        try:
+            if ipaddress.ip_address(host) in ipaddress.ip_network(entry, strict=False):
+                return True
+        except ValueError:
+            continue  # entry isn't an IP/CIDR and didn't match as a hostname
+    return False
+
+
+def _is_blocked_ip(ip_str: str) -> bool:
+    try:
+        ip = ipaddress.ip_address(ip_str)
+    except ValueError:
+        return True  # unparseable — fail closed
+    return (
+        ip.is_private or ip.is_loopback or ip.is_link_local
+        or ip.is_reserved or ip.is_multicast or ip.is_unspecified
+    )
+
+
+def _ssrf_guard(url: str) -> str | None:
+    """Return an error message if ``url`` targets a disallowed private/internal address,
+    else None. Re-run on every redirect hop, not just the original URL — otherwise a
+    public host that 302s to an internal address would slip past a one-time check."""
+    cfg = get_web_fetch_config()
+    if cfg.get("allow_private_networks"):
+        return None
+    host = urlparse(url).hostname
+    if not host:
+        return "URL has no host"
+    if _host_allowlisted(host, cfg.get("allowlist_hosts") or []):
+        return None
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except OSError as e:
+        return f"Could not resolve host {host!r}: {e}"
+    for info in infos:
+        ip_str = info[4][0]
+        if _is_blocked_ip(ip_str):
+            return f"Blocked: {host!r} resolves to a private/internal address ({ip_str})"
+    return None
 
 
 def _html_to_text(html: str) -> str:
@@ -69,13 +122,30 @@ class WebFetch(Tool):
         try:
             import httpx
 
-            resp = httpx.get(url, follow_redirects=True, timeout=20.0, headers={"User-Agent": "Phlox/0.1"})
+            current = url
+            # Follow redirects manually (rather than httpx's follow_redirects=True) so
+            # every hop is re-checked by the SSRF guard — a public host that redirects to
+            # an internal address must not slip through on the strength of the first check.
+            for _hop in range(MAX_REDIRECTS + 1):
+                blocked = _ssrf_guard(current)
+                if blocked:
+                    return ToolResult(content=blocked, is_error=True)
+                resp = httpx.get(
+                    current, follow_redirects=False, timeout=20.0, headers={"User-Agent": "Phlox/0.1"}
+                )
+                if resp.is_redirect and resp.headers.get("location"):
+                    current = str(httpx.URL(current).join(resp.headers["location"]))
+                    continue
+                break
+            else:
+                return ToolResult(content=f"Too many redirects fetching {url}", is_error=True)
+
             ctype = resp.headers.get("content-type", "")
             body = resp.text
             text = _html_to_text(body) if "html" in ctype else body
             if len(text) > MAX_CHARS:
                 text = text[:MAX_CHARS] + "\n... [truncated]"
-            return ToolResult(content=f"HTTP {resp.status_code} {url}\n\n{text}")
+            return ToolResult(content=f"HTTP {resp.status_code} {current}\n\n{text}")
         except Exception as e:  # noqa: BLE001
             return ToolResult(content=f"Fetch failed: {e}", is_error=True)
 

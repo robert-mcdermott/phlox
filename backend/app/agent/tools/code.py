@@ -18,7 +18,8 @@ def _format(res, label: str) -> ToolResult:
         parts.append(f"[stderr]\n{res.stderr}")
     if not parts:
         parts.append("(no output)")
-    parts.append(f"[{label} exit {res.exit_code}{' — TIMEOUT' if res.timed_out else ''}, {res.duration_s}s]")
+    status = " — TIMEOUT" if res.timed_out else (" — CANCELLED" if res.cancelled else "")
+    parts.append(f"[{label} exit {res.exit_code}{status}, {res.duration_s}s]")
     if res.artifacts:
         parts.append("[artifacts] " + ", ".join(a["name"] for a in res.artifacts))
     return ToolResult(content="\n".join(parts), artifacts=res.artifacts, is_error=res.exit_code != 0)
@@ -43,7 +44,9 @@ class ExecutePython(Tool):
     }
 
     def run(self, ctx: ToolContext, code: str = "", timeout: int = 60, **_: Any) -> ToolResult:
-        res = ctx.runner.run_code(code, "python", ctx.workspace, timeout=timeout)
+        res = ctx.runner.run_code(
+            code, "python", ctx.workspace, timeout=timeout, on_output=ctx.progress, cancel_event=ctx.cancel_event
+        )
         return _format(res, "python")
 
 
@@ -62,5 +65,7 @@ class ExecuteNode(Tool):
     }
 
     def run(self, ctx: ToolContext, code: str = "", timeout: int = 60, **_: Any) -> ToolResult:
-        res = ctx.runner.run_code(code, "node", ctx.workspace, timeout=timeout)
+        res = ctx.runner.run_code(
+            code, "node", ctx.workspace, timeout=timeout, on_output=ctx.progress, cancel_event=ctx.cancel_event
+        )
         return _format(res, "node")

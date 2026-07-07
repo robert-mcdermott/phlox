@@ -184,6 +184,30 @@ misconfigured. Exit code 0 means the feature works against your account.
 > `max_sync_file_bytes` or set `sync_back: false` for execute-only workloads. Binary files are
 > synced as blobs; very large or numerous files are best kept out of the workspace.
 
+## Live output & cancellation
+
+All three runners stream partial stdout/stderr back to the UI as a command runs, instead
+of only showing output once the whole thing finishes — a `run_shell`/`execute_python`/
+`execute_node` tool card fills in live rather than staying blank until the call returns.
+Under the hood, `ctx.progress` (a callback the harness wires up per tool call) is passed
+through as `on_output` to `run_command`/`run_code`; each runner calls it with each new
+chunk as it's produced (a threaded `Popen` reader for `local`/`container`, the AWS event
+stream for `agentcore`), and the harness re-emits it as a `tool_progress` SSE event.
+
+Every execution also honors a per-turn `cancel_event`, threaded through the same path.
+Two things can set it: the command's own `timeout`, or the user clicking **Stop** (the
+chat router watches for the client disconnecting and sets the event so the harness's loop
+notices even though the SSE connection is already gone). Either way, the runner kills the
+**whole process tree**, not just the immediate child — plain `Popen.kill()` only kills the
+shell (`/bin/sh -c '...'`); anything that shell forked (the actual build/test command) was
+being orphaned and left running to completion regardless of the timeout. The local and
+container runners now start the child in its own process group/session
+(`start_new_session=True` on POSIX, `CREATE_NEW_PROCESS_GROUP` on Windows) and kill the
+group (`os.killpg` / `taskkill /T /F`) instead of just the one process. The `agentcore`
+runner has no way to interrupt a live remote invocation, so cancellation there just stops
+waiting on/reporting further output — the remote call still runs to completion in the
+session.
+
 ## Security properties
 
 - **Filesystem:** only the conversation workspace is mounted (`/work`); the rest of the

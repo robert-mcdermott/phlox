@@ -6,6 +6,7 @@ switches on ``type``:
   - thinking   : incremental reasoning text
   - token      : incremental final-answer text
   - tool_call  : a tool invocation began {id, name, arguments}
+  - tool_progress: incremental output from a still-running tool {id, name, content}
   - tool_result: a tool finished {id, name, content, is_error, artifacts}
   - artifact   : a file produced {name, path, ext, url}
   - usage      : token usage {input, output}
@@ -37,6 +38,11 @@ def token(text: str) -> str:
 
 def tool_call(call_id: str, name: str, arguments: dict) -> str:
     return sse("tool_call", id=call_id, name=name, arguments=arguments)
+
+
+def tool_progress(call_id: str, name: str, content: str) -> str:
+    """Incremental output from a tool that's still running (e.g. run_shell)."""
+    return sse("tool_progress", id=call_id, name=name, content=content)
 
 
 def tool_result(call_id: str, name: str, content: str, is_error: bool, artifacts: list) -> str:

@@ -11,7 +11,9 @@ const ICONS = {
 
 export default function ToolCallCard({ call }) {
   const [open, setOpen] = useState(false)
-  const running = call.content === null
+  // `running` is explicit (not just "content is null") because a still-running tool can
+  // now have partial content already — live progress streamed in via tool_progress.
+  const running = call.running ?? call.content === null
   const Icon = call.is_error ? AlertCircle : Terminal
 
   return (

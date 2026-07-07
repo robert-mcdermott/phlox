@@ -6,6 +6,12 @@ runs it to completion, and returns its final answer as the tool result. This let
 agent decompose big tasks (e.g. "research X", "implement Y") and keep its own context lean.
 
 Recursion is prevented by excluding ``spawn_subagent`` from the child's toolset.
+
+The harness can run *multiple* ``spawn_subagent`` calls from the same round concurrently
+(see ``AgentSession._run_calls_concurrently``), so this tool opens its **own** DB session
+rather than reusing ``ctx.db`` — a SQLAlchemy ``Session`` isn't safe to use from more than
+one thread at a time, and ``ctx.db`` is the same shared session across every tool call in
+the turn.
 """
 from __future__ import annotations
 
@@ -52,62 +58,73 @@ class SpawnSubagent(Tool):
         from app.agent.harness import AgentSession
         from app.agent.permissions import PermissionGate
         from app.agent.registry import REGISTRY
+        from app.database import SessionLocal
         from app.models import Conversation
         from app.providers.registry import build_provider
         from app.runtime_settings import generation_params, get_settings
 
-        conversation = ctx.db.get(Conversation, ctx.conversation_id)
-        if conversation is None:
-            return ToolResult(content="Conversation not found.", is_error=True)
-
-        settings = get_settings(ctx.db)
-        profile = settings["active_profile"]
-        model = settings.get("model")
+        # Own session — see the module docstring on why this can't reuse ctx.db.
+        db = SessionLocal()
         try:
-            provider = build_provider(profile, model)
-        except Exception as e:  # noqa: BLE001
-            return ToolResult(content=f"Sub-agent provider error: {e}", is_error=True)
+            conversation = db.get(Conversation, ctx.conversation_id)
+            if conversation is None:
+                return ToolResult(content="Conversation not found.", is_error=True)
 
-        params = {**generation_params(settings), "max_tool_rounds": 8}
-        gate = PermissionGate(ctx.db, REGISTRY, auto_approve=True)  # scoped + auto within the sub-task
-        allowed = SUBAGENT_TOOLS & set(REGISTRY.names())
-
-        session = AgentSession(
-            ctx.db, conversation, provider, REGISTRY, gate, params, profile, model,
-            ephemeral=True, allowed_tools=allowed,
-        )
-        messages = [
-            {"role": "system", "content": SUBAGENT_SYSTEM},
-            {"role": "user", "content": task},
-        ]
-        # Drive the ephemeral session, building the answer from its event stream so we
-        # robustly capture output (and surface errors / the last tool result).
-        import json as _json
-
-        answer = ""
-        err: str | None = None
-        last_tool: str | None = None
-        for frame in session.run(messages):
-            line = frame.strip()
-            if not line.startswith("data: "):
-                continue
+            settings = get_settings(db)
+            profile = settings["active_profile"]
+            model = settings.get("model")
             try:
-                ev = _json.loads(line[6:])
-            except ValueError:
-                continue
-            if ev["type"] == "token":
-                answer += ev.get("content", "")
-            elif ev["type"] == "error":
-                err = ev.get("content")
-            elif ev["type"] == "tool_result":
-                last_tool = ev.get("content")
+                provider = build_provider(profile, model)
+            except Exception as e:  # noqa: BLE001
+                return ToolResult(content=f"Sub-agent provider error: {e}", is_error=True)
 
-        content = answer.strip() or session.final_text.strip()
-        if not content:
-            if err:
-                content = f"Sub-agent error: {err}"
-            elif last_tool:
-                content = f"Sub-agent ran tools. Last result:\n{last_tool}"
-            else:
-                content = "(sub-agent produced no output)"
-        return ToolResult(content=content)
+            params = {**generation_params(settings), "max_tool_rounds": 8}
+            # Inherit the parent turn's real approval state — a sub-agent must not grant
+            # itself permissions the user didn't give the parent turn. If the turn isn't
+            # in auto-approve mode, ask-tier tools (run_shell, write_file, ...) resolve to
+            # "deny" here rather than "ask": a sub-agent runs unattended, so there's no
+            # one to answer an approval pause. See PermissionGate(interactive=False).
+            gate = PermissionGate(db, REGISTRY, auto_approve=ctx.auto_approve, interactive=False)
+            allowed = SUBAGENT_TOOLS & set(REGISTRY.names())
+
+            session = AgentSession(
+                db, conversation, provider, REGISTRY, gate, params, profile, model,
+                ephemeral=True, allowed_tools=allowed, cancel_event=ctx.cancel_event,
+            )
+            messages = [
+                {"role": "system", "content": SUBAGENT_SYSTEM},
+                {"role": "user", "content": task},
+            ]
+            # Drive the ephemeral session, building the answer from its event stream so
+            # we robustly capture output (and surface errors / the last tool result).
+            import json as _json
+
+            answer = ""
+            err: str | None = None
+            last_tool: str | None = None
+            for frame in session.run(messages):
+                line = frame.strip()
+                if not line.startswith("data: "):
+                    continue
+                try:
+                    ev = _json.loads(line[6:])
+                except ValueError:
+                    continue
+                if ev["type"] == "token":
+                    answer += ev.get("content", "")
+                elif ev["type"] == "error":
+                    err = ev.get("content")
+                elif ev["type"] == "tool_result":
+                    last_tool = ev.get("content")
+
+            content = answer.strip() or session.final_text.strip()
+            if not content:
+                if err:
+                    content = f"Sub-agent error: {err}"
+                elif last_tool:
+                    content = f"Sub-agent ran tools. Last result:\n{last_tool}"
+                else:
+                    content = "(sub-agent produced no output)"
+            return ToolResult(content=content)
+        finally:
+            db.close()

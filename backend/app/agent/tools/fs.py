@@ -6,9 +6,18 @@ import re
 from typing import Any
 
 from app.agent.tools.base import Tool, ToolContext, ToolResult
+from app.sandbox.runner import IGNORE_DIRS
 from app.workspace.manager import resolve_in_workspace
 
 MAX_READ_CHARS = 30_000
+DEFAULT_READ_LIMIT_LINES = 2000
+MAX_SEARCH_RESULTS = 200
+
+
+def _skip_dir(rel_parts: tuple[str, ...]) -> bool:
+    """True if a path (relative to the workspace root) is inside a vendor/build/VCS dir
+    that shouldn't clutter search results (node_modules, .venv, .git, ...)."""
+    return any(part in IGNORE_DIRS for part in rel_parts)
 
 
 def _rel(ctx: ToolContext, path) -> str:
@@ -29,25 +38,61 @@ def _artifact(ctx: ToolContext, p) -> list[dict]:
 
 class ReadFile(Tool):
     name = "read_file"
-    description = "Read a UTF-8 text file from the workspace. Returns its contents."
+    description = (
+        "Read a UTF-8 text file from the workspace. Returns its contents. For files "
+        f"longer than {DEFAULT_READ_LIMIT_LINES} lines, only the requested window is "
+        "returned — pass offset/limit to page through the rest."
+    )
     category = "filesystem"
     default_permission = "auto"
     parameters: dict[str, Any] = {
         "type": "object",
-        "properties": {"path": {"type": "string", "description": "Path relative to the workspace root"}},
+        "properties": {
+            "path": {"type": "string", "description": "Path relative to the workspace root"},
+            "offset": {
+                "type": "integer",
+                "description": "1-indexed line number to start reading from",
+                "default": 1,
+            },
+            "limit": {
+                "type": "integer",
+                "description": f"Max lines to return (default {DEFAULT_READ_LIMIT_LINES})",
+                "default": DEFAULT_READ_LIMIT_LINES,
+            },
+        },
         "required": ["path"],
     }
 
-    def run(self, ctx: ToolContext, path: str = "", **_: Any) -> ToolResult:
+    def run(
+        self,
+        ctx: ToolContext,
+        path: str = "",
+        offset: int = 1,
+        limit: int = DEFAULT_READ_LIMIT_LINES,
+        **_: Any,
+    ) -> ToolResult:
         try:
             p = resolve_in_workspace(ctx.conversation_id, path)
         except ValueError as e:
             return ToolResult(content=str(e), is_error=True)
         if not p.is_file():
             return ToolResult(content=f"No such file: {path}", is_error=True)
-        text = p.read_text(encoding="utf-8", errors="replace")
+
+        lines = p.read_text(encoding="utf-8", errors="replace").splitlines(keepends=True)
+        total = len(lines)
+        start = max(int(offset or 1) - 1, 0)
+        window = lines[start : start + max(int(limit or DEFAULT_READ_LIMIT_LINES), 1)]
+        end = start + len(window)
+        text = "".join(window)
+
+        notes = []
         if len(text) > MAX_READ_CHARS:
-            text = text[:MAX_READ_CHARS] + "\n... [truncated]"
+            text = text[:MAX_READ_CHARS]
+            notes.append(f"truncated at {MAX_READ_CHARS} chars")
+        if start > 0 or end < total:
+            notes.append(f"showing lines {start + 1}-{end} of {total}; use offset/limit to see more")
+        if notes:
+            text += f"\n... [{'; '.join(notes)}]"
         return ToolResult(content=text)
 
 
@@ -161,9 +206,20 @@ class GlobSearch(Tool):
 
     def run(self, ctx: ToolContext, pattern: str = "*", **_: Any) -> ToolResult:
         root = resolve_in_workspace(ctx.conversation_id, ".")
-        matches = [str(p.relative_to(root)) for p in root.rglob("*") if fnmatch.fnmatch(str(p.relative_to(root)), pattern)]
+        matches = []
+        for p in root.rglob("*"):
+            rel = p.relative_to(root)
+            if _skip_dir(rel.parts) or not fnmatch.fnmatch(str(rel), pattern):
+                continue
+            matches.append(str(rel))
         matches.sort()
-        return ToolResult(content="\n".join(matches[:200]) if matches else "(no matches)")
+        if not matches:
+            return ToolResult(content="(no matches)")
+        shown = matches[:MAX_SEARCH_RESULTS]
+        content = "\n".join(shown)
+        if len(matches) > MAX_SEARCH_RESULTS:
+            content += f"\n... [{len(matches) - MAX_SEARCH_RESULTS} more matches not shown; narrow the pattern]"
+        return ToolResult(content=content)
 
 
 class GrepSearch(Tool):
@@ -186,17 +242,25 @@ class GrepSearch(Tool):
             return ToolResult(content=f"Bad regex: {e}", is_error=True)
         root = resolve_in_workspace(ctx.conversation_id, ".")
         out: list[str] = []
+        truncated = False
         for p in root.rglob("*"):
-            if not p.is_file() or not fnmatch.fnmatch(p.name, glob):
+            rel = p.relative_to(root)
+            if not p.is_file() or _skip_dir(rel.parts) or not fnmatch.fnmatch(p.name, glob):
                 continue
             try:
                 for i, line in enumerate(p.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
                     if rx.search(line):
-                        out.append(f"{p.relative_to(root)}:{i}: {line.strip()[:200]}")
-                        if len(out) >= 200:
+                        out.append(f"{rel}:{i}: {line.strip()[:200]}")
+                        if len(out) >= MAX_SEARCH_RESULTS:
+                            truncated = True
                             break
             except OSError:
                 continue
-            if len(out) >= 200:
+            if truncated:
                 break
-        return ToolResult(content="\n".join(out) if out else "(no matches)")
+        if not out:
+            return ToolResult(content="(no matches)")
+        content = "\n".join(out)
+        if truncated:
+            content += f"\n... [stopped at {MAX_SEARCH_RESULTS} matches; narrow the pattern or glob to see more]"
+        return ToolResult(content=content)

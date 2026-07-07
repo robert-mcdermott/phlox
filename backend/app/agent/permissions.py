@@ -42,10 +42,21 @@ def get_prefs(db: Session) -> dict[str, ToolPref]:
 class PermissionGate:
     """Decides whether a given tool call may run."""
 
-    def __init__(self, db: Session, registry: ToolRegistry, auto_approve: bool = False):
+    def __init__(
+        self,
+        db: Session,
+        registry: ToolRegistry,
+        auto_approve: bool = False,
+        interactive: bool = True,
+    ):
         self.prefs = get_prefs(db)
         self.registry = registry
         self.auto_approve = auto_approve
+        # Whether a human is actually present to answer an "ask" pause. Ephemeral
+        # sub-agents run unattended: nothing resumes a paused approval for them, so an
+        # "ask" tool there must resolve to "deny", not hang the turn on an unanswerable
+        # pause. Top-level turns (a real user in the loop) leave this True.
+        self.interactive = interactive
 
     def enabled_names(self) -> set[str]:
         names = set()
@@ -64,5 +75,7 @@ class PermissionGate:
         if policy == "deny":
             return "deny"
         if policy == "ask":
-            return "allow" if self.auto_approve else "ask"
+            if self.auto_approve:
+                return "allow"
+            return "ask" if self.interactive else "deny"
         return "allow"

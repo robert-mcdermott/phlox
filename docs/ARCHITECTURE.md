@@ -98,18 +98,32 @@ deals with provider-specific shapes.
 - **Permission gate is the security seam** (`agent/permissions.py`). Each tool has a
   default policy (`auto|ask|deny`); read-only tools are `auto`, mutating/exec tools are
   `ask`. "Agent mode" in the composer sets `auto_approve`, which promotes `ask`→`allow`
-  for that turn. Users override per-tool in the Tool Manager (persisted in `ToolPref`).
+  for that turn. Users override per-tool in the Tool Manager (persisted in `ToolPref`). A
+  second flag, `interactive`, covers *unattended* execution (sub-agents — see below): with
+  no human able to answer an approval pause, `ask` resolves to `deny` there instead of
+  either hanging or silently becoming `allow`.
 - **Live web and document-library search are opt-in per prompt.** `web_search` and
   `search_documents` are registered like other tools, but `routers/chat.py` passes an
   `allowed_tools` set to `AgentSession` and removes them unless the composer request opts
   in (`web_search: true`, `document_search: true`) or the user directly references a
   document on the message. Web search uses ddgs by default and can use SearXNG via
-  `web_search.searxng_url` / `SEARXNG_URL`.
+  `web_search.searxng_url` / `SEARXNG_URL`. `web_fetch` has an **SSRF guard**
+  (`agent/tools/web.py::_ssrf_guard`): by default it refuses to reach private/loopback/
+  link-local addresses (incl. the cloud metadata IP), re-checked on every redirect hop so a
+  public host can't 302 its way to an internal one. File-only via `web_fetch` in
+  `config.yml` (`allow_private_networks`, `allowlist_hosts`) — not admin-UI-editable, same
+  reasoning as the sandbox runner type.
 - **Sandbox is a swappable interface** (`sandbox/runner.py`). `LocalSubprocessRunner`
-  (host, fast) and `ContainerRunner` (ephemeral Podman/Docker container with CPU/mem/PID
-  limits + network isolation, workspace bind-mounted) are selected by `sandbox.runner` in
-  `config.yml`. The container runner targets the Docker-compatible CLI, so Podman (incl.
-  Docker-compat mode) and Docker both work across Windows/macOS/Linux.
+  (host, fast), `ContainerRunner` (ephemeral Podman/Docker container with CPU/mem/PID
+  limits + network isolation, workspace bind-mounted), and `AgentCoreCodeInterpreterRunner`
+  (off-host AWS Bedrock microVM) are selected by `sandbox.runner` in `config.yml`. The
+  container runner targets the Docker-compatible CLI, so Podman (incl. Docker-compat mode)
+  and Docker both work across Windows/macOS/Linux. All three stream live stdout/stderr back
+  as `tool_progress` SSE events while a command runs (instead of only at the end), and all
+  three honor a per-turn `cancel_event`: a timeout or a user's "Stop" click kills the whole
+  process **tree**, not just the immediate child — a shell that forked a build/test process
+  no longer keeps running as an orphan after the tool call is reported as timed
+  out/cancelled. See [SANDBOX.md](SANDBOX.md) §"Live output & cancellation".
 - **Auth & multi-user.** Local username/password (bcrypt) + JWT sessions, with an Entra ID
   OIDC seam for production SSO. `get_current_user`/`require_admin` gate requests; data
   (conversations, documents, memories, settings) is scoped strictly per `user_id` —
@@ -137,10 +151,19 @@ deals with provider-specific shapes.
   `AgentSession` (doesn't persist to the parent conversation) with a scoped toolset in the
   **same workspace**, and returns its report. `AgentSession` gained `ephemeral` +
   `allowed_tools` for this. Recursion is prevented by excluding `spawn_subagent` from the
-  child's tools.
+  child's tools. It **inherits the parent turn's real approval state** rather than granting
+  itself a bypass (`auto_approve=ctx.auto_approve`, `interactive=False` — see the
+  permission-gate bullet above), and it opens its **own DB session** rather than sharing
+  `ctx.db`, since a SQLAlchemy session isn't safe across threads. That isolation is what
+  lets `AgentSession._run_calls_concurrently` run **multiple `spawn_subagent` calls from
+  the same round in parallel** worker threads instead of one after another — the model
+  decomposing a task into independent chunks actually saves wall-clock time now, not just
+  context budget. Everything else in a round still executes sequentially.
 - **Checkpoints** (`workspace/checkpoints.py`): each workspace is a git repo; the harness
   auto-snapshots after a successful mutating tool (`MUTATING_TOOLS`), and the user can
-  restore any snapshot (current state is snapshotted first, so nothing is lost).
+  restore any snapshot (current state is snapshotted first, so nothing is lost). A
+  per-workspace `RLock` serializes the actual git operations, since concurrent sub-agents
+  (above) can now mutate + checkpoint the same workspace at the same time.
 - **Multimodal** (`attachments.py`, providers): images attach to a user message (base64
   data URLs), are persisted to `data/attachments/<msg>/` and replayed into the provider as
   image content parts for vision models. The OpenAI provider also surfaces `reasoning`
@@ -233,8 +256,9 @@ Three layers, each with a clear job:
 
 - **`backend/config.yml`** (from `config.yml.example`): the **seed / bootstrap**. Provider
   `profiles`, `defaults`, `embeddings`, plus bootstrap-or-security-sensitive sections that
-  stay file-only: `auth` (incl. `jwt_secret`), `vector_store`, and
-  `observability.otel`/`request_logging`. Loaded + cached in `config.py` (`@lru_cache`).
+  stay file-only: `auth` (incl. `jwt_secret`), `vector_store`, `web_fetch` (the SSRF-guard
+  allowlist), and `observability.otel`/`request_logging`. Loaded + cached in `config.py`
+  (`@lru_cache`).
 - **Deployment overrides** (DB `AppConfig` table, `app_config.py`): admin-edited, **live**
   overrides for a curated set of sections — provider `profiles`, model `pricing`,
   `resilience`, generation defaults, and sandbox **limits**. The getters in `config.py`

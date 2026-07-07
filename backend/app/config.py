@@ -144,6 +144,22 @@ def get_web_search_config() -> dict[str, Any]:
     return cfg
 
 
+def get_web_fetch_config() -> dict[str, Any]:
+    """``web_fetch`` SSRF guard settings.
+
+    By default, ``web_fetch`` refuses to reach private/loopback/link-local addresses
+    (including the cloud metadata IP, 169.254.169.254) so an uploaded prompt can't use the
+    agent as a pivot into your internal network. Set ``web_fetch.allow_private_networks:
+    true`` to disable the guard entirely, or list specific hostnames/IPs/CIDRs under
+    ``web_fetch.allowlist_hosts`` to punch through the guard for just those targets (e.g.
+    an internal API you want the agent to be able to call).
+    """
+    cfg = dict(load_config().get("web_fetch", {}) or {})
+    cfg.setdefault("allow_private_networks", False)
+    cfg.setdefault("allowlist_hosts", [])
+    return cfg
+
+
 def get_sandbox_config() -> dict[str, Any]:
     """Code/shell execution sandbox config. ``runner`` is ``local``, ``container``, or ``agentcore``.
 

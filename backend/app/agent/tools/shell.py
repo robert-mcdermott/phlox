@@ -32,13 +32,16 @@ class RunShell(Tool):
             argv = ["cmd", "/c", command]
         else:
             argv = ["/bin/sh", "-c", command]
-        res = ctx.runner.run_command(argv, ctx.workspace, timeout=timeout)
+        res = ctx.runner.run_command(
+            argv, ctx.workspace, timeout=timeout, on_output=ctx.progress, cancel_event=ctx.cancel_event
+        )
         parts = []
         if res.stdout:
             parts.append(res.stdout)
         if res.stderr:
             parts.append(f"[stderr]\n{res.stderr}")
-        parts.append(f"[exit {res.exit_code}{' — TIMEOUT' if res.timed_out else ''}]")
+        status = " — TIMEOUT" if res.timed_out else (" — CANCELLED" if res.cancelled else "")
+        parts.append(f"[exit {res.exit_code}{status}]")
         return ToolResult(
             content="\n".join(parts),
             artifacts=res.artifacts,

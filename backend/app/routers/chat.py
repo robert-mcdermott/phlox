@@ -3,13 +3,14 @@ POST /api/chat/approve — resume a paused turn with the user's tool-approval de
 """
 from __future__ import annotations
 
+import asyncio
 import logging
+import threading
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-
-from fastapi import HTTPException
+from starlette.background import BackgroundTask
 
 from app.agent import events
 from app.agent.context import compact_history
@@ -250,6 +251,27 @@ def _referenced_document_context(
     return "\n".join(blocks)
 
 
+async def _watch_disconnect(request: Request, cancel_event: threading.Event) -> None:
+    """Set ``cancel_event`` as soon as the client disconnects.
+
+    Starlette's ``StreamingResponse`` already stops *reading* the response body on
+    disconnect, but that alone doesn't stop the harness's generator — it keeps running
+    (and can keep a subprocess alive) on its worker thread until it next reaches a yield
+    point. This watcher runs concurrently on the event loop and gives the harness a
+    signal it can actually check, so "Stop" kills in-flight work instead of just walking
+    away from it. The loop also exits as soon as the turn finishes normally — ``stream()``
+    sets ``cancel_event`` itself in a ``finally``, so this doesn't poll forever.
+    """
+    try:
+        while not cancel_event.is_set():
+            if await request.is_disconnected():
+                cancel_event.set()
+                return
+            await asyncio.sleep(0.5)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def _build_fallback(active_profile: str):
     """Build the configured fallback provider (if any and distinct from the active one)."""
     from app.config import get_resilience_config
@@ -265,7 +287,9 @@ def _build_fallback(active_profile: str):
 
 
 @router.post("/chat")
-def chat(req: ChatRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+async def chat(
+    req: ChatRequest, request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user)
+):
     settings = get_settings(db, user.id)
     profile = req.profile or settings["active_profile"]
     model = req.model or settings.get("model")
@@ -345,80 +369,101 @@ def chat(req: ChatRequest, db: Session = Depends(get_db), user: User = Depends(g
         ),
     }
 
+    cancel_event = threading.Event()
+
     def stream():
-        yield events.sse("conversation", id=conversation.id, title=conversation.title)
         try:
-            provider = build_provider(profile, model)
-        except Exception as e:  # noqa: BLE001
-            logger.exception("Provider build failed")
-            yield events.error(f"Provider error: {e}")
-            yield events.done("")
-            return
+            yield events.sse("conversation", id=conversation.id, title=conversation.title)
+            try:
+                provider = build_provider(profile, model)
+            except Exception as e:  # noqa: BLE001
+                logger.exception("Provider build failed")
+                yield events.error(f"Provider error: {e}")
+                yield events.done("")
+                return
 
-        # Build an optional fallback provider (used if the primary errors mid-stream).
-        fallback = _build_fallback(profile)
+            # Build an optional fallback provider (used if the primary errors mid-stream).
+            fallback = _build_fallback(profile)
 
-        # Compact long histories to stay within the per-user context budget.
-        compacted, did = compact_history(provider, history, int(settings["max_context_tokens"]))
-        if did:
-            yield events.status("Summarizing earlier context…")
+            # Compact long histories to stay within the per-user context budget.
+            compacted, did = compact_history(provider, history, int(settings["max_context_tokens"]))
+            if did:
+                yield events.status("Summarizing earlier context…")
 
-        gate = PermissionGate(db, REGISTRY, auto_approve=req.auto_approve)
-        enabled_tools = gate.enabled_names()
-        if not req.web_search:
-            enabled_tools.discard("web_search")
-        if not (req.document_search or referenced_docs):
-            enabled_tools.discard("search_documents")
-        session = AgentSession(
-            db, conversation, provider, REGISTRY, gate, params, profile, model,
-            allowed_tools=enabled_tools,
-            fallback_provider=fallback,
-        )
-        yield from session.run(compacted)
+            gate = PermissionGate(db, REGISTRY, auto_approve=req.auto_approve)
+            enabled_tools = gate.enabled_names()
+            if not req.web_search:
+                enabled_tools.discard("web_search")
+            if not (req.document_search or referenced_docs):
+                enabled_tools.discard("search_documents")
+            session = AgentSession(
+                db, conversation, provider, REGISTRY, gate, params, profile, model,
+                allowed_tools=enabled_tools,
+                fallback_provider=fallback,
+                cancel_event=cancel_event,
+            )
+            yield from session.run(compacted)
+        finally:
+            # Ends the disconnect watcher promptly on normal completion too (it would
+            # otherwise keep polling until its own timeout).
+            cancel_event.set()
 
-    return StreamingResponse(stream(), media_type="text/event-stream")
+    watcher = asyncio.create_task(_watch_disconnect(request, cancel_event))
+    return StreamingResponse(
+        stream(), media_type="text/event-stream", background=BackgroundTask(watcher.cancel)
+    )
 
 
 @router.post("/chat/approve")
-def approve(req: ApproveRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+async def approve(
+    req: ApproveRequest, request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user)
+):
     """Resume a paused turn. ``decisions`` maps tool-call id -> 'allow' | 'deny'."""
     pending = db.get(PendingApproval, req.pending_id)
+    cancel_event = threading.Event()
 
     def stream():
-        if pending is None:
-            yield events.error("This approval request is no longer valid.")
-            yield events.done("")
-            return
-
-        state = pending.state
-        conversation = db.get(Conversation, pending.conversation_id)
-        if conversation is None:
-            yield events.error("Conversation not found.")
-            yield events.done("")
-            return
-        if conversation.user_id != user.id:
-            yield events.error("Not authorized.")
-            yield events.done("")
-            return
-
-        yield events.sse("conversation", id=conversation.id, title=conversation.title)
         try:
-            provider = build_provider(state["profile"], state.get("model"))
-        except Exception as e:  # noqa: BLE001
-            yield events.error(f"Provider error: {e}")
-            yield events.done("")
-            return
+            if pending is None:
+                yield events.error("This approval request is no longer valid.")
+                yield events.done("")
+                return
 
-        gate = PermissionGate(db, REGISTRY, auto_approve=False)
-        allowed_tools = state.get("allowed_tools")
-        session = AgentSession(
-            db, conversation, provider, REGISTRY, gate,
-            state.get("params", {}), state["profile"], state.get("model"),
-            allowed_tools=set(allowed_tools) if allowed_tools is not None else None,
-        )
-        # Consume the pending row before resuming (it's superseded once we continue).
-        db.delete(pending)
-        db.commit()
-        yield from session.resume(state, req.decisions)
+            state = pending.state
+            conversation = db.get(Conversation, pending.conversation_id)
+            if conversation is None:
+                yield events.error("Conversation not found.")
+                yield events.done("")
+                return
+            if conversation.user_id != user.id:
+                yield events.error("Not authorized.")
+                yield events.done("")
+                return
 
-    return StreamingResponse(stream(), media_type="text/event-stream")
+            yield events.sse("conversation", id=conversation.id, title=conversation.title)
+            try:
+                provider = build_provider(state["profile"], state.get("model"))
+            except Exception as e:  # noqa: BLE001
+                yield events.error(f"Provider error: {e}")
+                yield events.done("")
+                return
+
+            gate = PermissionGate(db, REGISTRY, auto_approve=False)
+            allowed_tools = state.get("allowed_tools")
+            session = AgentSession(
+                db, conversation, provider, REGISTRY, gate,
+                state.get("params", {}), state["profile"], state.get("model"),
+                allowed_tools=set(allowed_tools) if allowed_tools is not None else None,
+                cancel_event=cancel_event,
+            )
+            # Consume the pending row before resuming (it's superseded once we continue).
+            db.delete(pending)
+            db.commit()
+            yield from session.resume(state, req.decisions)
+        finally:
+            cancel_event.set()
+
+    watcher = asyncio.create_task(_watch_disconnect(request, cancel_event))
+    return StreamingResponse(
+        stream(), media_type="text/event-stream", background=BackgroundTask(watcher.cancel)
+    )

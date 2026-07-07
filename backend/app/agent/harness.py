@@ -15,7 +15,11 @@ from __future__ import annotations
 
 import json
 import logging
+import queue
+import threading
 from collections.abc import Iterator
+from dataclasses import replace
+from typing import Any
 
 from sqlalchemy.orm import Session
 
@@ -45,6 +49,7 @@ class AgentSession:
         ephemeral: bool = False,
         allowed_tools: set[str] | None = None,
         fallback_provider: LLMProvider | None = None,
+        cancel_event: threading.Event | None = None,
     ):
         self.db = db
         self.conversation = conversation
@@ -59,6 +64,11 @@ class AgentSession:
         self.ephemeral = ephemeral
         self.allowed_tools = allowed_tools
         self.final_text = ""
+        # Set by the caller (e.g. the chat router, watching for a client disconnect) so a
+        # user's "Stop" click can actually halt an in-flight turn — kill any running
+        # subprocess and stop the loop — instead of just closing the SSE connection while
+        # the turn keeps running server-side to completion.
+        self.cancel_event = cancel_event
         # Accumulated token usage across this turn (for observability + cost).
         self.turn_usage = {"input": 0, "output": 0, "total": 0}
         self.workspace = workspace_dir(conversation.id)
@@ -68,7 +78,12 @@ class AgentSession:
             db=db,
             runner=get_runner(),
             user_id=getattr(conversation, "user_id", None),
+            auto_approve=gate.auto_approve,
+            cancel_event=cancel_event,
         )
+
+    def _cancelled(self) -> bool:
+        return self.cancel_event is not None and self.cancel_event.is_set()
 
     # -- public entry points ------------------------------------------------
     def run(self, messages: list[dict]) -> Iterator[str]:
@@ -108,6 +123,9 @@ class AgentSession:
 
         used_fallback = False
         for _round in range(max_rounds):
+            if self._cancelled():
+                yield from self._finalize("", tool_steps, all_artifacts)
+                return
             round_text = ""
             pending_calls: list[ToolCall] = []
             stop_reason: str | None = None
@@ -115,6 +133,12 @@ class AgentSession:
                 streamed_any = False
                 try:
                     for delta in self.provider.stream(messages, tools, self.params):
+                        if self._cancelled():
+                            # Best-effort: stop consuming further streamed tokens/tool
+                            # calls as soon as we notice — the provider call itself may
+                            # not be interruptible mid-flight, but we stop paying
+                            # attention (and stop acting on it) immediately.
+                            break
                         if delta.type == "text":
                             streamed_any = True
                             round_text += delta.text or ""
@@ -197,8 +221,11 @@ class AgentSession:
         """Execute auto/approved calls; defer 'ask' calls. Returns True (via StopIteration
         value) if the turn paused awaiting approval."""
         ask_batch: list[ToolCall] = []
+        to_run: list[ToolCall] = []
 
         for call in calls:
+            if self._cancelled():
+                break
             if self.allowed_tools is not None and call.name not in self.allowed_tools:
                 decision = "not_enabled"
             elif decisions is not None and call.id in decisions:
@@ -216,21 +243,106 @@ class AgentSession:
                     content=f"Tool '{call.name}' is not enabled for this turn. Not executed.",
                     is_error=True,
                 )
+                yield from self._emit_result(call, result, tool_steps, all_artifacts, messages)
             elif decision == "deny":
                 result = ToolResult(content=f"Tool '{call.name}' was denied. Not executed.", is_error=True)
+                yield from self._emit_result(call, result, tool_steps, all_artifacts, messages)
             else:
-                yield events.status(f"Running {call.name}…")
-                result = self._execute_tool(call.name, call.arguments)
-                # Snapshot the workspace after a successful mutating tool, so the change
-                # is restorable (undo = restore the previous checkpoint).
+                to_run.append(call)
+
+        # spawn_subagent calls requested together in the same round are the model
+        # explicitly decomposing a task into independent chunks — run those in parallel.
+        # Everything else runs sequentially, as before (most tools mutate the same
+        # workspace files directly and aren't safe to run concurrently).
+        subagent_calls = [c for c in to_run if c.name == "spawn_subagent"]
+        other_calls = [c for c in to_run if c.name != "spawn_subagent"]
+
+        yield from self._run_sequential(other_calls, tool_steps, all_artifacts, messages)
+
+        if len(subagent_calls) >= 2:
+            yield events.status(f"Running {len(subagent_calls)} sub-agents…")
+            results = yield from self._run_calls_concurrently(subagent_calls)
+            for call, result in zip(subagent_calls, results, strict=True):
                 if not result.is_error:
                     self._maybe_checkpoint(call.name)
-
-            yield from self._emit_result(call, result, tool_steps, all_artifacts, messages)
+                yield from self._emit_result(call, result, tool_steps, all_artifacts, messages)
+        else:
+            yield from self._run_sequential(subagent_calls, tool_steps, all_artifacts, messages)
 
         if ask_batch:
             return (yield from self._pause(messages, ask_batch, tool_steps, all_artifacts))
         return False
+
+    def _run_sequential(
+        self,
+        calls: list[ToolCall],
+        tool_steps: list[dict],
+        all_artifacts: list[dict],
+        messages: list[dict],
+    ) -> Iterator[str]:
+        for call in calls:
+            if self._cancelled():
+                break
+            yield events.status(f"Running {call.name}…")
+            result = yield from self._execute_tool_streaming(call.id, call.name, call.arguments)
+            # Snapshot the workspace after a successful mutating tool, so the change is
+            # restorable (undo = restore the previous checkpoint).
+            if not result.is_error:
+                self._maybe_checkpoint(call.name)
+            yield from self._emit_result(call, result, tool_steps, all_artifacts, messages)
+
+    def _run_calls_concurrently(self, calls: list[ToolCall]) -> Iterator[str]:
+        """Run independent tool calls in parallel worker threads, interleaving their live
+        progress, and return their ``ToolResult``\\ s (same order as ``calls``) as the
+        generator's value (consumed via ``yield from``).
+
+        Only used for ``spawn_subagent`` batches: each call gets a *copy* of ``self.ctx``
+        with its own ``progress`` callback (concurrent tools can't share the single
+        ``self.ctx.progress`` the sequential path uses), but the copy still points at the
+        same shared ``db`` session — safe here only because ``spawn_subagent`` opens its
+        own isolated session and never touches ``ctx.db`` (see its module docstring). Do
+        not route a tool that *does* use ``ctx.db`` through this path without giving it
+        the same treatment.
+        """
+        progress_q: queue.Queue[tuple[str, str | None]] = queue.Queue()
+        holders: dict[str, dict[str, Any]] = {c.id: {} for c in calls}
+        names_by_id = {c.id: c.name for c in calls}
+
+        def worker(call: ToolCall) -> None:
+            tool = self.registry.get(call.name)
+            if tool is None:
+                holders[call.id]["result"] = ToolResult(content=f"Unknown tool: {call.name}", is_error=True)
+                progress_q.put((call.id, None))
+                return
+            call_ctx = replace(self.ctx, progress=lambda chunk, cid=call.id: progress_q.put((cid, chunk)))
+            try:
+                holders[call.id]["result"] = tool.run(call_ctx, **call.arguments)
+            except Exception as e:  # noqa: BLE001
+                logger.exception("Tool %s failed", call.name)
+                holders[call.id]["error"] = e
+            finally:
+                progress_q.put((call.id, None))
+
+        threads = [threading.Thread(target=worker, args=(c,), daemon=True) for c in calls]
+        for t in threads:
+            t.start()
+
+        remaining = {c.id for c in calls}
+        while remaining:
+            call_id, chunk = progress_q.get()
+            if chunk is None:
+                remaining.discard(call_id)
+                continue
+            yield events.tool_progress(call_id, names_by_id[call_id], chunk)
+        for t in threads:
+            t.join()
+
+        return [
+            ToolResult(content=f"Tool error: {holders[c.id]['error']}", is_error=True)
+            if "error" in holders[c.id]
+            else holders[c.id]["result"]
+            for c in calls
+        ]
 
     def _pause(
         self,
@@ -310,15 +422,46 @@ class AgentSession:
         except Exception:  # noqa: BLE001
             pass
 
-    def _execute_tool(self, name: str, arguments: dict) -> ToolResult:
+    def _execute_tool_streaming(self, call_id: str, name: str, arguments: dict) -> Iterator[str]:
+        """Run a tool in a worker thread, yielding ``tool_progress`` SSE frames for any
+        output it streams live (see ``ToolContext.progress``); returns the final
+        ``ToolResult`` as the generator's value (consumed via ``yield from``).
+
+        Tools run synchronously and the harness's own loop is a plain generator, so a
+        tool that wants to surface partial output *while it's still running* (a long
+        shell/code execution) needs somewhere else to run — a worker thread that pushes
+        chunks onto a queue, which this generator drains and re-yields as they arrive.
+        """
         tool = self.registry.get(name)
         if tool is None:
             return ToolResult(content=f"Unknown tool: {name}", is_error=True)
-        try:
-            return tool.run(self.ctx, **arguments)
-        except Exception as e:  # noqa: BLE001
-            logger.exception("Tool %s failed", name)
-            return ToolResult(content=f"Tool error: {e}", is_error=True)
+
+        progress_queue: queue.Queue[str | None] = queue.Queue()
+        holder: dict[str, Any] = {}
+
+        def worker() -> None:
+            try:
+                holder["result"] = tool.run(self.ctx, **arguments)
+            except Exception as e:  # noqa: BLE001
+                logger.exception("Tool %s failed", name)
+                holder["error"] = e
+            finally:
+                progress_queue.put(None)  # sentinel: no more progress coming
+
+        self.ctx.progress = progress_queue.put
+        t = threading.Thread(target=worker, daemon=True)
+        t.start()
+        while True:
+            chunk = progress_queue.get()
+            if chunk is None:
+                break
+            yield events.tool_progress(call_id, name, chunk)
+        t.join()
+        self.ctx.progress = None
+
+        if "error" in holder:
+            return ToolResult(content=f"Tool error: {holder['error']}", is_error=True)
+        return holder["result"]
 
     def _finalize(self, final_text: str, tool_steps: list[dict], all_artifacts: list[dict]) -> Iterator[str]:
         if self.ephemeral:

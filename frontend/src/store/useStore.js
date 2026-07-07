@@ -315,14 +315,26 @@ export const useStore = create((set, get) => ({
               )
             : [
                 ...live.toolCalls,
-                { id: ev.id, name: ev.name, arguments: ev.arguments, content: null, is_error: false, artifacts: [] },
+                {
+                  id: ev.id, name: ev.name, arguments: ev.arguments,
+                  content: null, is_error: false, artifacts: [], running: true,
+                },
               ]
           break
         }
+        case 'tool_progress':
+          // Live partial output from a still-running tool (e.g. run_shell) — appended so
+          // the tool card shows progress instead of staying blank until it finishes.
+          // `running` stays true here (only tool_result clears it), so the spinner keeps
+          // showing while output streams in.
+          live.toolCalls = live.toolCalls.map((tc) =>
+            tc.id === ev.id ? { ...tc, content: (tc.content || '') + ev.content } : tc,
+          )
+          break
         case 'tool_result':
           live.toolCalls = live.toolCalls.map((tc) =>
             tc.id === ev.id
-              ? { ...tc, content: ev.content, is_error: ev.is_error, artifacts: ev.artifacts || [] }
+              ? { ...tc, content: ev.content, is_error: ev.is_error, artifacts: ev.artifacts || [], running: false }
               : tc,
           )
           live.status = ''

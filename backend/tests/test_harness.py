@@ -1,4 +1,7 @@
 """Integration/eval tests for the agent loop using scripted fake providers."""
+import threading
+import time
+
 from app.providers.base import StreamDelta, ToolCall
 
 
@@ -60,6 +63,31 @@ class UnexpectedToolProvider:
             )
         else:
             yield StreamDelta(type="text", text="Done.")
+            yield StreamDelta(type="done", stop_reason="stop")
+
+
+class ShellProvider:
+    """Round 1: request run_shell with a caller-supplied command. Round 2: final text."""
+
+    model = "shell-scripted"
+    supports_tools = True
+
+    def __init__(self, command: str, timeout: int = 60):
+        self.command = command
+        self.timeout = timeout
+        self.round = 0
+
+    def stream(self, messages, tools, params):  # noqa: ARG002
+        self.round += 1
+        if self.round == 1:
+            yield StreamDelta(
+                type="tool_calls",
+                tool_calls=[
+                    ToolCall(id="c1", name="run_shell", arguments={"command": self.command, "timeout": self.timeout})
+                ],
+            )
+        else:
+            yield StreamDelta(type="text", text="Ran it.")
             yield StreamDelta(type="done", stop_reason="stop")
 
 
@@ -125,3 +153,114 @@ def test_allowed_tools_denies_unadvertised_tool_calls(db):
 
     assert "web_search" in events
     assert "not enabled for this turn" in events
+
+
+def test_tool_progress_events_stream_live_shell_output(db):
+    conv = _new_conversation(db)
+    session = _session(db, conv, ShellProvider("echo hello-world"))
+    events = "".join(session.run([{"role": "system", "content": "s"},
+                                  {"role": "user", "content": "run it"}]))
+
+    assert "tool_progress" in events
+    assert "hello-world" in events
+
+
+def test_cancel_event_set_before_run_skips_provider_entirely(db):
+    # If the turn is already cancelled before the first round, the loop must finalize
+    # without ever calling the model (and without hanging).
+    conv = _new_conversation(db)
+    provider = ScriptedProvider()
+    cancel = threading.Event()
+    cancel.set()
+    session = _session(db, conv, provider, cancel_event=cancel)
+
+    events = "".join(session.run([{"role": "system", "content": "s"},
+                                  {"role": "user", "content": "hi"}]))
+
+    assert provider.round == 0
+    assert '"type": "done"' in events
+
+
+def test_cancel_event_kills_in_flight_shell_command_promptly(db):
+    # Regression test: cancelling a turn must actually kill the running subprocess (and
+    # its children) rather than leaving the harness blocked until the command's own
+    # timeout — see the process-tree-kill fix in app.sandbox.runner.
+    conv = _new_conversation(db)
+    cancel = threading.Event()
+    provider = ShellProvider("echo start; sleep 5; echo end", timeout=30)
+    session = _session(db, conv, provider, cancel_event=cancel)
+
+    def canceller():
+        time.sleep(0.3)
+        cancel.set()
+
+    threading.Thread(target=canceller, daemon=True).start()
+
+    start = time.monotonic()
+    events = "".join(session.run([{"role": "system", "content": "s"},
+                                  {"role": "user", "content": "run it"}]))
+    elapsed = time.monotonic() - start
+
+    assert elapsed < 3.0, f"cancellation took {elapsed:.1f}s — the child process wasn't killed promptly"
+    assert "start" in events
+    # "end" appears once already, in the echoed tool-call arguments (the command string
+    # itself) — it must not appear again as actual output, which would mean the sleep
+    # (and the echo after it) ran to completion instead of being killed.
+    assert events.count("end") == 1
+    assert "cancelled" in events.lower()
+
+
+class TwoSubagentsProvider:
+    """Round 1: request two spawn_subagent calls at once. Round 2: final text."""
+
+    model = "two-subagents"
+    supports_tools = True
+
+    def __init__(self):
+        self.round = 0
+
+    def stream(self, messages, tools, params):  # noqa: ARG002
+        self.round += 1
+        if self.round == 1:
+            yield StreamDelta(
+                type="tool_calls",
+                tool_calls=[
+                    ToolCall(id="c1", name="spawn_subagent", arguments={"task": "task A"}),
+                    ToolCall(id="c2", name="spawn_subagent", arguments={"task": "task B"}),
+                ],
+            )
+        else:
+            yield StreamDelta(type="text", text="Both done.")
+            yield StreamDelta(type="done", stop_reason="stop")
+
+
+class SlowSubagentProvider:
+    """Stands in for each sub-agent's own model call: takes a bit of real wall-clock
+    time, so sequential-vs-concurrent execution is distinguishable by elapsed time."""
+
+    model = "slow-subagent"
+    supports_tools = True
+
+    def stream(self, messages, tools, params):  # noqa: ARG002
+        time.sleep(0.3)
+        yield StreamDelta(type="text", text="subagent result")
+        yield StreamDelta(type="done", stop_reason="stop")
+
+
+def test_concurrent_spawn_subagent_calls_run_in_parallel(db, monkeypatch):
+    # Regression test for the fix in AgentSession._run_calls_concurrently: two
+    # spawn_subagent calls requested in the same round used to run one after another;
+    # they should now run in parallel worker threads.
+    conv = _new_conversation(db)
+    monkeypatch.setattr(
+        "app.providers.registry.build_provider", lambda profile, model=None: SlowSubagentProvider()
+    )
+
+    session = _session(db, conv, TwoSubagentsProvider())
+    start = time.monotonic()
+    events = "".join(session.run([{"role": "system", "content": "s"},
+                                  {"role": "user", "content": "do both"}]))
+    elapsed = time.monotonic() - start
+
+    assert elapsed < 0.55, f"took {elapsed:.2f}s — looks sequential (2x0.3s), not concurrent"
+    assert events.count("subagent result") == 2

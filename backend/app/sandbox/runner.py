@@ -13,11 +13,13 @@ from __future__ import annotations
 import logging
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import threading
 import time
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -25,12 +27,46 @@ from pathlib import Path
 MAX_OUTPUT_CHARS = 30_000
 DEFAULT_TIMEOUT = 60
 
+# How often the local runner's wait-loop wakes to check for a timeout or a cancellation
+# request. Small enough that "Stop" / a timeout feels responsive without busy-waiting.
+_POLL_INTERVAL_S = 0.2
+
+#: called with each new chunk of stdout/stderr as it's produced, for live progress.
+OutputCallback = Callable[[str], None]
+
+
+def _tree_kill_popen_kwargs() -> dict:
+    """Extra ``Popen`` kwargs so the child starts its own process group/session — required
+    so a timeout/cancel can kill the whole tree, not just the immediate child.
+
+    Without this, killing e.g. a ``/bin/sh -c '... some-build-tool ...'`` process only
+    kills the shell; any process it forked (the actual build/test tool) is orphaned and
+    keeps running to completion regardless of the timeout, silently burning CPU after we've
+    already reported the run as timed out/cancelled.
+    """
+    if sys.platform == "win32":
+        return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+    return {"start_new_session": True}
+
+
+def _kill_process_tree(proc: subprocess.Popen) -> None:
+    """Kill ``proc`` and everything it spawned (see ``_tree_kill_popen_kwargs``)."""
+    try:
+        if sys.platform == "win32":
+            subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)], capture_output=True, timeout=5)
+        else:
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+    except (ProcessLookupError, OSError):
+        pass
+    finally:
+        proc.kill()  # belt-and-suspenders: ensure the immediate child is dead either way
+
 # Inline image preview extensions (rendered in the chat); all other produced files are
 # still captured as downloadable artifacts and shown in the workspace files panel.
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp"}
 
 # Directories/files to ignore when detecting produced artifacts (internal/noise).
-_IGNORE_DIRS = {".git", ".hutchchat", "__pycache__", "node_modules", ".venv", ".cache"}
+IGNORE_DIRS = {".git", ".hutchchat", "__pycache__", "node_modules", ".venv", ".cache"}
 _IGNORE_EXTS = {".pyc", ".pyo"}
 MAX_ARTIFACTS = 30
 
@@ -44,6 +80,8 @@ class ExecResult:
     duration_s: float = 0.0
     # New/changed files detected after the run, relative to the workspace.
     artifacts: list[dict] = field(default_factory=list)
+    # True if a cancellation request (not a timeout) killed the process early.
+    cancelled: bool = False
 
 
 def _truncate(s: str) -> str:
@@ -54,10 +92,25 @@ def _truncate(s: str) -> str:
 
 class SandboxRunner(ABC):
     @abstractmethod
-    def run_command(self, argv: list[str], workdir: Path, timeout: int = DEFAULT_TIMEOUT) -> ExecResult: ...
+    def run_command(
+        self,
+        argv: list[str],
+        workdir: Path,
+        timeout: int = DEFAULT_TIMEOUT,
+        on_output: OutputCallback | None = None,
+        cancel_event: threading.Event | None = None,
+    ) -> ExecResult: ...
 
     @abstractmethod
-    def run_code(self, code: str, language: str, workdir: Path, timeout: int = DEFAULT_TIMEOUT) -> ExecResult: ...
+    def run_code(
+        self,
+        code: str,
+        language: str,
+        workdir: Path,
+        timeout: int = DEFAULT_TIMEOUT,
+        on_output: OutputCallback | None = None,
+        cancel_event: threading.Event | None = None,
+    ) -> ExecResult: ...
 
     def close_session(self, workdir: Path) -> None:
         """Tear down any per-conversation remote session for this workspace.
@@ -90,7 +143,7 @@ def collect_artifacts(workdir: Path, before: dict[str, float]) -> list[dict]:
         if not p.is_file():
             continue
         rel = p.relative_to(workdir)
-        if any(part in _IGNORE_DIRS for part in rel.parts):
+        if any(part in IGNORE_DIRS for part in rel.parts):
             continue
         if p.suffix.lower() in _IGNORE_EXTS:
             continue
@@ -110,6 +163,106 @@ def collect_artifacts(workdir: Path, before: dict[str, float]) -> list[dict]:
     return arts
 
 
+@dataclass
+class _RawResult:
+    stdout: str
+    stderr: str
+    exit_code: int
+    timed_out: bool = False
+    cancelled: bool = False
+
+
+def _run_popen(
+    argv: list[str],
+    cwd: Path,
+    timeout: int,
+    on_output: OutputCallback | None = None,
+    cancel_event: threading.Event | None = None,
+    env: dict | None = None,
+    stdin: str | None = None,
+) -> _RawResult:
+    """Run ``argv``, streaming stdout/stderr live via ``on_output`` as it's produced, and
+    killing the process early on a timeout or a cancellation request.
+
+    ``subprocess.run`` can't do either: it blocks until exit and only hands back output
+    once the process is already gone, and a "Stop" click has nothing to kill until then.
+    Popen + a short poll loop fixes both — shared by the local and container runners
+    since both just wrap a child process.
+    """
+    stdout_chunks: list[str] = []
+    stderr_chunks: list[str] = []
+
+    def _reader(stream, sink: list[str], label: str) -> None:
+        try:
+            for line in iter(stream.readline, ""):
+                sink.append(line)
+                if on_output:
+                    try:
+                        on_output(f"[{label}] {line}" if label else line)
+                    except Exception:  # noqa: BLE001
+                        pass
+        finally:
+            stream.close()
+
+    proc = subprocess.Popen(  # noqa: S603 - argv is caller-constructed, not shell-interpreted here
+        argv,
+        cwd=str(cwd),
+        stdin=subprocess.PIPE if stdin is not None else subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        errors="replace",
+        bufsize=1,
+        env=env,
+        **_tree_kill_popen_kwargs(),
+    )
+    readers = [
+        threading.Thread(target=_reader, args=(proc.stdout, stdout_chunks, ""), daemon=True),
+        threading.Thread(target=_reader, args=(proc.stderr, stderr_chunks, "stderr"), daemon=True),
+    ]
+    for t in readers:
+        t.start()
+    if stdin is not None:
+        try:
+            proc.stdin.write(stdin)
+        finally:
+            proc.stdin.close()
+
+    start = time.monotonic()
+    timed_out = False
+    cancelled = False
+    while True:
+        try:
+            proc.wait(timeout=_POLL_INTERVAL_S)
+            break
+        except subprocess.TimeoutExpired:
+            if time.monotonic() - start > timeout:
+                timed_out = True
+                _kill_process_tree(proc)
+                proc.wait()
+                break
+            if cancel_event is not None and cancel_event.is_set():
+                cancelled = True
+                _kill_process_tree(proc)
+                proc.wait()
+                break
+    for t in readers:
+        t.join(timeout=5)
+
+    stderr = "".join(stderr_chunks)
+    if timed_out:
+        stderr += f"\n[timed out after {timeout}s]"
+    elif cancelled:
+        stderr += "\n[cancelled]"
+    return _RawResult(
+        stdout="".join(stdout_chunks),
+        stderr=stderr,
+        exit_code=proc.returncode if proc.returncode is not None else -1,
+        timed_out=timed_out,
+        cancelled=cancelled,
+    )
+
+
 class LocalSubprocessRunner(SandboxRunner):
     def _snapshot(self, workdir: Path) -> dict[str, float]:
         return snapshot_dir(workdir)
@@ -117,54 +270,63 @@ class LocalSubprocessRunner(SandboxRunner):
     def _collect_artifacts(self, workdir: Path, before: dict[str, float]) -> list[dict]:
         return collect_artifacts(workdir, before)
 
-    def _exec(self, argv: list[str], workdir: Path, timeout: int, stdin: str | None = None) -> ExecResult:
+    def _exec(
+        self,
+        argv: list[str],
+        workdir: Path,
+        timeout: int,
+        on_output: OutputCallback | None = None,
+        cancel_event: threading.Event | None = None,
+        stdin: str | None = None,
+    ) -> ExecResult:
         workdir.mkdir(parents=True, exist_ok=True)
         before = self._snapshot(workdir)
         env = dict(os.environ)
         env["PYTHONUNBUFFERED"] = "1"
         start = time.monotonic()
-        timed_out = False
         try:
-            proc = subprocess.run(
-                argv,
-                cwd=str(workdir),
-                input=stdin,
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-                env=env,
+            raw = _run_popen(
+                argv, workdir, timeout, on_output=on_output, cancel_event=cancel_event, env=env, stdin=stdin
             )
-            stdout, stderr, code = proc.stdout, proc.stderr, proc.returncode
-        except subprocess.TimeoutExpired as e:
-            timed_out = True
-            stdout = e.stdout or ""
-            stderr = (e.stderr or "") + f"\n[timed out after {timeout}s]"
-            code = -1
-            if isinstance(stdout, bytes):
-                stdout = stdout.decode("utf-8", "replace")
-            if isinstance(stderr, bytes):
-                stderr = stderr.decode("utf-8", "replace")
         except FileNotFoundError as e:
             return ExecResult(stdout="", stderr=f"Executable not found: {e}", exit_code=127)
 
         return ExecResult(
-            stdout=_truncate(stdout),
-            stderr=_truncate(stderr),
-            exit_code=code,
-            timed_out=timed_out,
+            stdout=_truncate(raw.stdout),
+            stderr=_truncate(raw.stderr),
+            exit_code=raw.exit_code,
+            timed_out=raw.timed_out,
+            cancelled=raw.cancelled,
             duration_s=round(time.monotonic() - start, 3),
             artifacts=self._collect_artifacts(workdir, before),
         )
 
-    def run_command(self, argv: list[str], workdir: Path, timeout: int = DEFAULT_TIMEOUT) -> ExecResult:
-        return self._exec(argv, workdir, timeout)
+    def run_command(
+        self,
+        argv: list[str],
+        workdir: Path,
+        timeout: int = DEFAULT_TIMEOUT,
+        on_output: OutputCallback | None = None,
+        cancel_event: threading.Event | None = None,
+    ) -> ExecResult:
+        return self._exec(argv, workdir, timeout, on_output=on_output, cancel_event=cancel_event)
 
-    def run_code(self, code: str, language: str, workdir: Path, timeout: int = DEFAULT_TIMEOUT) -> ExecResult:
+    def run_code(
+        self,
+        code: str,
+        language: str,
+        workdir: Path,
+        timeout: int = DEFAULT_TIMEOUT,
+        on_output: OutputCallback | None = None,
+        cancel_event: threading.Event | None = None,
+    ) -> ExecResult:
         if language == "python":
-            return self._exec([sys.executable, "-c", code], workdir, timeout)
-        if language in ("node", "javascript"):
-            return self._exec(["node", "-e", code], workdir, timeout)
-        return ExecResult(stdout="", stderr=f"Unsupported language: {language}", exit_code=2)
+            argv = [sys.executable, "-c", code]
+        elif language in ("node", "javascript"):
+            argv = ["node", "-e", code]
+        else:
+            return ExecResult(stdout="", stderr=f"Unsupported language: {language}", exit_code=2)
+        return self._exec(argv, workdir, timeout, on_output=on_output, cancel_event=cancel_event)
 
 
 # ---------------------------------------------------------------------------
@@ -223,7 +385,15 @@ class ContainerRunner(SandboxRunner):
         ]
         return flags
 
-    def _run(self, image: str, inner_argv: list[str], workdir: Path, timeout: int) -> ExecResult:
+    def _run(
+        self,
+        image: str,
+        inner_argv: list[str],
+        workdir: Path,
+        timeout: int,
+        on_output: OutputCallback | None = None,
+        cancel_event: threading.Event | None = None,
+    ) -> ExecResult:
         workdir.mkdir(parents=True, exist_ok=True)
         before = snapshot_dir(workdir)
         argv = [
@@ -232,42 +402,59 @@ class ContainerRunner(SandboxRunner):
             image, *inner_argv,
         ]
         start = time.monotonic()
-        timed_out = False
         try:
-            proc = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
-            stdout, stderr, code = proc.stdout, proc.stderr, proc.returncode
-        except subprocess.TimeoutExpired as e:
-            timed_out = True
-            stdout = (e.stdout or "") if isinstance(e.stdout, str) else (e.stdout or b"").decode("utf-8", "replace")
-            stderr = ((e.stderr or "") if isinstance(e.stderr, str) else (e.stderr or b"").decode("utf-8", "replace"))
-            stderr += f"\n[timed out after {timeout}s]"
-            code = -1
+            raw = _run_popen(argv, workdir, timeout, on_output=on_output, cancel_event=cancel_event)
         except FileNotFoundError as e:
             return ExecResult(stdout="", stderr=f"Container engine not found: {e}", exit_code=127)
 
         return ExecResult(
-            stdout=_truncate(stdout), stderr=_truncate(stderr), exit_code=code,
-            timed_out=timed_out, duration_s=round(time.monotonic() - start, 3),
+            stdout=_truncate(raw.stdout), stderr=_truncate(raw.stderr), exit_code=raw.exit_code,
+            timed_out=raw.timed_out, cancelled=raw.cancelled,
+            duration_s=round(time.monotonic() - start, 3),
             artifacts=collect_artifacts(workdir, before),
         )
 
-    def run_command(self, argv: list[str], workdir: Path, timeout: int = DEFAULT_TIMEOUT) -> ExecResult:
+    def run_command(
+        self,
+        argv: list[str],
+        workdir: Path,
+        timeout: int = DEFAULT_TIMEOUT,
+        on_output: OutputCallback | None = None,
+        cancel_event: threading.Event | None = None,
+    ) -> ExecResult:
         # Normalize host shell wrappers (cmd /c, /bin/sh -c) to a container shell command.
         if len(argv) >= 3 and argv[0] in ("cmd", "/bin/sh", "sh") and argv[1] in ("/c", "-c"):
             command = argv[2]
         else:
             command = " ".join(argv)
-        return self._run(self.cfg["python_image"], ["sh", "-c", command], workdir, timeout)
+        return self._run(
+            self.cfg["python_image"], ["sh", "-c", command], workdir, timeout,
+            on_output=on_output, cancel_event=cancel_event,
+        )
 
-    def run_code(self, code: str, language: str, workdir: Path, timeout: int = DEFAULT_TIMEOUT) -> ExecResult:
+    def run_code(
+        self,
+        code: str,
+        language: str,
+        workdir: Path,
+        timeout: int = DEFAULT_TIMEOUT,
+        on_output: OutputCallback | None = None,
+        cancel_event: threading.Event | None = None,
+    ) -> ExecResult:
         run_dir = workdir / ".phlox"
         run_dir.mkdir(parents=True, exist_ok=True)
         if language == "python":
             (run_dir / "run.py").write_text(code, encoding="utf-8")
-            return self._run(self.cfg["python_image"], ["python", "/work/.phlox/run.py"], workdir, timeout)
+            return self._run(
+                self.cfg["python_image"], ["python", "/work/.phlox/run.py"], workdir, timeout,
+                on_output=on_output, cancel_event=cancel_event,
+            )
         if language in ("node", "javascript"):
             (run_dir / "run.js").write_text(code, encoding="utf-8")
-            return self._run(self.cfg["node_image"], ["node", "/work/.phlox/run.js"], workdir, timeout)
+            return self._run(
+                self.cfg["node_image"], ["node", "/work/.phlox/run.js"], workdir, timeout,
+                on_output=on_output, cancel_event=cancel_event,
+            )
         return ExecResult(stdout="", stderr=f"Unsupported language: {language}", exit_code=2)
 
 
@@ -395,7 +582,11 @@ class AgentCoreCodeInterpreterRunner(SandboxRunner):
         )
 
     @staticmethod
-    def _consume(resp) -> dict:
+    def _consume(
+        resp,
+        on_output: OutputCallback | None = None,
+        cancel_event: threading.Event | None = None,
+    ) -> dict:
         """Drain an ``invoke_code_interpreter`` response into one result dict.
 
         The response carries an event stream under ``stream``; each ``result`` event has
@@ -403,11 +594,21 @@ class AgentCoreCodeInterpreterRunner(SandboxRunner):
         execute* tools) and ``result.content[]`` (MCP-style ``text``/``resource`` blocks,
         used by the file tools). Shapes verified against a live AgentCore Code Interpreter
         and the ``bedrock-agentcore`` botocore model.
+
+        ``on_output``/``cancel_event`` only matter for the execute* call sites: since AWS
+        already streams events as they're produced, forwarding each chunk live and bailing
+        out early on cancellation costs nothing extra here. There's no way to actually
+        interrupt the remote execution itself (no "kill" API for a live invoke), so
+        cancellation here just stops us from waiting on/reporting further output — the
+        remote call still runs to completion in the session.
         """
         out = {"stdout": "", "stderr": "", "exit_code": 0, "is_error": False,
-               "has_structured": False, "content": [], "text": ""}
+               "has_structured": False, "content": [], "text": "", "cancelled": False}
         text_parts: list[str] = []
         for event in resp.get("stream", []):
+            if cancel_event is not None and cancel_event.is_set():
+                out["cancelled"] = True
+                break
             result = event.get("result")
             if not result:
                 continue
@@ -416,8 +617,11 @@ class AgentCoreCodeInterpreterRunner(SandboxRunner):
             sc = result.get("structuredContent")
             if sc:
                 out["has_structured"] = True
-                out["stdout"] += sc.get("stdout") or ""
-                out["stderr"] += sc.get("stderr") or ""
+                chunk_out, chunk_err = sc.get("stdout") or "", sc.get("stderr") or ""
+                out["stdout"] += chunk_out
+                out["stderr"] += chunk_err
+                if on_output and (chunk_out or chunk_err):
+                    on_output(chunk_out + (f"[stderr] {chunk_err}" if chunk_err else ""))
                 if sc.get("exitCode") is not None:
                     try:
                         out["exit_code"] = int(sc["exitCode"])
@@ -427,6 +631,8 @@ class AgentCoreCodeInterpreterRunner(SandboxRunner):
                 out["content"].append(block)
                 if block.get("type") == "text" and block.get("text"):
                     text_parts.append(block["text"])
+                    if on_output:
+                        on_output(block["text"])
         # executeCommand returns terminal CRLF line endings; normalize to match the
         # local/container runners (plain \n) so output is consistent across runners.
         out["stdout"] = out["stdout"].replace("\r\n", "\n")
@@ -441,7 +647,7 @@ class AgentCoreCodeInterpreterRunner(SandboxRunner):
             if not p.is_file():
                 continue
             rel = p.relative_to(workdir)
-            if any(part in _IGNORE_DIRS for part in rel.parts):
+            if any(part in IGNORE_DIRS for part in rel.parts):
                 continue
             try:
                 if p.stat().st_size > self.max_sync_bytes:
@@ -505,7 +711,7 @@ class AgentCoreCodeInterpreterRunner(SandboxRunner):
             name = block.get("name")
             if not name or "/" in name or name in (".", ".."):
                 continue
-            if name in _IGNORE_DIRS:
+            if name in IGNORE_DIRS:
                 continue
             if depth == 0 and name in baseline:
                 continue  # interpreter-internal / pre-existing entry — not ours
@@ -567,7 +773,14 @@ class AgentCoreCodeInterpreterRunner(SandboxRunner):
                 logger.warning("AgentCore write_back %s failed: %s", rel, exc)
 
     # -- SandboxRunner interface --------------------------------------------
-    def run_command(self, argv: list[str], workdir: Path, timeout: int = DEFAULT_TIMEOUT) -> ExecResult:
+    def run_command(
+        self,
+        argv: list[str],
+        workdir: Path,
+        timeout: int = DEFAULT_TIMEOUT,
+        on_output: OutputCallback | None = None,
+        cancel_event: threading.Event | None = None,
+    ) -> ExecResult:
         # Normalize host shell wrappers (cmd /c, /bin/sh -c) to a single command string.
         if len(argv) >= 3 and argv[0] in ("cmd", "/bin/sh", "sh") and argv[1] in ("/c", "-c"):
             command = argv[2]
@@ -576,10 +789,20 @@ class AgentCoreCodeInterpreterRunner(SandboxRunner):
         return self._run(
             lambda sid: self._invoke(sid, "executeCommand", {"command": command}),
             workdir,
-            lambda: self._fallback.run_command(argv, workdir, timeout),
+            lambda: self._fallback.run_command(argv, workdir, timeout, on_output=on_output, cancel_event=cancel_event),
+            on_output=on_output,
+            cancel_event=cancel_event,
         )
 
-    def run_code(self, code: str, language: str, workdir: Path, timeout: int = DEFAULT_TIMEOUT) -> ExecResult:
+    def run_code(
+        self,
+        code: str,
+        language: str,
+        workdir: Path,
+        timeout: int = DEFAULT_TIMEOUT,
+        on_output: OutputCallback | None = None,
+        cancel_event: threading.Event | None = None,
+    ) -> ExecResult:
         if language == "python":
             lang = "python"
         elif language in ("node", "javascript"):
@@ -591,17 +814,26 @@ class AgentCoreCodeInterpreterRunner(SandboxRunner):
         return self._run(
             lambda sid: self._invoke(sid, "executeCode", {"language": lang, "code": code}),
             workdir,
-            lambda: self._fallback.run_code(code, language, workdir, timeout),
+            lambda: self._fallback.run_code(code, language, workdir, timeout, on_output=on_output, cancel_event=cancel_event),
+            on_output=on_output,
+            cancel_event=cancel_event,
         )
 
-    def _run(self, do_invoke, workdir: Path, fallback) -> ExecResult:
+    def _run(
+        self,
+        do_invoke,
+        workdir: Path,
+        fallback,
+        on_output: OutputCallback | None = None,
+        cancel_event: threading.Event | None = None,
+    ) -> ExecResult:
         workdir.mkdir(parents=True, exist_ok=True)
         start = time.monotonic()
         try:
             sid = self._session_for(workdir)
             before = snapshot_dir(workdir)
             self._sync_in(sid, workdir)
-            res = self._consume(do_invoke(sid))
+            res = self._consume(do_invoke(sid), on_output=on_output, cancel_event=cancel_event)
             self._sync_out(sid, workdir)
             if res["has_structured"]:
                 # execute* tools: trust the clean structuredContent split.
@@ -617,6 +849,7 @@ class AgentCoreCodeInterpreterRunner(SandboxRunner):
                 stdout=_truncate(stdout),
                 stderr=_truncate(stderr),
                 exit_code=exit_code,
+                cancelled=res.get("cancelled", False),
                 duration_s=round(time.monotonic() - start, 3),
                 artifacts=collect_artifacts(workdir, before),
             )

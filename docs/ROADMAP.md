@@ -22,16 +22,34 @@ The things a user *feels* immediately; they make it a real agent, not "chat that
   wired in `routers/chat.py`.
 - [x] **Planning + sub-agents.** `update_todos` (plan tool, persisted per workspace) and
   `spawn_subagent` (nested ephemeral `AgentSession` with a scoped toolset in the shared
-  workspace, returns a report). _Implemented in:_ `agent/tools/planning.py`,
-  `agent/tools/subagent.py`, `agent/harness.py` (ephemeral + `allowed_tools`).
+  workspace, returns a report). It inherits the parent turn's real approval state instead
+  of granting itself one (`interactive=False` in `PermissionGate` — ask-tier tools deny
+  rather than hang/bypass when unattended), and opens its own DB session so multiple
+  `spawn_subagent` calls in the same round can run **concurrently** in worker threads
+  instead of one after another. _Implemented in:_ `agent/tools/planning.py`,
+  `agent/tools/subagent.py`, `agent/harness.py` (ephemeral + `allowed_tools` +
+  `_run_calls_concurrently`), `agent/permissions.py` (`interactive`).
 - [x] **Workspace checkpointing / undo.** Each workspace is a git repo; mutating tools
   auto-snapshot after running; list/restore via tools, `/api/checkpoints`, and the header
-  History modal. _Implemented in:_ `workspace/checkpoints.py`,
-  `agent/tools/checkpoint.py`, `routers/checkpoints.py`, `components/chat/CheckpointsModal.jsx`.
-- [x] **Steering & follow-up queue.** Type while a turn is streaming to queue a follow-up
-  that auto-sends when the turn finishes; Stop + the approval pause/resume cover
-  interruption. _Implemented in:_ store `queued`/`resolveApproval`, `Composer.jsx`.
-  (True token-level mid-run injection is out of scope for the SSE model.)
+  History modal. A per-workspace `RLock` serializes the git operations now that concurrent
+  sub-agents can checkpoint the same workspace at once. _Implemented in:_
+  `workspace/checkpoints.py`, `agent/tools/checkpoint.py`, `routers/checkpoints.py`,
+  `components/chat/CheckpointsModal.jsx`.
+- [x] **Steering, follow-up queue & real cancellation.** Type while a turn is streaming to
+  queue a follow-up that auto-sends when the turn finishes; the approval pause/resume
+  covers interruption for that path. **Stop** now actually cancels the turn server-side —
+  a background task watches for the client disconnecting, sets a shared `cancel_event`,
+  and the harness/sandbox runner kill any in-flight subprocess (whole process **tree**, not
+  just the immediate child) instead of leaving it running to completion after the SSE
+  connection is gone. _Implemented in:_ `routers/chat.py` (`_watch_disconnect`),
+  `agent/harness.py` (`cancel_event`, `_cancelled`), `sandbox/runner.py`
+  (`_kill_process_tree`). (True token-level mid-run injection is still out of scope for the
+  SSE model.)
+- [x] **Live tool output streaming.** `run_shell`/`execute_python`/`execute_node` stream
+  stdout/stderr back as `tool_progress` SSE events while the command runs, instead of only
+  showing output once it finishes. _Implemented in:_ `agent/harness.py`
+  (`_execute_tool_streaming`), `agent/events.py` (`tool_progress`), `sandbox/runner.py`
+  (`on_output` callback threaded through all three runners), `ToolCallCard.jsx`.
 
 ## Tier 2 — Knowledge & memory
 
@@ -86,6 +104,11 @@ The things a user *feels* immediately; they make it a real agent, not "chat that
   Documents, Memory) and *admin* (MCP Servers, Tools, Users); admin routes gated by
   `require_admin`; admin tabs/links hidden for non-admins; Users management UI.
   _Implemented in:_ `auth/deps.require_admin`, `SettingsDrawer.jsx`, `UsersPanel.jsx`.
+- [x] **SSRF guard on `web_fetch`.** Blocks private/loopback/link-local addresses (incl.
+  the cloud metadata IP) by default, re-checked on every redirect hop so a public host
+  can't 302 its way to an internal one. File-only allowlist (`web_fetch` in `config.yml`)
+  for legitimate internal targets. _Implemented in:_ `agent/tools/web.py` (`_ssrf_guard`),
+  `config.py` (`get_web_fetch_config`).
 - [x] **Container sandbox (Podman/Docker).** `ContainerRunner` behind the `SandboxRunner`
   seam, targeting the **Docker-compatible CLI** (verified with **Podman** on Windows/WSL2,
   also works with Docker; portable to macOS/Linux). Per-execution ephemeral container with

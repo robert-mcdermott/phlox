@@ -11,8 +11,8 @@
 # (Settings → Admin → Configuration), with no restart: provider `profiles`, model `pricing`,
 # `resilience`, generation `defaults`, and the sandbox container *limits*. Those overrides
 # are stored in the database and take precedence over this file. The sections that stay
-# file-only (for bootstrap/security): `auth` (incl. jwt_secret), `vector_store`, the sandbox
-# `runner` *type*, and `observability.otel`/`request_logging`.
+# file-only (for bootstrap/security): `auth` (incl. jwt_secret), `vector_store`, `web_fetch`,
+# the sandbox `runner` *type*, and `observability.otel`/`request_logging`.
 
 # Which profile is active on first launch (can be changed in the UI afterwards).
 default_profile: local-ollama
@@ -153,6 +153,20 @@ resilience:
 # Optional: point at a SearXNG instance with JSON output enabled.
 web_search:
   searxng_url: ""              # e.g. http://localhost:8080 (or set SEARXNG_URL)
+
+# web_fetch SSRF guard. FILE-ONLY (not in the admin UI — like the sandbox runner type,
+# loosening this at runtime would be a security surprise). By default `web_fetch` refuses
+# to reach private/loopback/link-local addresses (incl. the cloud metadata IP,
+# 169.254.169.254), so a prompt can't use the agent as a pivot into your internal network.
+web_fetch:
+  allow_private_networks: false   # true disables the guard entirely (fetch any address)
+  # Hostnames, IPs, or CIDR ranges allowed through the guard even though they're
+  # private/internal — e.g. an internal API you want the agent to be able to call.
+  allowlist_hosts: []
+  # allowlist_hosts:
+  #   - "internal-api.corp.local"
+  #   - "10.0.5.20"
+  #   - "192.168.1.0/24"
 
 # Code/shell execution sandbox.
 #   runner: local      -> run on the host (fast, trusts the host; fine for single-user/dev)

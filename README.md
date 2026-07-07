@@ -169,8 +169,8 @@ e.g. Ollama's `nomic-embed-text` — so the whole stack stays offline.
 > profiles, model pricing, resilience, generation defaults, and sandbox limits **live** in
 > **Settings → (Admin) Configuration** (overrides are stored in the DB and applied
 > immediately). API keys there are write-only/masked. Bootstrap-sensitive settings (`auth`,
-> `vector_store`, the sandbox runner *type*, OTel) stay file-only and need a restart. See
-> [docs/AUTH.md](docs/AUTH.md) §admin config.
+> `vector_store`, `web_fetch` (SSRF-guard allowlist), the sandbox runner *type*, OTel) stay
+> file-only and need a restart. See [docs/AUTH.md](docs/AUTH.md) §admin config.
 
 ### Sign in
 
@@ -239,7 +239,12 @@ cd backend && uv run python -m evals.run_evals
   untrusted/multi-user execution use `sandbox.runner: container` (on-host, isolated) or
   `sandbox.runner: agentcore` (off-host AWS microVM) ([docs/SANDBOX.md](docs/SANDBOX.md)).
 - Mutating/execution tools default to the **`ask`** permission policy; "Agent mode"
-  auto-approves for a turn.
+  auto-approves for a turn. Sub-agents (`spawn_subagent`) inherit that same approval
+  state rather than granting themselves a bypass — if the turn isn't in Agent mode,
+  ask-tier tools a sub-agent tries to run are denied, not silently allowed.
+- **`web_fetch`** refuses private/loopback/link-local addresses (incl. the cloud metadata
+  IP) by default, so it can't be used to reach your internal network. Configurable via
+  `web_fetch` in `config.yml` (file-only) — see `config.yml.example`.
 - **Database:** SQLite by default; set `DATABASE_URL` to deploy against Postgres instead
   ([docs/DOCKER.md](docs/DOCKER.md)).
 - **Sensitive data (PHI):** audit logging, secrets management, and data governance are

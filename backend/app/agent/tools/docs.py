@@ -42,7 +42,7 @@ class SearchDocuments(Tool):
         hits = search_chunks(
             ctx.db, query, top_k=top_k,
             conversation_id=ctx.conversation_id, user_id=ctx.user_id,
-            document_ids=document_ids,
+            document_ids=document_ids, assistant_id=ctx.assistant_id,
         )
         if not hits:
             return ToolResult(content="No relevant passages found in uploaded documents.")

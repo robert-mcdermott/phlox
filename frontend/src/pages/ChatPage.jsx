@@ -3,6 +3,7 @@ import { AlertTriangle, Ban } from 'lucide-react'
 import Message from '../components/chat/Message'
 import Composer from '../components/chat/Composer'
 import ApprovalPrompt from '../components/chat/ApprovalPrompt'
+import AssistantAvatar from '../components/assistants/AssistantAvatar'
 import { useStore } from '../store/useStore'
 
 const fmtUsd = (n) =>
@@ -52,16 +53,66 @@ const SUGGESTIONS = [
 
 function Welcome() {
   const send = useStore((s) => s.sendMessage)
+  const assistants = useStore((s) => s.assistants)
+  const activeAssistantId = useStore((s) => s.activeAssistantId)
+  const selectAssistant = useStore((s) => s.selectAssistant)
+  const assistant = assistants.find((a) => a.id === activeAssistantId) || null
+
+  const suggestions = assistant?.prompt_suggestions?.length
+    ? assistant.prompt_suggestions.map((text) => ({ text }))
+    : assistant
+      ? []
+      : SUGGESTIONS
+
   return (
     <div className="flex h-full flex-col items-center justify-center px-4 text-center">
-      <img src="/phlox-logo.svg" alt="Phlox" className="mb-6 h-14" />
-      <h1 className="mb-2 text-2xl font-semibold text-content">How can I help you today?</h1>
+      {assistant ? (
+        <AssistantAvatar assistant={assistant} size={56} className="mb-6" />
+      ) : (
+        <img src="/phlox-logo.svg" alt="Phlox" className="mb-6 h-14" />
+      )}
+      <h1 className="mb-2 text-2xl font-semibold text-content">
+        {assistant ? assistant.name : 'How can I help you today?'}
+      </h1>
       <p className="mb-8 max-w-md text-muted">
-        Chat, run code, search your documents, and use connected tools — powered by your
-        choice of model provider.
+        {assistant
+          ? assistant.description || 'Ask me anything in my area of expertise.'
+          : 'Chat, run code, search your documents, and use connected tools — powered by your choice of model provider.'}
       </p>
+
+      {assistants.length > 0 && (
+        <div className="mb-8 flex w-full max-w-2xl flex-wrap justify-center gap-2">
+          <button
+            onClick={() => selectAssistant(null)}
+            className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm ${
+              !assistant
+                ? 'border-accent bg-surface-2 text-content'
+                : 'border-border bg-surface text-muted hover:border-accent'
+            }`}
+          >
+            <img src="/phlox-logo.svg" alt="" className="h-4" />
+            Phlox
+          </button>
+          {assistants.map((a) => (
+            <button
+              key={a.id}
+              onClick={() => selectAssistant(a.id)}
+              title={a.description || a.name}
+              className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm ${
+                a.id === activeAssistantId
+                  ? 'border-accent bg-surface-2 text-content'
+                  : 'border-border bg-surface text-muted hover:border-accent'
+              }`}
+            >
+              <AssistantAvatar assistant={a} size={20} />
+              {a.name}
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className="grid w-full max-w-2xl grid-cols-1 gap-2 sm:grid-cols-2">
-        {SUGGESTIONS.map((s) => (
+        {suggestions.map((s) => (
           <button
             key={s.text}
             onClick={() => send(s.text, { documentSearch: Boolean(s.documentSearch) })}

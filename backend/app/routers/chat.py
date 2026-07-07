@@ -19,7 +19,7 @@ from app.agent.permissions import PermissionGate
 from app.agent.registry import REGISTRY
 from app.auth.deps import get_current_user
 from app.database import get_db
-from app.models import Conversation, DocChunk, Document, Message, PendingApproval, User
+from app.models import Assistant, Conversation, DocChunk, Document, Message, PendingApproval, User
 from app.providers.registry import build_provider
 from app.runtime_settings import generation_params, get_settings
 from app.schemas import ApproveRequest, ChatRequest
@@ -38,6 +38,32 @@ answering factual questions that may be answered by the user's uploaded document
 the answer in the retrieved passages and cite the source numbers returned by the tool. If
 the search finds nothing relevant, say that clearly instead of answering from memory.
 """
+
+ASSISTANT_KB_PROMPT = """
+
+You have a curated knowledge base attached to this assistant. Use the `search_documents`
+tool before answering factual questions in your domain — it searches your knowledge base
+(and the user's own documents). Ground answers in the retrieved passages and cite the
+source numbers returned by the tool. If the search finds nothing relevant, say so clearly
+instead of answering from memory.
+"""
+
+
+def _resolve_assistant(db: Session, assistant_id: str | None, user: User) -> Assistant | None:
+    """Load an assistant iff it exists, is active, and is visible to this user.
+
+    This visibility check is the security boundary for the widened retrieval scope
+    (assistant KB chunks are shared across users) — never pass an unresolved id further.
+    Returns None on any failure so conversations degrade to their snapshotted config.
+    """
+    if not assistant_id:
+        return None
+    a = db.get(Assistant, assistant_id)
+    if not a or not a.is_active:
+        return None
+    if a.visibility != "public" and a.created_by != user.id:
+        return None
+    return a
 
 
 def _build_history(conversation: Conversation, system_prompt: str) -> list[dict]:
@@ -291,14 +317,6 @@ async def chat(
     req: ChatRequest, request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user)
 ):
     settings = get_settings(db, user.id)
-    profile = req.profile or settings["active_profile"]
-    model = req.model or settings.get("model")
-
-    # Budget gate: refuse a priced model once this user (or their department) is over their
-    # monthly cap. Runs before any message is persisted so a blocked turn writes nothing.
-    from app.budgets import enforce_budget
-
-    enforce_budget(db, user, model)
 
     conversation: Conversation | None = None
     if req.conversation_id:
@@ -306,20 +324,45 @@ async def chat(
         # Conversations are private to their creator (admins included).
         if conversation and conversation.user_id != user.id:
             raise HTTPException(404, "Conversation not found")
+
+    # The pinned assistant wins on existing conversations; req.assistant_id only applies
+    # when creating a new one (prevents retrieval-scope spoofing via the request body).
+    assistant = _resolve_assistant(
+        db, conversation.assistant_id if conversation else req.assistant_id, user
+    )
+
+    profile = req.profile or (assistant.profile if assistant else None) or settings["active_profile"]
+    model = req.model or (assistant.model if assistant else None) or settings.get("model")
+
+    # Budget gate: refuse a priced model once this user (or their department) is over their
+    # monthly cap. Runs before any message is persisted so a blocked turn writes nothing.
+    from app.budgets import enforce_budget
+
+    enforce_budget(db, user, model)
+
     if conversation is None:
         conversation = Conversation(
             title=req.message[:60] or ("Document chat" if req.document_ids else "New chat"),
             profile=profile,
             model=model,
-            system_prompt=settings["system_prompt"],
-            params=generation_params(settings),
+            # Snapshot the assistant's config so the thread degrades gracefully if the
+            # assistant is later deleted or hidden.
+            system_prompt=(assistant.system_prompt if assistant else None)
+            or settings["system_prompt"],
+            params={**generation_params(settings), **((assistant.params if assistant else None) or {})},
+            assistant_id=assistant.id if assistant else None,
             user_id=user.id,
         )
         db.add(conversation)
         db.commit()
         db.refresh(conversation)
 
-    system_prompt = conversation.system_prompt or settings["system_prompt"]
+    # Live assistant prompt first (admin edits propagate), then the snapshot, then settings.
+    system_prompt = (
+        (assistant.system_prompt if assistant else None)
+        or conversation.system_prompt
+        or settings["system_prompt"]
+    )
     # Inject relevant long-term memories (this user's, cross-conversation) into the prompt.
     from app.memory import memory_preamble
 
@@ -333,7 +376,21 @@ async def chat(
     else:
         referenced_docs = _resolve_document_refs(db, user, conversation, req.document_ids)
 
-    if req.document_search:
+    # Capability limits are hard server-side rules; the UI mirrors them as disabled
+    # toggles. A missing key means allowed.
+    caps = (assistant.capabilities or {}) if assistant else {}
+    web_search_allowed = req.web_search and caps.get("web_search", True)
+    document_search_requested = req.document_search and caps.get("document_search", True)
+    assistant_has_kb = assistant is not None and (
+        db.query(Document.id)
+        .filter(Document.assistant_id == assistant.id, Document.status == "ready")
+        .first()
+        is not None
+    )
+
+    if assistant_has_kb:
+        system_prompt += ASSISTANT_KB_PROMPT
+    elif document_search_requested:
         system_prompt += DOCUMENT_SEARCH_PROMPT
     if referenced_docs:
         system_prompt += _referenced_document_context(
@@ -364,6 +421,7 @@ async def chat(
     history = _build_history(conversation, system_prompt)
     params = {
         **generation_params(settings),
+        **((assistant.params if assistant else None) or {}),
         "max_tool_rounds": (conversation.params or {}).get(
             "max_tool_rounds", settings["max_tool_rounds"]
         ),
@@ -392,10 +450,15 @@ async def chat(
 
             gate = PermissionGate(db, REGISTRY, auto_approve=req.auto_approve)
             enabled_tools = gate.enabled_names()
-            if not req.web_search:
+            if not web_search_allowed:
                 enabled_tools.discard("web_search")
-            if not (req.document_search or referenced_docs):
+            # The assistant's knowledge base force-enables document search — it is the
+            # point of attaching one.
+            if not (document_search_requested or referenced_docs or assistant_has_kb):
                 enabled_tools.discard("search_documents")
+            if not caps.get("tools", True):
+                # Chat + knowledge only: no code execution, shell, files, or MCP tools.
+                enabled_tools &= {"web_search", "search_documents"}
             session = AgentSession(
                 db, conversation, provider, REGISTRY, gate, params, profile, model,
                 allowed_tools=enabled_tools,

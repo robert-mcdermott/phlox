@@ -23,13 +23,14 @@ CANDIDATE_MULTIPLIER = 4  # fetch this many * top_k before reranking
 def search_chunks(
     db: Session, query: str, top_k: int = 5,
     conversation_id: str | None = None, user_id: str | None = None,
-    document_ids: list[str] | None = None,
+    document_ids: list[str] | None = None, assistant_id: str | None = None,
 ) -> list[dict]:  # noqa: ARG001
     """Return [{score, text, filename, ordinal, document_id}] for the best matches.
 
     Restricted to ``user_id``'s documents (+ legacy unowned), and if ``conversation_id`` is
     given, to global documents plus that conversation's scoped documents. ``document_ids``
-    can narrow retrieval further for explicit user references.
+    can narrow retrieval further for explicit user references. ``assistant_id`` widens the
+    scope to that assistant's shared knowledge base — pass only visibility-checked ids.
     """
     dense = embed_query(query)
     sparse = sparse_embed(query)
@@ -38,6 +39,7 @@ def search_chunks(
         hits = get_vector_store().search(
             dense, sparse, limit=candidate_n,
             conversation_id=conversation_id, user_id=user_id, document_ids=document_ids,
+            assistant_id=assistant_id,
         )
     except Exception as e:  # noqa: BLE001
         logger.warning("Vector search failed: %s", e)
@@ -63,7 +65,13 @@ def search_chunks(
 def reindex_all(db: Session) -> int:
     """Rebuild the vector index from SQLite DocChunks. Returns chunks indexed."""
     rows = (
-        db.query(DocChunk, Document.filename, Document.conversation_id, Document.user_id)
+        db.query(
+            DocChunk,
+            Document.filename,
+            Document.conversation_id,
+            Document.user_id,
+            Document.assistant_id,
+        )
         .join(Document, Document.id == DocChunk.document_id)
         .filter(DocChunk.embedding.isnot(None))
         .all()
@@ -79,15 +87,15 @@ def reindex_all(db: Session) -> int:
                 "id": chunk.id,
                 "dense": chunk.embedding,
                 "sparse": sparse_embed(chunk.text),
-                "payload": build_chunk_payload(chunk, filename, conv_id, uid),
+                "payload": build_chunk_payload(chunk, filename, conv_id, uid, aid),
             }
-            for chunk, filename, conv_id, uid in rows
+            for chunk, filename, conv_id, uid, aid in rows
         ]
     )
     return len(rows)
 
 
-def build_chunk_payload(chunk, filename, conversation_id, user_id) -> dict:
+def build_chunk_payload(chunk, filename, conversation_id, user_id, assistant_id=None) -> dict:
     """Qdrant payload for a chunk. Omit empty scope keys so IsEmpty filters match."""
     p = {
         "chunk_id": chunk.id,
@@ -100,4 +108,6 @@ def build_chunk_payload(chunk, filename, conversation_id, user_id) -> dict:
         p["conversation_id"] = conversation_id
     if user_id:
         p["user_id"] = user_id
+    if assistant_id:
+        p["assistant_id"] = assistant_id
     return p

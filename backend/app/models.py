@@ -63,11 +63,45 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
 
+class Assistant(Base):
+    """An admin-curated persona: a base model + system prompt + optional knowledge base.
+
+    Users pick an assistant when starting a chat; the choice is pinned per conversation.
+    ``profile``/``model`` are nullable — null falls back to the chatting user's settings.
+    ``capabilities`` holds hard limits (``web_search`` / ``document_search`` / ``tools``);
+    a missing key means allowed. ``created_by`` + ``visibility`` are FK-free groundwork for
+    future user-created assistants (writes are admin-only today).
+    """
+
+    __tablename__ = "assistants"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # A "data:image/..." data URL or a short emoji; null → the UI renders initials.
+    avatar: Mapped[str | None] = mapped_column(Text, nullable=True)
+    profile: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    model: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    system_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Generation-param overrides (temperature, max_tokens...); no editor UI yet.
+    params: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    prompt_suggestions: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    capabilities: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    visibility: Mapped[str] = mapped_column(String(20), default="public")  # public | private
+    created_by: Mapped[str | None] = mapped_column(String(32), index=True, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
+
+
 class Conversation(Base):
     __tablename__ = "conversations"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
     user_id: Mapped[str | None] = mapped_column(String(32), index=True, nullable=True)
+    # Assistant pinned at creation; dangles (no FK) after assistant deletion so the
+    # conversation keeps running on its snapshotted profile/model/system_prompt.
+    assistant_id: Mapped[str | None] = mapped_column(String(32), index=True, nullable=True)
     title: Mapped[str] = mapped_column(String(300), default="New chat")
     profile: Mapped[str | None] = mapped_column(String(100), nullable=True)
     model: Mapped[str | None] = mapped_column(String(200), nullable=True)
@@ -112,6 +146,9 @@ class Document(Base):
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
     user_id: Mapped[str | None] = mapped_column(String(32), index=True, nullable=True)
+    # Set for assistant knowledge-base docs, which are deployment-owned (user_id NULL):
+    # they survive creator deletion and never appear in personal document listings.
+    assistant_id: Mapped[str | None] = mapped_column(String(32), index=True, nullable=True)
     filename: Mapped[str] = mapped_column(String(500))
     # null = global knowledge base; otherwise scoped to one conversation.
     conversation_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)

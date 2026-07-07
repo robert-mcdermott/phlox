@@ -27,6 +27,7 @@ from app.observability import setup_observability
 from app.routers import (
     admin_config,
     api_keys,
+    assistants,
     attachments,
     auth,
     budgets,
@@ -119,9 +120,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-for r in (auth, chat, conversations, providers, settings, documents, mcp, tools, files,
-          memories, checkpoints, attachments, usage, admin_config, api_keys, gateway,
-          budgets):
+for r in (auth, chat, conversations, providers, settings, documents, assistants, mcp,
+          tools, files, memories, checkpoints, attachments, usage, admin_config, api_keys,
+          gateway, budgets):
     app.include_router(r.router)
 
 # Structured request logging (always) + OpenTelemetry tracing (if configured).

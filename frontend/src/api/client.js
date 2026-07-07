@@ -62,6 +62,25 @@ export const api = {
     return res.json()
   },
 
+  // assistants (reads for everyone; writes are admin-only server-side)
+  listAssistants: () => req('GET', '/api/assistants'),
+  createAssistant: (body) => req('POST', '/api/assistants', body),
+  updateAssistant: (id, body) => req('PATCH', `/api/assistants/${id}`, body),
+  deleteAssistant: (id) => req('DELETE', `/api/assistants/${id}`),
+  listAssistantDocuments: (id) => req('GET', `/api/assistants/${id}/documents`),
+  deleteAssistantDocument: (id, docId) => req('DELETE', `/api/assistants/${id}/documents/${docId}`),
+  uploadAssistantDocument: async (id, file) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    const res = await fetch(`/api/assistants/${id}/documents`, {
+      method: 'POST',
+      body: fd,
+      headers: { ...authHeaders() },
+    })
+    if (!res.ok) throw new Error(await res.text())
+    return res.json()
+  },
+
   // mcp
   listMcp: () => req('GET', '/api/mcp'),
   addMcp: (body) => req('POST', '/api/mcp', body),

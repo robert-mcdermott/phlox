@@ -52,6 +52,12 @@ export default function Composer() {
   const activeId = useStore((s) => s.activeId)
   const queued = useStore((s) => s.queued)
   const clearQueued = useStore((s) => s.clearQueued)
+  const assistants = useStore((s) => s.assistants)
+  const activeAssistantId = useStore((s) => s.activeAssistantId)
+  // Capability limits from the active assistant (also enforced server-side).
+  const caps = assistants.find((a) => a.id === activeAssistantId)?.capabilities || {}
+  const webSearchAllowed = caps.web_search !== false
+  const documentSearchAllowed = caps.document_search !== false
   const taRef = useRef(null)
   const fileRef = useRef(null)
   const imgRef = useRef(null)
@@ -151,8 +157,8 @@ export default function Composer() {
     // While streaming, the store queues this as a follow-up (steering).
     send(text.trim(), {
       autoApprove,
-      webSearch,
-      documentSearch,
+      webSearch: webSearch && webSearchAllowed,
+      documentSearch: documentSearch && documentSearchAllowed,
       images,
       documentIds,
       documentRefs,
@@ -389,13 +395,21 @@ export default function Composer() {
                 className="rounded border-border text-accent focus:ring-accent" />
               <Zap size={12} /> Agent mode
             </label>
-            <label className="flex cursor-pointer items-center gap-1.5" title="Allow live web search for this prompt">
-              <input type="checkbox" checked={webSearch} onChange={(e) => setWebSearch(e.target.checked)}
+            <label
+              className={`flex items-center gap-1.5 ${webSearchAllowed ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'}`}
+              title={webSearchAllowed ? 'Allow live web search for this prompt' : 'Disabled by this assistant'}
+            >
+              <input type="checkbox" checked={webSearch && webSearchAllowed} disabled={!webSearchAllowed}
+                onChange={(e) => setWebSearch(e.target.checked)}
                 className="rounded border-border text-accent focus:ring-accent" />
               <Search size={12} /> Web search
             </label>
-            <label className="flex cursor-pointer items-center gap-1.5" title="Search uploaded documents for this prompt">
-              <input type="checkbox" checked={documentSearch} onChange={(e) => setDocumentSearch(e.target.checked)}
+            <label
+              className={`flex items-center gap-1.5 ${documentSearchAllowed ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'}`}
+              title={documentSearchAllowed ? 'Search uploaded documents for this prompt' : 'Disabled by this assistant'}
+            >
+              <input type="checkbox" checked={documentSearch && documentSearchAllowed} disabled={!documentSearchAllowed}
+                onChange={(e) => setDocumentSearch(e.target.checked)}
                 className="rounded border-border text-accent focus:ring-accent" />
               <FileSearch size={12} /> Search documents
             </label>

@@ -139,6 +139,22 @@ The things a user *feels* immediately; they make it a real agent, not "chat that
   _Implemented in:_ `budgets.py`, `models.py` (`Budget`), `routers/budgets.py`,
   `routers/{chat,gateway,usage}.py`, `auth/service.py` (cleanup), `BudgetsPanel.jsx`,
   `ChatPage.jsx` (banner). See [BUDGETS.md](BUDGETS.md).
+- [x] **Custom assistants.** Admin-curated personas built on any configured base model:
+  name/avatar/description, custom **system prompt**, starter **prompt suggestions**, an
+  optional shared **knowledge base** (deployment-owned documents every user of the
+  assistant can search, isolated from personal document libraries), and per-assistant
+  **capability limits** (web search / personal-doc search / agent tools) enforced
+  server-side. Users pick an assistant via chips on the new-chat screen; the choice is
+  pinned per conversation, with the assistant's config snapshotted so deleted assistants
+  degrade gracefully. `created_by` + `visibility` are schema-ready for user-created
+  assistants later. _Implemented in:_ `models.py` (`Assistant`,
+  `Conversation.assistant_id`, `Document.assistant_id`), `routers/assistants.py`,
+  `routers/chat.py` (`_resolve_assistant`, capability gating, KB prompt), `rag/store.py` +
+  `rag/retrieve.py` + `rag/ingest.py` (assistant scope in payloads + `_scope_filter`),
+  `agent/tools/{base,docs}.py` + `agent/harness.py` (`ToolContext.assistant_id`),
+  `AssistantsPanel.jsx`, `AssistantAvatar.jsx`, `ChatPage.jsx` (picker + suggestions),
+  `Header.jsx` (pill), `Composer.jsx` (capability-disabled toggles), store
+  `assistants`/`activeAssistantId`. Tests: `tests/test_assistants.py`.
 - [x] **Live admin configuration.** Admin-only **Configuration** panel to edit deployment
   config without a restart: provider profiles (API keys **write-only/masked**), model
   pricing, resilience, generation defaults, and sandbox **limits**. `config.yml` is the seed;

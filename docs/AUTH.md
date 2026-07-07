@@ -24,8 +24,18 @@ regardless of provider, so the rest of the app is auth-method-agnostic.
   runtime settings are scoped strictly by `user_id`. A user only sees their own —
   **including admins**. There is no endpoint that returns another user's chats, and
   ownership checks return **404** (not 403) so existence isn't leaked.
+- **Assistant knowledge bases are deliberately shared.** Documents an admin attaches to a
+  **custom assistant** are *deployment-owned* (`user_id=NULL`, `assistant_id` set), not
+  personal data: every user chatting with that assistant can search them, they never appear
+  in anyone's personal Documents panel or `@` picker, they are exempt from
+  `delete_user_data` (so deleting the creating admin doesn't destroy a shared knowledge
+  base), and retrieval only widens to an assistant's documents after a visibility check on
+  the conversation's pinned assistant (see [ARCHITECTURE.md](ARCHITECTURE.md) §3 "Custom
+  assistants"). Private (`visibility: private`) assistants are visible only to their
+  creator and admins.
 - **Admins manage accounts, not content.** `require_admin` gates MCP server management,
-  tool enable/permissions, **deployment configuration** (see below), and **user
+  tool enable/permissions, **custom assistants** (create/edit/delete personas and their
+  shared knowledge bases), **deployment configuration** (see below), and **user
   management** — create users, **reset passwords**, set a **department** (for chargeback),
   enable/disable, and **delete accounts**. Deleting an account **purges all of that user's
   data** (chats + workspaces, documents + files + vectors, memories, settings, **API

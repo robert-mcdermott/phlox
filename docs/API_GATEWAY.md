@@ -56,6 +56,8 @@ OpenAI-spec request/response. Supports streaming (`"stream": true`, SSE
 Honored fields: `model`, `messages`, `temperature`, `max_tokens`, `stream`. Other fields
 (`top_p`, `stop`, `user`, …) are accepted and ignored in Phase 1. **Tools/RAG/agentic
 behavior are intentionally not exposed here** — that's Phase 2's `/v1/agent/completions`.
+The same applies to **custom assistants** (personas + shared knowledge bases): they are an
+interactive-chat feature and are not selectable through the gateway in Phase 1.
 
 If the key's owner (or their department) is over a monthly **spend budget** and the
 requested model is priced, the call is rejected with **HTTP 402** in the OpenAI error

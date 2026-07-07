@@ -75,6 +75,7 @@ deals with provider-specific shapes.
 | **Providers** | `providers/base.py`, `openai_provider.py`, `bedrock_provider.py`, `registry.py` | Provider abstraction + streaming + embeddings |
 | **Agent** | `agent/harness.py`, `registry.py`, `permissions.py`, `events.py`, `context.py` | The resumable loop, tool registry, permission gate, SSE events, context compaction |
 | **Tools** | `agent/tools/{base,fs,shell,code,docs,web,memory,planning,subagent,checkpoint}.py` | Built-in tools (file/exec/web/RAG + memory, todo planning, sub-agents, checkpoints) |
+| **Assistants** | `routers/assistants.py` | Admin-curated personas (base model + system prompt + shared knowledge base + capability limits); reads for all users, writes admin-gated |
 | **Memory** | `memory.py`, `routers/memories.py` | Cross-conversation memory: save + semantic retrieval into the system prompt |
 | **Checkpoints** | `workspace/checkpoints.py`, `routers/checkpoints.py` | Git-backed workspace snapshots + restore (auto-snapshot after mutating tools) |
 | **Rerank** | `rag/rerank.py` | Reranker seam (`LexicalReranker` default; cross-encoder-ready) |
@@ -86,7 +87,7 @@ deals with provider-specific shapes.
 | **Observability** | `observability.py`, `usage_ledger.py`, `routers/usage.py` | Per-request logging, OTel seam, per-turn token/cost capture + durable chargeback ledger. See [OBSERVABILITY.md](OBSERVABILITY.md) |
 | **Budgets** | `budgets.py`, `routers/budgets.py` | Monthly USD spend caps per user/department: current-month spend (from the ledger), warn/block status, and `enforce_budget` applied at the chat + gateway choke points. See [BUDGETS.md](BUDGETS.md) |
 | **API gateway** | `api_keys.py`, `routers/api_keys.py`, `routers/gateway.py` | Per-user API keys (SHA-256 hashed) + OpenAI-compatible `/v1/chat/completions` & `/v1/models`; usage flows through `usage_ledger`. See [API_GATEWAY.md](API_GATEWAY.md) |
-| **Routers** | `routers/*.py` | `auth, chat, conversations, providers, settings, documents, mcp, tools, files, memories, checkpoints, attachments, usage, admin_config, api_keys, gateway, budgets` |
+| **Routers** | `routers/*.py` | `auth, chat, conversations, providers, settings, documents, assistants, mcp, tools, files, memories, checkpoints, attachments, usage, admin_config, api_keys, gateway, budgets` |
 
 ### Key design decisions
 - **One unified tool surface.** Built-in tools, MCP tools, and `search_documents` all
@@ -175,6 +176,29 @@ deals with provider-specific shapes.
   can also persist direct document references in `Message.attachments`; those references
   inject bounded source excerpts for that turn and let the model search only those
   document IDs if it needs more context.
+- **Custom assistants** (`routers/assistants.py` + `routers/chat.py`): an `Assistant` is an
+  admin-curated persona — optional base model (`profile`/`model`), custom system prompt,
+  starter prompt suggestions, capability limits, and a shared **knowledge base**. The chat
+  request carries `assistant_id` only for a **new** conversation; the id is then **pinned**
+  on the `Conversation` and request-body values are ignored afterwards, so retrieval scope
+  can't be spoofed. `_resolve_assistant` (exists + `is_active` + visible to this user) is
+  the **security boundary**: only a resolved id ever reaches retrieval. Precedence per turn:
+  request → assistant → user settings for profile/model (resolved *before*
+  `enforce_budget`, so budgets meter the assistant's model); the assistant's config is also
+  **snapshotted** onto the conversation at creation, so deleting/hiding an assistant
+  degrades old threads gracefully (live prompt edits propagate; the model snapshot doesn't).
+  **KB docs are deployment-owned**: `Document` rows with `assistant_id` set and
+  `user_id=NULL`, so they survive creator deletion, are exempt from `delete_user_data`, and
+  never appear in personal document listings or the `@` picker. Their Qdrant payloads carry
+  `assistant_id` and no `user_id`; when a turn runs with an assistant,
+  `rag/store.py::_scope_filter` widens the strict per-user condition to
+  `user_id == U OR assistant_id == A` (the id flows `Conversation.assistant_id` →
+  `ToolContext` → `search_chunks`). An attached KB **force-enables** `search_documents`;
+  capabilities (`web_search` / `document_search` / `tools`) are hard server-side limits on
+  `enabled_tools` (`tools: false` reduces the agent to chat + knowledge only), mirrored as
+  disabled toggles in the composer. `created_by` + `visibility` (`public|private`) are
+  schema-ready for user-created assistants later — enabling that is just relaxing the POST
+  gate from `require_admin`.
 - **Steering** (frontend store): a message typed while a turn streams is queued and
   auto-sent when the turn completes; Stop + approval pause/resume cover interruption.
 - **Self-healing model setting** (`runtime_settings.py::_heal_model`): if the DB's active
@@ -202,7 +226,8 @@ deals with provider-specific shapes.
 | **Chat** | `components/chat/*` | `Message`, `ToolCallCard`, `ArtifactViewer`, `Composer`; `pages/ChatPage.jsx` |
 | **Canvas** | `components/canvas/CanvasPanel.jsx`, `utils/canvas.js` | Side-panel live preview of html/markdown/text artifacts (see below) |
 | **Markdown** | `components/markdown/Markdown.jsx` | react-markdown + GFM + syntax highlight + copy |
-| **Settings** | `components/settings/*`, `documents/*`, `mcp/*`, `tools/*` | Drawer with user tabs (Model, Appearance, Documents, Memory, API Keys) + admin tabs (Users, Usage & Cost, **Budgets**, **Configuration**, Authentication, MCP, Tools) |
+| **Settings** | `components/settings/*`, `documents/*`, `mcp/*`, `tools/*` | Drawer with user tabs (Model, Appearance, Documents, Memory, API Keys) + admin tabs (**Assistants**, Users, Usage & Cost, **Budgets**, **Configuration**, Authentication, MCP, Tools) |
+| **Assistants** | `components/assistants/AssistantAvatar.jsx`, `settings/AssistantsPanel.jsx` | Avatar renderer (image / emoji / initials) + admin editor (persona, model, suggestions, capabilities, KB upload); picker chips live in `ChatPage.jsx`, active-assistant pill in `Header.jsx` |
 
 The frontend renders a rich turn: collapsible **tool cards** (args + results), a
 **reasoning** disclosure, inline **artifacts** (images render, files download), and
@@ -236,6 +261,13 @@ drag handle on its left edge.
   produced files; `Message.usage` (JSON) stores `{input,output,total,cost}`. This is what
   lets the UI re-render a full agent turn after reload.
 - `Document` 1—* `DocChunk` (chunk text + JSON embedding vector).
+- `Assistant` — an admin-curated persona: name/description/`avatar` (data URL or emoji),
+  optional `profile`/`model`, `system_prompt`, `params` (JSON, reserved),
+  `prompt_suggestions` (JSON), `capabilities` (JSON hard limits), `visibility`
+  (`public|private`) + FK-free `created_by` (groundwork for user-created assistants), and
+  `is_active`. Referenced by nullable `assistant_id` columns on **`Conversation`** (the
+  per-thread pin; dangles harmlessly after deletion thanks to the config snapshot) and
+  **`Document`** (KB docs, which are deployment-owned: `user_id=NULL`).
 - `Setting` (key/value), `McpServer`, `ToolPref` (enabled + permission per tool),
   `Memory` (cross-conversation facts), `PendingApproval` (paused-run state for resume).
 - `UsageLedger` — append-only, **FK-free** per-turn token/cost rows with a snapshot of the

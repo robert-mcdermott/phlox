@@ -41,8 +41,12 @@ def get_db() -> Iterator[Session]:
 # tool like Alembic is the Tier-3 upgrade; this keeps dev data intact in the meantime.)
 _ADDED_COLUMNS: dict[str, dict[str, str]] = {
     "messages": {"attachments": "JSON", "usage": "JSON"},
-    "documents": {"conversation_id": "VARCHAR(32)", "user_id": "VARCHAR(32)"},
-    "conversations": {"user_id": "VARCHAR(32)"},
+    "documents": {
+        "conversation_id": "VARCHAR(32)",
+        "user_id": "VARCHAR(32)",
+        "assistant_id": "VARCHAR(32)",
+    },
+    "conversations": {"user_id": "VARCHAR(32)", "assistant_id": "VARCHAR(32)"},
     "memories": {"user_id": "VARCHAR(32)"},
     "users": {"department": "VARCHAR(200)"},
     "mcp_servers": {"headers": "JSON", "auth_token": "VARCHAR(2000)"},

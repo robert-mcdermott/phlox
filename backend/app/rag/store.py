@@ -41,12 +41,14 @@ class VectorStore(ABC):
     def search(
         self, dense: list[float], sparse: dict, limit: int,
         conversation_id: str | None = None, user_id: str | None = None,
-        document_ids: list[str] | None = None,
+        document_ids: list[str] | None = None, assistant_id: str | None = None,
     ) -> list[dict[str, Any]]:
         """Hybrid search; returns up to ``limit`` fused [{score, payload}].
 
         Restricted to the given ``user_id`` (plus legacy unowned) and, if
         ``conversation_id`` is given, to global docs plus that conversation's scoped docs.
+        ``assistant_id`` additionally admits that assistant's shared knowledge-base chunks;
+        callers must pass only a visibility-checked assistant id (see routers/chat.py).
         """
 
     @abstractmethod
@@ -154,14 +156,30 @@ class QdrantVectorStore(VectorStore):
         user_id: str | None,
         conversation_id: str | None,
         document_ids: list[str] | None = None,
+        assistant_id: str | None = None,
     ):
         """Restrict to user/conversation scope and optionally specific document ids."""
         from qdrant_client.models import FieldCondition, Filter, IsEmptyCondition, MatchValue, PayloadField
 
         must = []
-        if user_id:
+        if user_id and assistant_id:
+            # Personal KB plus the assistant's shared KB. Assistant chunks carry an
+            # assistant_id payload and no user_id, so the two branches never overlap;
+            # assistant_id is trusted here only because callers resolve it through a
+            # visibility check (never raw request input).
+            must.append(
+                Filter(
+                    should=[
+                        FieldCondition(key="user_id", match=MatchValue(value=user_id)),
+                        FieldCondition(key="assistant_id", match=MatchValue(value=assistant_id)),
+                    ]
+                )
+            )
+        elif user_id:
             # Strict: only the owner's chunks (no legacy/unowned allowance) — privacy.
             must.append(FieldCondition(key="user_id", match=MatchValue(value=user_id)))
+        elif assistant_id:
+            must.append(FieldCondition(key="assistant_id", match=MatchValue(value=assistant_id)))
         if conversation_id:
             must.append(
                 Filter(
@@ -188,11 +206,11 @@ class QdrantVectorStore(VectorStore):
     def search(
         self, dense: list[float], sparse: dict, limit: int,
         conversation_id: str | None = None, user_id: str | None = None,
-        document_ids: list[str] | None = None,
+        document_ids: list[str] | None = None, assistant_id: str | None = None,
     ) -> list[dict[str, Any]]:
         from qdrant_client.models import SparseVector
 
-        qfilter = self._scope_filter(user_id, conversation_id, document_ids)
+        qfilter = self._scope_filter(user_id, conversation_id, document_ids, assistant_id)
         with self._lock:
             if not self._client.collection_exists(self.collection):
                 return []

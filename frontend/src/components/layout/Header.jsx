@@ -3,6 +3,7 @@ import { Menu, Settings, Cpu, History, FolderOpen, LogOut, ShieldCheck } from 'l
 import { useStore } from '../../store/useStore'
 import CheckpointsModal from '../chat/CheckpointsModal'
 import WorkspaceFilesModal from '../chat/WorkspaceFilesModal'
+import AssistantAvatar from '../assistants/AssistantAvatar'
 
 export default function Header({ onToggleSidebar, onOpenSettings }) {
   const settings = useStore((s) => s.settings)
@@ -11,7 +12,10 @@ export default function Header({ onToggleSidebar, onOpenSettings }) {
   const user = useStore((s) => s.user)
   const authEnabled = useStore((s) => s.authConfig?.enabled)
   const logout = useStore((s) => s.logout)
+  const assistants = useStore((s) => s.assistants)
+  const activeAssistantId = useStore((s) => s.activeAssistantId)
   const activeProfile = providers.find((p) => p.name === settings?.active_profile)
+  const assistant = assistants.find((a) => a.id === activeAssistantId) || null
   const [checkpointsOpen, setCheckpointsOpen] = useState(false)
   const [filesOpen, setFilesOpen] = useState(false)
   const [userMenu, setUserMenu] = useState(false)
@@ -33,6 +37,21 @@ export default function Header({ onToggleSidebar, onOpenSettings }) {
         <span className="hidden sm:inline text-lg font-semibold text-content">Phlox</span>
       </div>
       <div className="flex items-center gap-2">
+        {activeAssistantId && (
+          <span
+            className="flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1.5 text-sm text-content"
+            title={assistant?.description || (assistant ? assistant.name : 'This assistant is no longer available; the chat keeps its saved settings.')}
+          >
+            {assistant ? (
+              <>
+                <AssistantAvatar assistant={assistant} size={18} />
+                <span className="max-w-[140px] truncate">{assistant.name}</span>
+              </>
+            ) : (
+              <span className="max-w-[180px] truncate text-muted">Assistant unavailable</span>
+            )}
+          </span>
+        )}
         <button
           onClick={() => onOpenSettings('providers')}
           className="flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1.5 text-sm text-content hover:border-accent"
@@ -40,7 +59,7 @@ export default function Header({ onToggleSidebar, onOpenSettings }) {
         >
           <Cpu size={15} className="text-accent" />
           <span className="max-w-[180px] truncate">
-            {settings?.model || activeProfile?.label || 'Configure model'}
+            {(assistant?.model) || settings?.model || activeProfile?.label || 'Configure model'}
           </span>
         </button>
         {activeId && (

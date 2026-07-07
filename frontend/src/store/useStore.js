@@ -16,6 +16,9 @@ export const useStore = create((set, get) => ({
   messages: [],
   settings: null,
   providers: [],
+  assistants: [],
+  // Assistant for the active conversation (pinned server-side) or the pending new chat.
+  activeAssistantId: null,
   theme: initialTheme(),
 
   streaming: false,
@@ -67,7 +70,28 @@ export const useStore = create((set, get) => ({
   async loadApp() {
     await Promise.all([
       get().loadConversations(), get().loadSettings(), get().loadProviders(), get().loadBudget(),
+      get().loadAssistants(),
     ])
+  },
+
+  async loadAssistants() {
+    try {
+      const assistants = await api.listAssistants()
+      set({ assistants })
+    } catch {
+      set({ assistants: [] })
+    }
+  },
+
+  // The active assistant object, or null (also null when it no longer resolves — deleted).
+  activeAssistant() {
+    const { assistants, activeAssistantId } = get()
+    return assistants.find((a) => a.id === activeAssistantId) || null
+  },
+
+  // Pick an assistant for the next new chat (only meaningful on the Welcome screen).
+  selectAssistant(id) {
+    set({ activeAssistantId: id || null })
   },
 
   // Monthly budget status (drives the chat warning/block banner). Refreshed after each
@@ -97,7 +121,10 @@ export const useStore = create((set, get) => ({
 
   logout() {
     setToken(null)
-    set({ user: null, conversations: [], messages: [], activeId: null, live: null, canvas: null })
+    set({
+      user: null, conversations: [], messages: [], activeId: null, live: null, canvas: null,
+      assistants: [], activeAssistantId: null,
+    })
   },
 
   async loadConversations() {
@@ -140,16 +167,22 @@ export const useStore = create((set, get) => ({
   async selectConversation(id) {
     if (get().streaming) get().stopStreaming()
     if (!id) {
-      set({ activeId: null, messages: [], live: null, canvas: null })
+      set({ activeId: null, messages: [], live: null, canvas: null, activeAssistantId: null })
       return
     }
     const conv = await api.getConversation(id)
-    set({ activeId: id, messages: conv.messages, live: null, canvas: null })
+    set({
+      activeId: id,
+      messages: conv.messages,
+      live: null,
+      canvas: null,
+      activeAssistantId: conv.assistant_id || null,
+    })
   },
 
   newConversation() {
     if (get().streaming) get().stopStreaming()
-    set({ activeId: null, messages: [], live: null, error: null, canvas: null })
+    set({ activeId: null, messages: [], live: null, error: null, canvas: null, activeAssistantId: null })
   },
 
   async deleteConversation(id) {
@@ -238,6 +271,9 @@ export const useStore = create((set, get) => ({
       document_search: documentSearch,
       document_ids: documentIds,
       images,
+      // Only meaningful for a new conversation; the server pins it there and ignores
+      // it on existing ones.
+      assistant_id: get().activeAssistantId,
     }
 
     const abortFn = streamChat(

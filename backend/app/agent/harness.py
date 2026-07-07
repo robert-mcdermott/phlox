@@ -78,6 +78,7 @@ class AgentSession:
             db=db,
             runner=get_runner(),
             user_id=getattr(conversation, "user_id", None),
+            assistant_id=getattr(conversation, "assistant_id", None),
             auto_approve=gate.auto_approve,
             cancel_event=cancel_event,
         )

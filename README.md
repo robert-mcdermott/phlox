@@ -35,6 +35,12 @@ models).
 - 🌐 **Opt-in live web search** — a per-prompt composer toggle exposes `web_search`
   backed by zero-config `ddgs` (or optional SearXNG), so the agent can discover current
   sources before fetching pages with `web_fetch`.
+- 🎭 **Custom assistants** — admins define named personas (name, avatar, description) on
+  top of any configured base model, with a custom **system prompt**, **starter prompt
+  suggestions**, an optional shared **knowledge base** (documents all users of the
+  assistant can search), and per-assistant **capability limits** (web search /
+  personal-document search / agent tools). Users pick an assistant on the new-chat screen;
+  the choice is pinned per conversation.
 - 🧠 **Cross-conversation memory** — durable facts recalled across chats.
 - 🖼️ **Multimodal** — attach images to messages for vision models.
 - 🔌 **MCP integration** — connect Model Context Protocol servers; their tools join
@@ -48,7 +54,7 @@ models).
   OpenAI-compatible server) for offline, self-hosted inference with no cloud API key; RAG
   embeddings can run locally too.
 - 🔐 **Auth & multi-user** — local accounts (or **Entra ID SSO**), `user`/`admin` roles,
-  per-user data isolation, an **admin panel** (users, MCP, tools, auth). See
+  per-user data isolation, an **admin panel** (assistants, users, MCP, tools, auth). See
   [docs/AUTH.md](docs/AUTH.md).
 - 💵 **Usage & cost accounting** — per-message token/cost in the UI, plus an admin
   **chargeback** view: usage by **month × user × department × model**, CSV export for

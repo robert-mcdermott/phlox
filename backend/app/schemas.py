@@ -28,6 +28,7 @@ class ConversationOut(BaseModel):
     title: str
     profile: str | None = None
     model: str | None = None
+    assistant_id: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -55,12 +56,122 @@ class ConversationUpdate(BaseModel):
     params: dict | None = None
 
 
+# -- assistants --------------------------------------------------------------
+_AVATAR_MAX_CHARS = 200_000  # ~150 KB base64 image; client resizes before upload
+
+
+def _validate_visibility(v: str | None) -> str | None:
+    if v is not None and v not in ("public", "private"):
+        raise ValueError("visibility must be one of: public, private")
+    return v
+
+
+def _validate_avatar(v: str | None) -> str | None:
+    if not v:
+        return None
+    if len(v) > _AVATAR_MAX_CHARS:
+        raise ValueError("avatar image too large; resize before upload")
+    if not v.startswith("data:image/") and len(v) > 16:
+        raise ValueError("avatar must be a data:image/ URL or a short emoji")
+    return v
+
+
+class AssistantBase(BaseModel):
+    name: str
+    description: str | None = None
+    # Either a "data:image/..." data URL or a short emoji string.
+    avatar: str | None = None
+    # Base model; null falls back to the chatting user's settings.
+    profile: str | None = None
+    model: str | None = None
+    system_prompt: str | None = None
+    # Generation-param overrides (no editor UI yet).
+    params: dict | None = None
+    prompt_suggestions: list[str] = []
+    # Hard capability limits: {"web_search", "document_search", "tools"} -> bool.
+    capabilities: dict[str, bool] = {}
+    visibility: str = "public"  # public | private
+
+    @field_validator("visibility")
+    @classmethod
+    def _check_visibility(cls, v: str) -> str:
+        return _validate_visibility(v)
+
+    @field_validator("avatar")
+    @classmethod
+    def _check_avatar(cls, v: str | None) -> str | None:
+        return _validate_avatar(v)
+
+    @field_validator("name")
+    @classmethod
+    def _check_name(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("name is required")
+        return v
+
+    # JSON columns come back as NULL from the ORM; coerce to the typed defaults.
+    @field_validator("prompt_suggestions", mode="before")
+    @classmethod
+    def _default_suggestions(cls, v):
+        return v if v is not None else []
+
+    @field_validator("capabilities", mode="before")
+    @classmethod
+    def _default_capabilities(cls, v):
+        return v if v is not None else {}
+
+
+class AssistantCreate(AssistantBase):
+    pass
+
+
+class AssistantUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    avatar: str | None = None
+    profile: str | None = None
+    model: str | None = None
+    system_prompt: str | None = None
+    params: dict | None = None
+    prompt_suggestions: list[str] | None = None
+    capabilities: dict[str, bool] | None = None
+    visibility: str | None = None
+    is_active: bool | None = None
+
+    @field_validator("visibility")
+    @classmethod
+    def _check_visibility(cls, v: str | None) -> str | None:
+        return _validate_visibility(v)
+
+    @field_validator("avatar")
+    @classmethod
+    def _check_avatar(cls, v: str | None) -> str | None:
+        return _validate_avatar(v)
+
+
+class AssistantOut(AssistantBase):
+    id: str
+    created_by: str | None = None
+    is_active: bool = True
+    # Ready knowledge-base document count, computed in the router.
+    n_documents: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 # -- chat ------------------------------------------------------------------
 class ChatRequest(BaseModel):
     conversation_id: str | None = None
     message: str = ""
     profile: str | None = None
     model: str | None = None
+    # Assistant persona for a NEW conversation; ignored on existing conversations
+    # (the conversation's pinned assistant wins).
+    assistant_id: str | None = None
     # When true, tools whose policy is "ask" are auto-approved for this turn.
     auto_approve: bool = True
     # When true, advertise web_search to the model for this turn.

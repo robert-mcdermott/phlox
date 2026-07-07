@@ -19,7 +19,13 @@ def _payload(document, chunk) -> dict:
     """Qdrant payload for a chunk (scope keys omitted when empty so IsEmpty matches)."""
     from app.rag.retrieve import build_chunk_payload
 
-    return build_chunk_payload(chunk, document.filename, document.conversation_id, document.user_id)
+    return build_chunk_payload(
+        chunk,
+        document.filename,
+        document.conversation_id,
+        document.user_id,
+        document.assistant_id,
+    )
 TEXT_EXTS = {".txt", ".md", ".markdown", ".py", ".js", ".ts", ".json", ".csv", ".html", ".xml", ".yaml", ".yml"}
 
 

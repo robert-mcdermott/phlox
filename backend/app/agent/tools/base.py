@@ -25,6 +25,10 @@ class ToolContext:
     db: Session
     runner: SandboxRunner
     user_id: str | None = None
+    #: the conversation's pinned assistant, if any; widens search_documents to that
+    #: assistant's shared knowledge base. Trusted because it comes from the conversation
+    #: row, which is only ever set from a visibility-checked assistant (routers/chat.py).
+    assistant_id: str | None = None
     #: whether the *current turn* is running with ask-tier tools auto-approved. Tools that
     #: delegate to a nested agent (e.g. spawn_subagent) must respect this rather than
     #: hardcoding their own approval policy — see PermissionGate(interactive=...).

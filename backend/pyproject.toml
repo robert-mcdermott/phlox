@@ -28,7 +28,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["ruff>=0.8.0", "pytest>=8.3.0"]
+dev = ["ruff>=0.8.0", "pytest>=8.3.0", "pytest-cov>=6.0.0"]
 # Only needed when deploying with DATABASE_URL pointed at Postgres (SQLite, the
 # default, needs no extra driver).
 postgres = ["psycopg[binary]>=3.2.0"]
@@ -41,6 +41,14 @@ target-version = "py311"
 testpaths = ["tests"]
 addopts = "-q"
 pythonpath = ["."]
+
+[tool.coverage.run]
+source = ["app"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
 
 [tool.setuptools.packages.find]
 where = ["."]

@@ -2,6 +2,13 @@
   <img src="frontend/public/phlox-logo.svg" alt="Phlox" height="72" />
   <h1>Phlox</h1>
   <p>A feature-rich, ChatGPT-style, self-hostable AI assistant.</p>
+
+  <p>
+    <a href="https://github.com/robert-mcdermott/phlox/actions/workflows/ci.yml"><img src="https://github.com/robert-mcdermott/phlox/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+    <a href="https://codecov.io/gh/robert-mcdermott/phlox"><img src="https://codecov.io/gh/robert-mcdermott/phlox/branch/main/graph/badge.svg" alt="Coverage" /></a>
+    <a href="https://www.codefactor.io/repository/github/robert-mcdermott/phlox"><img src="https://www.codefactor.io/repository/github/robert-mcdermott/phlox/badge" alt="CodeFactor" /></a>
+    <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License: Apache 2.0" /></a>
+  </p>
 </div>
 
 Phlox is a self-hostable chat application with an agentic harness, document RAG, code
@@ -230,8 +237,22 @@ cd ../frontend && npm run build
 
 The tests run against an in-memory/temp SQLite DB with `auth.enabled` off (a synthetic dev
 admin), so no provider credentials or network are needed — agent-loop tests use a built-in
-**scripted "test" provider**. Coverage includes the chargeback ledger surviving user
-deletion (`tests/test_api.py::test_usage_ledger_survives_user_deletion`).
+**scripted "test" provider**. The suite exercises the chargeback ledger surviving user
+deletion (`tests/test_api.py::test_usage_ledger_survives_user_deletion`), among many others.
+
+### Code coverage
+
+`pytest-cov` is included in the `dev` extra. Run the suite with a coverage report from
+`backend/`:
+
+```bash
+uv run pytest --cov=app --cov-report=term-missing   # per-file % + uncovered lines
+uv run pytest --cov=app --cov-report=html           # browsable report at htmlcov/index.html
+```
+
+Coverage config (source = `app`) lives in `[tool.coverage.*]` in `backend/pyproject.toml`, so
+a bare `uv run pytest --cov` works too. In CI a `coverage.xml` is uploaded to **Codecov**,
+which powers the coverage badge above; the **CodeFactor** badge tracks automated code quality.
 
 ### Live-model evals (optional)
 

@@ -5,6 +5,11 @@ __pycache__/
 backend/.venv/
 *.egg-info/
 
+# Test coverage artifacts
+.coverage
+coverage.xml
+htmlcov/
+
 # Backend data (db, workspaces, uploads) and local config
 backend/data/
 backend/config.yml

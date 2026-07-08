@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Phlox — A full-featured, self-hostable AI platform</title>
-  <meta name="description" content="Phlox is a full-featured, self-hostable AI platform with an agentic harness, a live artifact canvas, custom assistants, document RAG, sandboxed code execution, an OpenAI-compatible gateway, per-user cost accounting and budgets, and MCP integration — running over any model provider: AWS Bedrock or any OpenAI-compatible endpoint, including fully local models." />
+  <meta name="description" content="Phlox is a full-featured, self-hostable AI platform with an agentic harness, a live artifact canvas, custom assistants, reusable agent skills, document RAG, sandboxed code execution, an OpenAI-compatible gateway, per-user cost accounting and budgets, and MCP integration — running over any model provider: AWS Bedrock or any OpenAI-compatible endpoint, including fully local models." />
   <meta name="author" content="Robert McDermott" />
 
   <!-- Open Graph -->
@@ -35,6 +35,7 @@
         <a href="#features">Features</a>
         <a href="#agent">Agent</a>
         <a href="#assistants">Assistants</a>
+        <a href="#skills">Skills</a>
         <a href="#knowledge">Knowledge</a>
         <a href="#security">Security</a>
         <a href="#platform">Platform</a>
@@ -66,10 +67,10 @@
           </h1>
           <p class="hero-sub">
             Phlox is a self-hostable AI platform — an agentic tool-using harness with a live
-            artifact canvas, custom assistants, document RAG, sandboxed code execution, an
-            OpenAI-compatible gateway, and per-user cost accounting and budgets — running
-            over <strong>any</strong> model provider: AWS Bedrock or any OpenAI-compatible
-            endpoint, including fully local models.
+            artifact canvas, custom assistants, reusable skills, document RAG, sandboxed code
+            execution, an OpenAI-compatible gateway, and per-user cost accounting and budgets —
+            running over <strong>any</strong> model provider: AWS Bedrock or any
+            OpenAI-compatible endpoint, including fully local models.
           </p>
           <div class="hero-cta">
             <a class="btn btn-primary" href="https://github.com/robert-mcdermott/phlox" target="_blank" rel="noopener">
@@ -182,6 +183,11 @@
             <div class="feature-ic">🖥️</div>
             <h3>Artifact canvas</h3>
             <p>HTML and Markdown files the agent writes open in a live, resizable side panel — a sandboxed preview with a raw-source toggle — so web apps, reports, and diagrams run right next to the chat.</p>
+          </article>
+          <article class="feature-card reveal">
+            <div class="feature-ic">✨</div>
+            <h3>Agent skills</h3>
+            <p>Named, reusable instruction sets that teach the agent a workflow. Type <code>/</code> to invoke one, or let the agent auto-activate the right skill — import/export-compatible with the Anthropic <code>SKILL.md</code> format.</p>
           </article>
           <article class="feature-card reveal">
             <div class="feature-ic">🎭</div>
@@ -316,6 +322,39 @@
             <figcaption>The admin assistant editor — persona, model, prompt, starter suggestions, capabilities, and knowledge base in one panel.</figcaption>
           </figure>
         </div>
+      </div>
+    </section>
+
+    <!-- ===== Skills ===== -->
+    <section class="section" id="skills">
+      <div class="container">
+        <div class="split">
+          <div class="split-copy reveal">
+            <span class="kicker">Agent skills</span>
+            <h2 class="section-title">Teach the agent how <em>you</em> work</h2>
+            <p class="section-lead">
+              Skills are named, reusable markdown instruction sets — "how we do data analysis
+              here," "how to write a research report," "how to build a single-file web app." Each
+              one loads on demand, so a whole library of workflows costs almost no context until
+              it's actually needed.
+            </p>
+            <ul class="check-list">
+              <li>Two ways to run: type <code>/</code> to pick one, or leave the <strong>Skills</strong> toggle on and let the agent auto-activate the best match — the same progressive-disclosure design Claude Code uses</li>
+              <li>Every user manages their own <strong>private</strong> skills; admins publish <strong>public</strong> ones to the whole team</li>
+              <li>Import and export the Anthropic <code>SKILL.md</code> format — drop in community skills or share your own</li>
+              <li><code>use_skill</code> is a normal gated tool with the usual <code>auto · ask · deny</code> policy and per-assistant capability limits</li>
+              <li>Three example skills — <code>data-analysis</code>, <code>deep-research</code>, <code>web-app</code> — seeded on first boot</li>
+            </ul>
+          </div>
+          <figure class="shot reveal">
+            <img src="images/shot-skills-config.png" alt="The Settings Skills panel: a skill editor with a Name slug, a Description that drives auto-activation, a Markdown instructions workflow, an 'Agent may auto-activate' checkbox, and public/private visibility — above a list of the seeded data-analysis, deep-research, and web-app skills" loading="lazy" />
+            <figcaption>Settings → Skills — a name, a description that drives auto-activation, the markdown workflow, an auto-activate flag, and public/private visibility.</figcaption>
+          </figure>
+        </div>
+        <figure class="shot shot-feature reveal" style="margin-top:40px">
+          <img src="images/shot-skills-slash.png" alt="The chat composer with the slash-command skill picker open, listing the data-analysis, deep-research, and web-app skills above the input, with a Skills toggle among the composer controls" loading="lazy" />
+          <figcaption>Type <code>/</code> in the composer to pick a skill — its full instructions are injected for that turn, while the <strong>Skills</strong> toggle lets the agent choose one on its own.</figcaption>
+        </figure>
       </div>
     </section>
 
@@ -595,6 +634,7 @@ npm run dev
           <a class="doc-card" href="https://github.com/robert-mcdermott/phlox/blob/main/docs/OBSERVABILITY.md" target="_blank" rel="noopener"><h3>Observability</h3><p>Token usage/cost, structured logs, OpenTelemetry tracing.</p></a>
           <a class="doc-card" href="https://github.com/robert-mcdermott/phlox/blob/main/docs/BUDGETS.md" target="_blank" rel="noopener"><h3>Budgets</h3><p>Monthly spend caps per user/department — warnings and enforcement.</p></a>
           <a class="doc-card" href="https://github.com/robert-mcdermott/phlox/blob/main/docs/API_GATEWAY.md" target="_blank" rel="noopener"><h3>API Gateway</h3><p>OpenAI-compatible keys and <code>/v1/*</code> endpoints.</p></a>
+          <a class="doc-card" href="https://github.com/robert-mcdermott/phlox/blob/main/docs/SKILLS.md" target="_blank" rel="noopener"><h3>Skills</h3><p>Reusable <code>SKILL.md</code> workflows — invocation and auto-activation.</p></a>
           <a class="doc-card" href="https://github.com/robert-mcdermott/phlox/blob/main/docs/MCP.md" target="_blank" rel="noopener"><h3>MCP</h3><p>Connecting Model Context Protocol servers.</p></a>
           <a class="doc-card" href="https://github.com/robert-mcdermott/phlox/blob/main/docs/THEMING.md" target="_blank" rel="noopener"><h3>Theming</h3><p>The theme token system and adding new themes.</p></a>
           <a class="doc-card" href="https://github.com/robert-mcdermott/phlox/blob/main/docs/ADDING_A_TOOL.md" target="_blank" rel="noopener"><h3>Extending</h3><p>Guides for adding new agent tools and providers.</p></a>
@@ -632,6 +672,7 @@ npm run dev
           <a href="#features">Features</a>
           <a href="#agent">Agentic harness</a>
           <a href="#assistants">Custom assistants</a>
+          <a href="#skills">Agent skills</a>
           <a href="#knowledge">Documents &amp; RAG</a>
           <a href="#security">Security</a>
         </div>

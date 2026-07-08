@@ -163,6 +163,61 @@ class AssistantOut(AssistantBase):
         from_attributes = True
 
 
+# -- skills ------------------------------------------------------------------
+class SkillBase(BaseModel):
+    # Slug handle; the router normalizes via app.skills.slugify, this just rejects empties.
+    name: str
+    # What the skill does AND when to use it — the model-facing activation trigger.
+    description: str
+    # Full markdown instructions (the SKILL.md body).
+    instructions: str
+    # Advertise to the model for self-serve activation via the use_skill tool.
+    auto_activate: bool = True
+    visibility: str = "private"  # public | private (public requires admin)
+
+    @field_validator("visibility")
+    @classmethod
+    def _check_visibility(cls, v: str) -> str:
+        return _validate_visibility(v)
+
+    @field_validator("name", "description")
+    @classmethod
+    def _check_required_text(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("field is required")
+        return v
+
+
+class SkillCreate(SkillBase):
+    pass
+
+
+class SkillUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    instructions: str | None = None
+    auto_activate: bool | None = None
+    visibility: str | None = None
+    is_active: bool | None = None
+
+    @field_validator("visibility")
+    @classmethod
+    def _check_visibility(cls, v: str | None) -> str | None:
+        return _validate_visibility(v)
+
+
+class SkillOut(SkillBase):
+    id: str
+    created_by: str | None = None
+    is_active: bool = True
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 # -- chat ------------------------------------------------------------------
 class ChatRequest(BaseModel):
     conversation_id: str | None = None
@@ -185,6 +240,12 @@ class ChatRequest(BaseModel):
     regenerate: bool = False
     # Base64 data URLs of attached images (data:image/...;base64,...).
     images: list[str] = []
+    # Skill slugs the user explicitly invoked ("/name" in the composer) for this message;
+    # their full instructions are injected into the system prompt for this turn.
+    skills: list[str] = []
+    # When true, advertise registered skills (name + description) and the use_skill tool
+    # so the model can load relevant skills on its own (progressive disclosure).
+    skills_enabled: bool = True
 
 
 class ApproveRequest(BaseModel):

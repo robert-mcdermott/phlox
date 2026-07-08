@@ -41,6 +41,7 @@ from app.routers import (
     memories,
     providers,
     settings,
+    skills,
     tools,
     usage,
 )
@@ -75,6 +76,14 @@ def _bootstrap() -> None:
             backfill_usage_ledger(db)
         except Exception as e:  # noqa: BLE001
             logger.warning("Usage ledger backfill skipped: %s", e)
+
+        # Seed the example skills on first boot (no-op once the table has rows).
+        try:
+            from app.skills import seed_builtin_skills
+
+            seed_builtin_skills(db)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Skill seeding skipped: %s", e)
 
         # Auto-connect enabled MCP servers.
         from app.mcp.manager import mcp_manager
@@ -122,7 +131,7 @@ app.add_middleware(
 
 for r in (auth, chat, conversations, providers, settings, documents, assistants, mcp,
           tools, files, memories, checkpoints, attachments, usage, admin_config, api_keys,
-          gateway, budgets):
+          gateway, budgets, skills):
     app.include_router(r.router)
 
 # Structured request logging (always) + OpenTelemetry tracing (if configured).

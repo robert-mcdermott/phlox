@@ -81,6 +81,20 @@ export const api = {
     return res.json()
   },
 
+  // skills (users manage their own; admins can publish public ones)
+  listSkills: () => req('GET', '/api/skills'),
+  createSkill: (body) => req('POST', '/api/skills', body),
+  updateSkill: (id, body) => req('PATCH', `/api/skills/${id}`, body),
+  deleteSkill: (id) => req('DELETE', `/api/skills/${id}`),
+  importSkill: async (file) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    const res = await fetch('/api/skills/import', { method: 'POST', body: fd, headers: { ...authHeaders() } })
+    if (!res.ok) throw new Error(await res.text())
+    return res.json()
+  },
+  exportSkillUrl: (id) => `/api/skills/${id}/export`,
+
   // mcp
   listMcp: () => req('GET', '/api/mcp'),
   addMcp: (body) => req('POST', '/api/mcp', body),

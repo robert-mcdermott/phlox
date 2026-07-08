@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { X, Cpu, Palette, FileText, Server, Wrench, Brain, Users, ShieldCheck, KeyRound, KeySquare, BarChart3, SlidersHorizontal, Wallet, Bot } from 'lucide-react'
+import { X, Cpu, Palette, FileText, Server, Wrench, Brain, Users, ShieldCheck, KeyRound, KeySquare, BarChart3, SlidersHorizontal, Wallet, Bot, Sparkles } from 'lucide-react'
 import ProviderSettings from './ProviderSettings'
 import AssistantsPanel from './AssistantsPanel'
 import ThemeSwitcher from './ThemeSwitcher'
@@ -10,6 +10,7 @@ import ConfigPanel from './ConfigPanel'
 import BudgetsPanel from './BudgetsPanel'
 import AuthSettingsPanel from './AuthSettingsPanel'
 import ApiKeysPanel from './ApiKeysPanel'
+import SkillsPanel from './SkillsPanel'
 import DocumentsPanel from '../documents/DocumentsPanel'
 import McpManager from '../mcp/McpManager'
 import ToolManager from '../tools/ToolManager'
@@ -21,6 +22,7 @@ const USER_TABS = [
   { id: 'appearance', label: 'Appearance', icon: Palette },
   { id: 'documents', label: 'Documents', icon: FileText },
   { id: 'memory', label: 'Memory', icon: Brain },
+  { id: 'skills', label: 'Skills', icon: Sparkles },
   { id: 'apikeys', label: 'API Keys', icon: KeySquare },
 ]
 const ADMIN_TABS = [
@@ -186,6 +188,7 @@ export default function SettingsDrawer({ initialTab = 'providers', onClose }) {
             {tab === 'appearance' && <ThemeSwitcher />}
             {tab === 'documents' && <DocumentsPanel />}
             {tab === 'memory' && <MemoryPanel />}
+            {tab === 'skills' && <SkillsPanel />}
             {tab === 'apikeys' && <ApiKeysPanel />}
             {isAdmin && tab === 'assistants' && <AssistantsPanel />}
             {isAdmin && tab === 'mcp' && <McpManager />}

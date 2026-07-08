@@ -94,6 +94,40 @@ class Assistant(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
 
 
+class Skill(Base):
+    """A registered agent skill: named, reusable markdown instructions the model can
+    follow for a specialized task (Anthropic Agent Skills / SKILL.md compatible).
+
+    Two activation paths (see docs/SKILLS.md):
+    - **Explicit**: the user invokes ``/name`` in the composer; the full ``instructions``
+      are injected into the system prompt for that turn.
+    - **Automatic** (progressive disclosure): skills with ``auto_activate`` are listed in
+      the system prompt as name + description only; the model calls the ``use_skill``
+      tool to load the full instructions when a request matches.
+
+    Users create their own (``visibility='private'``); admins can publish ``public``
+    skills for everyone. ``name`` is the global slash-command handle, so it is unique.
+    """
+
+    __tablename__ = "skills"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    # Slug handle ("data-analysis") — what users type after "/" and models pass to use_skill.
+    name: Mapped[str] = mapped_column(String(100), unique=True, index=True)
+    # Shown to the model when deciding whether to load the skill — say what it does AND
+    # when to use it (this is the trigger, per the Agent Skills spec).
+    description: Mapped[str] = mapped_column(Text)
+    # The SKILL.md body: full markdown instructions followed once the skill is active.
+    instructions: Mapped[str] = mapped_column(Text)
+    # When true, advertised to the model for self-serve activation via use_skill.
+    auto_activate: Mapped[bool] = mapped_column(Boolean, default=True)
+    visibility: Mapped[str] = mapped_column(String(20), default="private")  # public | private
+    created_by: Mapped[str | None] = mapped_column(String(32), index=True, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
+
+
 class Conversation(Base):
     __tablename__ = "conversations"
 

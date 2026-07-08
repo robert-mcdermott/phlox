@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Copy, Check, Brain, Pencil, RefreshCw, FileText } from 'lucide-react'
+import { Copy, Check, Brain, Pencil, RefreshCw, FileText, Sparkles } from 'lucide-react'
 import Markdown from '../markdown/Markdown'
 import ToolCallCard from './ToolCallCard'
 import ArtifactViewer from './ArtifactViewer'
@@ -52,6 +52,7 @@ export default function Message({ message, conversationId, isLast }) {
   if (message.role === 'user') {
     const images = (message.attachments || []).filter((a) => a.type === 'image')
     const documents = (message.attachments || []).filter((a) => a.type === 'document')
+    const skillRefs = (message.attachments || []).filter((a) => a.type === 'skill')
     const canEdit = !streaming && !String(message.id).startsWith('tmp-')
     if (editing) {
       return (
@@ -102,6 +103,20 @@ export default function Message({ message, conversationId, isLast }) {
                 >
                   <FileText size={14} className="shrink-0 text-accent" />
                   <span className="truncate">{doc.filename || 'Document'}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {skillRefs.length > 0 && (
+            <div className="flex max-w-full flex-wrap justify-end gap-2">
+              {skillRefs.map((s) => (
+                <div
+                  key={s.skill_id || s.name}
+                  className="flex max-w-[18rem] items-center gap-1.5 rounded-lg border border-accent/40 bg-accent/10 px-2.5 py-1.5 text-xs text-content"
+                  title={`Invoked skill: ${s.name}`}
+                >
+                  <Sparkles size={14} className="shrink-0 text-accent" />
+                  <span className="truncate font-medium">/{s.name}</span>
                 </div>
               ))}
             </div>

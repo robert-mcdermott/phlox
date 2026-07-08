@@ -41,6 +41,12 @@ models).
   assistant can search), and per-assistant **capability limits** (web search /
   personal-document search / agent tools). Users pick an assistant on the new-chat screen;
   the choice is pinned per conversation.
+- ✨ **Agent skills** — named, reusable markdown workflows the agent can follow
+  ([Anthropic Agent Skills](https://github.com/anthropics/skills)–compatible, with
+  SKILL.md import/export): invoke one explicitly with a **`/` slash command** in the
+  composer, or let the agent **auto-activate** relevant skills via progressive disclosure
+  (opt-out toggle). Users manage private skills; admins publish shared ones. See
+  [docs/SKILLS.md](docs/SKILLS.md).
 - 🧠 **Cross-conversation memory** — durable facts recalled across chats.
 - 🖼️ **Multimodal** — attach images to messages for vision models.
 - 🔌 **MCP integration** — connect Model Context Protocol servers; their tools join
@@ -91,6 +97,7 @@ models).
 | [docs/BUDGETS.md](docs/BUDGETS.md) | Monthly spend budgets per user/department: warnings + enforcement |
 | [docs/API_GATEWAY.md](docs/API_GATEWAY.md) | OpenAI-compatible API gateway: API keys + `/v1/*` endpoints |
 | [docs/MCP.md](docs/MCP.md) | Connecting MCP servers |
+| [docs/SKILLS.md](docs/SKILLS.md) | Agent skills: slash commands, auto-activation, SKILL.md import/export |
 | [docs/THEMING.md](docs/THEMING.md) | The theme token system + adding themes |
 | [docs/ADDING_A_TOOL.md](docs/ADDING_A_TOOL.md) · [docs/ADDING_A_PROVIDER.md](docs/ADDING_A_PROVIDER.md) | Extension guides |
 | [AGENTS.md](AGENTS.md) | Orientation for AI coding agents working on the repo |

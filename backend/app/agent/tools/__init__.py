@@ -17,6 +17,7 @@ def register_builtin_tools(registry: "ToolRegistry") -> None:
         memory,
         planning,
         shell,
+        skills,
         subagent,
         web,
     )
@@ -34,6 +35,7 @@ def register_builtin_tools(registry: "ToolRegistry") -> None:
         web.WebSearch(),
         web.WebFetch(),
         memory.SaveMemory(),
+        skills.UseSkill(),
         subagent.SpawnSubagent(),
         planning.UpdateTodos(),
         checkpoint.CreateCheckpoint(),

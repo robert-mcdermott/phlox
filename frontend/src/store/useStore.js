@@ -17,6 +17,8 @@ export const useStore = create((set, get) => ({
   settings: null,
   providers: [],
   assistants: [],
+  // Registered agent skills (public + own), for the "/" composer picker.
+  skills: [],
   // Assistant for the active conversation (pinned server-side) or the pending new chat.
   activeAssistantId: null,
   theme: initialTheme(),
@@ -70,8 +72,17 @@ export const useStore = create((set, get) => ({
   async loadApp() {
     await Promise.all([
       get().loadConversations(), get().loadSettings(), get().loadProviders(), get().loadBudget(),
-      get().loadAssistants(),
+      get().loadAssistants(), get().loadSkills(),
     ])
+  },
+
+  async loadSkills() {
+    try {
+      const skills = await api.listSkills()
+      set({ skills })
+    } catch {
+      set({ skills: [] })
+    }
   },
 
   async loadAssistants() {
@@ -230,12 +241,20 @@ export const useStore = create((set, get) => ({
       images = [],
       documentIds = [],
       documentRefs = [],
+      skills = [],
+      skillRefs = [],
+      skillsEnabled = true,
     } = {},
   ) {
-    if (!text.trim() && images.length === 0 && documentIds.length === 0) return
+    if (!text.trim() && images.length === 0 && documentIds.length === 0 && skills.length === 0) return
     // Steering: if a turn is in flight, queue this as a follow-up to send when it finishes.
     if (get().streaming) {
-      set({ queued: { text, images, documentIds, documentRefs, autoApprove, webSearch, documentSearch } })
+      set({
+        queued: {
+          text, images, documentIds, documentRefs, autoApprove, webSearch, documentSearch,
+          skills, skillRefs, skillsEnabled,
+        },
+      })
       return
     }
     const attachments = [
@@ -249,6 +268,7 @@ export const useStore = create((set, get) => ({
         n_chunks: doc.n_chunks,
         status: doc.status,
       })),
+      ...skillRefs.map((s) => ({ type: 'skill', skill_id: s.id, name: s.name })),
     ]
     const userMsg = {
       id: `tmp-${Date.now()}`,
@@ -271,6 +291,8 @@ export const useStore = create((set, get) => ({
       document_search: documentSearch,
       document_ids: documentIds,
       images,
+      skills,
+      skills_enabled: skillsEnabled,
       // Only meaningful for a new conversation; the server pins it there and ignores
       // it on existing ones.
       assistant_id: get().activeAssistantId,
@@ -447,6 +469,9 @@ export const useStore = create((set, get) => ({
         images: q.images,
         documentIds: q.documentIds || [],
         documentRefs: q.documentRefs || [],
+        skills: q.skills || [],
+        skillRefs: q.skillRefs || [],
+        skillsEnabled: q.skillsEnabled !== false,
       })
     }
   },

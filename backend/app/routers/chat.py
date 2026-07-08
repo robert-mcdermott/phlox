@@ -77,6 +77,14 @@ def _build_history(conversation: Conversation, system_prompt: str) -> list[dict]
                 names = ", ".join(a.get("filename") or "document" for a in doc_refs)
                 marker = f"[Referenced documents: {names}]"
                 content = f"{content}\n\n{marker}" if content else marker
+            # Full skill instructions are only injected for the *current* turn (they'd
+            # bloat every later turn); the marker keeps the model aware a skill guided
+            # this message, and it can reload one via use_skill if needed.
+            skill_refs = [a for a in (m.attachments or []) if a.get("type") == "skill"]
+            if skill_refs:
+                names = ", ".join(a.get("name") or "skill" for a in skill_refs)
+                marker = f"[Invoked skills: {names}]"
+                content = f"{content}\n\n{marker}" if content else marker
             entry = {"role": "user", "content": content}
             if m.attachments:
                 from app.attachments import load_image_data_urls
@@ -166,6 +174,19 @@ def _resolve_document_refs(
             continue
         resolved.append(doc)
     return resolved
+
+
+def _latest_user_skill_names(conversation: Conversation) -> list[str]:
+    """Skill slugs invoked on the most recent user message (for regenerate)."""
+    for message in reversed(list(conversation.messages)):
+        if message.role != "user":
+            continue
+        return [
+            ref.get("name")
+            for ref in (message.attachments or [])
+            if ref.get("type") == "skill" and ref.get("name")
+        ]
+    return []
 
 
 def _latest_user_document_ids(conversation: Conversation) -> list[str]:
@@ -388,6 +409,28 @@ async def chat(
         is not None
     )
 
+    # Skills the user explicitly invoked ("/name"): inject their full instructions for
+    # this turn. Visibility is checked in resolve_skill; unknown/hidden slugs are dropped.
+    from app.skills import invoked_skills_prompt, resolve_skill, skills_preamble
+
+    skill_names = _latest_user_skill_names(conversation) if req.regenerate else req.skills
+    invoked_skills = []
+    seen_skills: set[str] = set()
+    for name in skill_names:
+        s = resolve_skill(db, name, user.id)
+        if s and s.name not in seen_skills:
+            seen_skills.add(s.name)
+            invoked_skills.append(s)
+    if invoked_skills:
+        system_prompt += invoked_skills_prompt(invoked_skills)
+
+    # Progressive disclosure for auto-activation: list name+description only; the model
+    # loads full instructions via use_skill. Needs the tools capability (it IS a tool).
+    skill_listing = ""
+    if req.skills_enabled and caps.get("tools", True):
+        skill_listing = skills_preamble(db, user.id, exclude=seen_skills)
+        system_prompt += skill_listing
+
     if assistant_has_kb:
         system_prompt += ASSISTANT_KB_PROMPT
     elif document_search_requested:
@@ -413,6 +456,9 @@ async def chat(
 
             attachment_refs.extend(save_message_images(user_msg.id, req.images))
         attachment_refs.extend(_document_attachment(doc) for doc in referenced_docs)
+        attachment_refs.extend(
+            {"type": "skill", "skill_id": s.id, "name": s.name} for s in invoked_skills
+        )
         if attachment_refs:
             user_msg.attachments = attachment_refs
             db.commit()
@@ -456,6 +502,9 @@ async def chat(
             # point of attaching one.
             if not (document_search_requested or referenced_docs or assistant_has_kb):
                 enabled_tools.discard("search_documents")
+            # Only advertise use_skill when the prompt actually lists skills to load.
+            if not skill_listing:
+                enabled_tools.discard("use_skill")
             if not caps.get("tools", True):
                 # Chat + knowledge only: no code execution, shell, files, or MCP tools.
                 enabled_tools &= {"web_search", "search_documents"}

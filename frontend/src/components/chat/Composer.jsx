@@ -11,6 +11,7 @@ import {
   FileText,
   Loader2,
   AlertCircle,
+  Sparkles,
 } from 'lucide-react'
 import { useStore } from '../../store/useStore'
 import { api } from '../../api/client'
@@ -46,6 +47,12 @@ export default function Composer() {
   const [documentRefs, setDocumentRefs] = useState([])
   const [docPicker, setDocPicker] = useState({ open: false, query: '', start: 0, end: 0 })
   const [activeDocIndex, setActiveDocIndex] = useState(0)
+  // Skills invoked for this message ("/name" picker) + the auto-activation toggle.
+  const [skillRefs, setSkillRefs] = useState([])
+  const [skillsEnabled, setSkillsEnabled] = useState(true)
+  const [skillPicker, setSkillPicker] = useState({ open: false, query: '', end: 0 })
+  const [activeSkillIndex, setActiveSkillIndex] = useState(0)
+  const skills = useStore((s) => s.skills)
   const streaming = useStore((s) => s.streaming)
   const send = useStore((s) => s.sendMessage)
   const stop = useStore((s) => s.stopStreaming)
@@ -58,6 +65,8 @@ export default function Composer() {
   const caps = assistants.find((a) => a.id === activeAssistantId)?.capabilities || {}
   const webSearchAllowed = caps.web_search !== false
   const documentSearchAllowed = caps.document_search !== false
+  // Auto-activation rides on the use_skill tool, so it needs the tools capability.
+  const skillsAllowed = caps.tools !== false
   const taRef = useRef(null)
   const fileRef = useRef(null)
   const imgRef = useRef(null)
@@ -79,6 +88,8 @@ export default function Composer() {
   useEffect(() => {
     setDocumentRefs([])
     setDocPicker({ open: false, query: '', start: 0, end: 0 })
+    setSkillRefs([])
+    setSkillPicker({ open: false, query: '', end: 0 })
     loadDocuments()
   }, [activeId, loadDocuments])
 
@@ -91,6 +102,21 @@ export default function Composer() {
   useEffect(() => {
     setActiveDocIndex(0)
   }, [docPicker.open, docPicker.query])
+
+  useEffect(() => {
+    setActiveSkillIndex(0)
+  }, [skillPicker.open, skillPicker.query])
+
+  const pickerSkills = useMemo(() => {
+    if (!skillPicker.open) return []
+    const q = skillPicker.query.toLowerCase()
+    const selected = new Set(skillRefs.map((s) => s.id))
+    return skills
+      .filter((s) => s.is_active !== false)
+      .filter((s) => !selected.has(s.id))
+      .filter((s) => !q || s.name.includes(q) || (s.description || '').toLowerCase().includes(q))
+      .slice(0, 7)
+  }, [skillPicker.open, skillPicker.query, skillRefs, skills])
 
   const pickerDocs = useMemo(() => {
     if (!docPicker.open) return []
@@ -107,13 +133,20 @@ export default function Composer() {
   const erroredDocs = documentRefs.filter((d) => d.status === 'error')
   const documentIds = documentRefs.map((d) => d.id || d.document_id).filter(Boolean)
   const canSubmit =
-    (text.trim() || images.length > 0 || documentIds.length > 0) &&
+    (text.trim() || images.length > 0 || documentIds.length > 0 || skillRefs.length > 0) &&
     !uploading &&
     pendingDocs.length === 0 &&
     erroredDocs.length === 0
 
   const updateMentionPicker = (value, cursor) => {
     const before = value.slice(0, cursor)
+    // "/" at the very start of the message opens the skill (slash command) picker.
+    const slash = /^\/([a-zA-Z0-9-]*)$/.exec(before)
+    if (slash && skills.length > 0) {
+      setSkillPicker({ open: true, query: slash[1] || '', end: cursor })
+    } else {
+      setSkillPicker((prev) => (prev.open ? { open: false, query: '', end: 0 } : prev))
+    }
     const match = /(^|\s)@([^\s@]*)$/.exec(before)
     if (!match) {
       setDocPicker((prev) => (prev.open ? { open: false, query: '', start: 0, end: 0 } : prev))
@@ -135,6 +168,18 @@ export default function Composer() {
     setDocumentRefs((prev) =>
       prev.some((d) => (d.id || d.document_id) === doc.id) ? prev : [...prev, doc],
     )
+  }
+
+  const pickSkill = (skill) => {
+    setSkillRefs((prev) => (prev.some((s) => s.id === skill.id) ? prev : [...prev, skill]))
+    // The "/query" text is replaced by the chip; what remains is the actual message.
+    setText((prev) => prev.slice(skillPicker.end))
+    setSkillPicker({ open: false, query: '', end: 0 })
+    window.setTimeout(() => {
+      taRef.current?.focus()
+      taRef.current?.setSelectionRange(0, 0)
+      setTextareaHeight()
+    }, 0)
   }
 
   const pickDocument = (doc) => {
@@ -162,15 +207,42 @@ export default function Composer() {
       images,
       documentIds,
       documentRefs,
+      skills: skillRefs.map((s) => s.name),
+      skillRefs,
+      skillsEnabled: skillsEnabled && skillsAllowed,
     })
     setText('')
     setImages([])
     setDocumentRefs([])
     setDocPicker({ open: false, query: '', start: 0, end: 0 })
+    setSkillRefs([])
+    setSkillPicker({ open: false, query: '', end: 0 })
     if (taRef.current) taRef.current.style.height = 'auto'
   }
 
   const onKeyDown = (e) => {
+    if (skillPicker.open) {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        setSkillPicker({ open: false, query: '', end: 0 })
+        return
+      }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setActiveSkillIndex((i) => Math.min(i + 1, Math.max(pickerSkills.length - 1, 0)))
+        return
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setActiveSkillIndex((i) => Math.max(i - 1, 0))
+        return
+      }
+      if ((e.key === 'Enter' || e.key === 'Tab') && pickerSkills.length > 0) {
+        e.preventDefault()
+        pickSkill(pickerSkills[activeSkillIndex] || pickerSkills[0])
+        return
+      }
+    }
     if (docPicker.open) {
       if (e.key === 'Escape') {
         e.preventDefault()
@@ -265,6 +337,27 @@ export default function Composer() {
             ))}
           </div>
         )}
+        {skillRefs.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-2">
+            {skillRefs.map((skill) => (
+              <div
+                key={skill.id}
+                className="flex max-w-full items-center gap-2 rounded-lg border border-accent/40 bg-accent/10 px-2.5 py-1.5 text-xs text-content"
+                title={skill.description || skill.name}
+              >
+                <Sparkles size={14} className="shrink-0 text-accent" />
+                <span className="max-w-[16rem] truncate font-medium">/{skill.name}</span>
+                <button
+                  onClick={() => setSkillRefs((prev) => prev.filter((s) => s.id !== skill.id))}
+                  className="rounded p-0.5 text-muted hover:text-red-600"
+                  title="Remove"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
         {documentRefs.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-2">
             {documentRefs.map((doc) => {
@@ -303,6 +396,32 @@ export default function Composer() {
                 </div>
               )
             })}
+          </div>
+        )}
+        {skillPicker.open && (
+          <div className="mb-2 max-h-56 overflow-y-auto rounded-lg border border-border bg-surface shadow-lg">
+            {pickerSkills.length === 0 ? (
+              <div className="px-3 py-2 text-sm text-muted">No matching skills</div>
+            ) : (
+              pickerSkills.map((skill, i) => (
+                <button
+                  key={skill.id}
+                  type="button"
+                  onMouseDown={(e) => {
+                    e.preventDefault()
+                    pickSkill(skill)
+                  }}
+                  className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm ${
+                    i === activeSkillIndex ? 'bg-surface-2 text-content' : 'text-content hover:bg-surface-2'
+                  }`}
+                  title={skill.description}
+                >
+                  <Sparkles size={15} className="shrink-0 text-accent" />
+                  <span className="shrink-0 font-medium">/{skill.name}</span>
+                  <span className="min-w-0 flex-1 truncate text-xs text-muted">{skill.description}</span>
+                </button>
+              ))
+            )}
           </div>
         )}
         {docPicker.open && (
@@ -413,6 +532,21 @@ export default function Composer() {
                 className="rounded border-border text-accent focus:ring-accent" />
               <FileSearch size={12} /> Search documents
             </label>
+            {skills.length > 0 && (
+              <label
+                className={`flex items-center gap-1.5 ${skillsAllowed ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'}`}
+                title={
+                  skillsAllowed
+                    ? 'Let the agent load registered skills on its own (type / to invoke one explicitly)'
+                    : 'Disabled by this assistant'
+                }
+              >
+                <input type="checkbox" checked={skillsEnabled && skillsAllowed} disabled={!skillsAllowed}
+                  onChange={(e) => setSkillsEnabled(e.target.checked)}
+                  className="rounded border-border text-accent focus:ring-accent" />
+                <Sparkles size={12} /> Skills
+              </label>
+            )}
           </div>
           <TokenMeter />
         </div>

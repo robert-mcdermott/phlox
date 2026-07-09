@@ -26,6 +26,7 @@ from app.schemas import (
     ProfilesUpdate,
     ResilienceUpdate,
     SandboxUpdate,
+    SuggestionsUpdate,
 )
 
 # Every route is admin-only via the per-handler ``require_admin`` dependency, which also
@@ -65,6 +66,7 @@ def _effective_config() -> dict:
         "resilience": config.get_resilience_config(),
         "generation": config.default_generation_params(),
         "sandbox": {"runner": sandbox.get("runner"), "container": sandbox.get("container", {})},
+        "suggestions": config.get_suggestions(),
         "meta": {
             # Read-only context the UI surfaces but cannot change here.
             "sandbox_runner": sandbox.get("runner"),
@@ -132,6 +134,17 @@ def update_generation(body: GenerationUpdate, user: User = Depends(require_admin
     # Partial override: only persist the keys the admin actually set.
     updates = body.model_dump(exclude_none=True)
     app_config.set_section("generation", updates, user.id)
+    return _effective_config()
+
+
+@router.put("/suggestions")
+def update_suggestions(body: SuggestionsUpdate, user: User = Depends(require_admin)):
+    """Replace the welcome-screen prompt suggestions. An empty list is valid (hides the
+    grid); it is stored as an explicit override, not treated as 'use defaults'."""
+    items = [s.model_dump() for s in body.suggestions if s.text.strip()]
+    if len(items) > 12:
+        raise HTTPException(422, "At most 12 suggestions")
+    app_config.set_section("suggestions", items, user.id)
     return _effective_config()
 
 

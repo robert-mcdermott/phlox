@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import {
   SlidersHorizontal, Loader2, Plus, Trash2, Save, Check, X, FlaskConical,
-  Cpu, DollarSign, ShieldAlert, Box,
+  Cpu, DollarSign, ShieldAlert, Box, Sparkles,
 } from 'lucide-react'
 import { api } from '../../api/client'
+import { useStore } from '../../store/useStore'
 
 // Admin-only deployment configuration: a live overlay on backend/config.yml. Each section
 // (providers, pricing, runtime, sandbox) saves independently and applies without a restart.
@@ -49,6 +50,7 @@ export default function ConfigPanel() {
       <ProvidersCard cfg={cfg} onSaved={onSaved} />
       <PricingCard cfg={cfg} onSaved={onSaved} />
       <RuntimeCard cfg={cfg} onSaved={onSaved} />
+      <SuggestionsCard cfg={cfg} onSaved={onSaved} />
       <SandboxCard cfg={cfg} onSaved={onSaved} />
     </div>
   )
@@ -441,6 +443,83 @@ function Field({ label, children }) {
       {children}
     </label>
   )
+}
+
+// ---- Welcome suggestions ---------------------------------------------------
+// Starter prompts on the default (no-assistant) welcome screen. The saved list replaces
+// the config.yml seed wholesale; an empty list is valid and hides the grid. Custom
+// assistants keep their own per-assistant suggestions (Assistants panel).
+function SuggestionsCard({ cfg, onSaved }) {
+  const [rows, setRows] = useState(() => cfg.suggestions.map(normalizeSuggestion))
+  const { busy, err, ok, save } = useSaver(onSaved)
+  useEffect(() => { setRows(cfg.suggestions.map(normalizeSuggestion)) }, [cfg.suggestions])
+
+  const update = (i, patch) => setRows((rs) => rs.map((r, j) => (j === i ? { ...r, ...patch } : r)))
+  const remove = (i) => setRows((rs) => rs.filter((_, j) => j !== i))
+  const add = () => setRows((rs) => [...rs, { text: '', document_search: false, web_search: false }])
+
+  const submit = async () => {
+    await save('suggestions', {
+      suggestions: rows
+        .filter((r) => r.text.trim())
+        .map((r) => ({
+          text: r.text.trim(),
+          document_search: r.document_search,
+          web_search: r.web_search,
+        })),
+    })
+    // Refresh the store so the admin's own welcome screen picks the change up immediately.
+    useStore.getState().loadSuggestions()
+  }
+
+  return (
+    <Card icon={Sparkles} title="Welcome suggestions"
+      desc="Starter prompts shown on the new-chat welcome screen (when no assistant is selected). The toggles pre-enable document search or live web search for that prompt. Assistants define their own suggestions in the Assistants panel.">
+      <div className="space-y-2">
+        {rows.map((r, i) => (
+          <div key={i} className="flex items-center gap-2">
+            <input placeholder="suggestion text" value={r.text}
+              onChange={(e) => update(i, { text: e.target.value })} className={inputCls} />
+            <label className="flex shrink-0 items-center gap-1 text-xs text-muted" title="Pre-enable document search for this prompt">
+              <input type="checkbox" checked={r.document_search}
+                onChange={(e) => update(i, { document_search: e.target.checked })}
+                className="rounded border-border text-accent focus:ring-accent" />
+              docs
+            </label>
+            <label className="flex shrink-0 items-center gap-1 text-xs text-muted" title="Pre-enable live web search for this prompt">
+              <input type="checkbox" checked={r.web_search}
+                onChange={(e) => update(i, { web_search: e.target.checked })}
+                className="rounded border-border text-accent focus:ring-accent" />
+              web
+            </label>
+            <button onClick={() => remove(i)} className="rounded p-1.5 text-muted hover:text-red-600" title="Remove suggestion">
+              <Trash2 size={14} />
+            </button>
+          </div>
+        ))}
+        {rows.length === 0 && (
+          <p className="text-xs text-muted">No suggestions — the welcome screen will show none. Save an empty list to keep it that way.</p>
+        )}
+      </div>
+      <div className="mt-3 flex items-center gap-2">
+        <button onClick={add} disabled={rows.length >= 12}
+          className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm text-content hover:border-accent disabled:opacity-50">
+          <Plus size={14} /> Add suggestion
+        </button>
+        <div className="flex-1" />
+        <SaveButton onClick={submit} busy={busy} label="Save suggestions" />
+      </div>
+      <Feedback err={err} ok={ok} />
+    </Card>
+  )
+}
+
+function normalizeSuggestion(s) {
+  return {
+    text: s.text || '',
+    document_search: !!s.document_search,
+    web_search: !!s.web_search,
+  }
 }
 
 // ---- Sandbox limits ------------------------------------------------------

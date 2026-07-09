@@ -173,6 +173,43 @@ def test_put_pricing_roundtrips(client, clean_config):
     assert r.json()["pricing"]["mdl"]["output"] == 4.0
 
 
+def test_suggestions_defaults_and_override(client, clean_config):
+    from app import config
+
+    # No override, no file key => built-in defaults, normalized shape.
+    defaults = config.get_suggestions()
+    assert defaults, "built-in defaults expected"
+    assert all(set(s) == {"text", "document_search", "web_search"} for s in defaults)
+    assert client.get("/api/settings/suggestions").json()["suggestions"] == defaults
+
+    # Admin PUT replaces the list and applies live to the user-facing endpoint.
+    r = client.put("/api/admin/config/suggestions", json={"suggestions": [
+        {"text": "Ask me about turnips", "web_search": True},
+        {"text": "   "},  # blank entries are dropped
+    ]})
+    assert r.status_code == 200
+    assert r.json()["suggestions"] == [
+        {"text": "Ask me about turnips", "document_search": False, "web_search": True}
+    ]
+    assert client.get("/api/settings/suggestions").json()["suggestions"] == [
+        {"text": "Ask me about turnips", "document_search": False, "web_search": True}
+    ]
+
+
+def test_suggestions_empty_override_is_respected(client, clean_config):
+    """Saving an empty list must hide the grid, not fall back to defaults."""
+    r = client.put("/api/admin/config/suggestions", json={"suggestions": []})
+    assert r.status_code == 200
+    assert r.json()["suggestions"] == []
+    assert client.get("/api/settings/suggestions").json()["suggestions"] == []
+
+
+def test_suggestions_capped(client, clean_config):
+    many = [{"text": f"s{i}"} for i in range(13)]
+    r = client.put("/api/admin/config/suggestions", json={"suggestions": many})
+    assert r.status_code == 422
+
+
 # -- access control --------------------------------------------------------
 def test_admin_config_requires_admin():
     """A non-admin user is rejected by the gate (auth is disabled in the client fixture,

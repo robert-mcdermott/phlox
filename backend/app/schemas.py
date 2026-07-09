@@ -384,6 +384,16 @@ class SandboxUpdate(BaseModel):
     container: SandboxLimits
 
 
+class SuggestionItem(BaseModel):
+    text: str
+    document_search: bool = False  # pre-toggle the document-search composer switch
+    web_search: bool = False       # pre-toggle the live web-search composer switch
+
+
+class SuggestionsUpdate(BaseModel):
+    suggestions: list[SuggestionItem]
+
+
 class BudgetCreate(BaseModel):
     scope_type: str                  # "user" | "department"
     scope_value: str                 # user id, or department name

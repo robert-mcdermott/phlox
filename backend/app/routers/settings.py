@@ -4,6 +4,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
+from app import config
 from app.auth.deps import get_current_user
 from app.database import get_db
 from app.models import User
@@ -11,6 +12,13 @@ from app.runtime_settings import get_settings, update_settings
 from app.schemas import SettingsOut, SettingsUpdate
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
+
+
+@router.get("/suggestions")
+def read_suggestions(_: User = Depends(get_current_user)):
+    """Welcome-screen prompt suggestions (deployment-wide, admin-editable — see
+    routers/admin_config.py). Readable by every signed-in user."""
+    return {"suggestions": config.get_suggestions()}
 
 
 @router.get("", response_model=SettingsOut)

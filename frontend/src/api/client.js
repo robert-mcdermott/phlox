@@ -48,6 +48,7 @@ export const api = {
   testProfile: (profile) => req('POST', `/api/providers/${profile}/test`),
   getSettings: () => req('GET', '/api/settings'),
   updateSettings: (body) => req('PATCH', '/api/settings', body),
+  getSuggestions: () => req('GET', '/api/settings/suggestions'),
 
   // documents
   listDocuments: (conversationId) =>

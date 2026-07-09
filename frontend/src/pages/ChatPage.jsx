@@ -44,25 +44,25 @@ function BudgetBanner() {
   )
 }
 
-const SUGGESTIONS = [
-  { text: 'Write a Python script to plot a sine wave and run it' },
-  { text: 'Search my uploaded documents for the key findings', documentSearch: true },
-  { text: 'Explain how this codebase is structured' },
-  { text: 'Create a CSV of sample data and summarize it' },
-]
-
 function Welcome() {
   const send = useStore((s) => s.sendMessage)
   const assistants = useStore((s) => s.assistants)
   const activeAssistantId = useStore((s) => s.activeAssistantId)
   const selectAssistant = useStore((s) => s.selectAssistant)
+  // Deployment-wide starter prompts (admin-editable in Settings → Admin → Configuration);
+  // null while loading, so the grid renders empty rather than flashing stale defaults.
+  const configured = useStore((s) => s.suggestions)
   const assistant = assistants.find((a) => a.id === activeAssistantId) || null
 
   const suggestions = assistant?.prompt_suggestions?.length
     ? assistant.prompt_suggestions.map((text) => ({ text }))
     : assistant
       ? []
-      : SUGGESTIONS
+      : (configured || []).map((s) => ({
+          text: s.text,
+          documentSearch: s.document_search,
+          webSearch: s.web_search,
+        }))
 
   return (
     <div className="flex h-full flex-col items-center justify-center px-4 text-center">
@@ -115,7 +115,12 @@ function Welcome() {
         {suggestions.map((s) => (
           <button
             key={s.text}
-            onClick={() => send(s.text, { documentSearch: Boolean(s.documentSearch) })}
+            onClick={() =>
+              send(s.text, {
+                documentSearch: Boolean(s.documentSearch),
+                webSearch: Boolean(s.webSearch),
+              })
+            }
             className="rounded-xl border border-border bg-surface px-4 py-3 text-left text-sm text-content hover:border-accent"
           >
             {s.text}

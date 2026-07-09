@@ -35,6 +35,18 @@ defaults:
     sandboxed per-conversation workspace, and call connected tools. Be clear and concise.
     When you run tools or code, briefly explain what you did and surface the key results.
 
+# Starter prompt suggestions shown on the welcome screen (the default, no-assistant chat).
+# SEED ONLY — also editable live in Settings → Admin → Configuration ("Welcome suggestions");
+# a saved override replaces this list. Omit this key to use Phlox's built-in defaults.
+# `document_search` / `web_search` pre-toggle the matching composer switch for that prompt.
+# Custom assistants have their own per-assistant suggestions and ignore this list.
+suggestions:
+  - text: "Simulate 1,000 dice rolls in Python and chart the distribution"
+  - text: "Search the web for today's top AI news and give me a short briefing"
+    web_search: true
+  - text: "What's the latest news about the Fred Hutch Cancer Center? Create a markdown formatted report of the results"
+    web_search: true
+
 # Named provider profiles. `type` is "openai" (any OpenAI-compatible endpoint)
 # or "bedrock" (AWS Bedrock Converse API). At least one profile must exist here so a fresh
 # install has a working model on first boot. After that, admins can add/edit/remove profiles

@@ -19,6 +19,9 @@ export const useStore = create((set, get) => ({
   assistants: [],
   // Registered agent skills (public + own), for the "/" composer picker.
   skills: [],
+  // Welcome-screen starter prompts (deployment-wide, admin-editable). Null until loaded so
+  // the Welcome grid can tell "not loaded yet" from "admin cleared the list".
+  suggestions: null,
   // Assistant for the active conversation (pinned server-side) or the pending new chat.
   activeAssistantId: null,
   theme: initialTheme(),
@@ -72,8 +75,17 @@ export const useStore = create((set, get) => ({
   async loadApp() {
     await Promise.all([
       get().loadConversations(), get().loadSettings(), get().loadProviders(), get().loadBudget(),
-      get().loadAssistants(), get().loadSkills(),
+      get().loadAssistants(), get().loadSkills(), get().loadSuggestions(),
     ])
+  },
+
+  async loadSuggestions() {
+    try {
+      const { suggestions } = await api.getSuggestions()
+      set({ suggestions })
+    } catch {
+      set({ suggestions: [] })
+    }
   },
 
   async loadSkills() {

@@ -193,6 +193,44 @@ def get_sandbox_config() -> dict[str, Any]:
     return cfg
 
 
+# Starter prompts on the default (no-assistant) welcome screen. Each showcases a distinct
+# capability that works in a fresh, empty workspace: code execution with inline charts,
+# the HTML artifact canvas, document RAG, and opt-in web search. Assistants carry their own
+# ``prompt_suggestions`` and are unaffected by this list.
+DEFAULT_SUGGESTIONS = [
+    {"text": "Simulate 1,000 dice rolls in Python and chart the distribution"},
+    {"text": "Build an interactive HTML dashboard with sample sales data and open it in the canvas"},
+    {"text": "Summarize the key findings across my uploaded documents", "document_search": True},
+    {"text": "Search the web for today's top AI news and give me a short briefing", "web_search": True},
+]
+
+
+def get_suggestions() -> list[dict[str, Any]]:
+    """Welcome-screen prompt suggestions for the default assistant.
+
+    Admin-editable: a ``suggestions`` override (see :mod:`app.app_config`) *replaces* the
+    file list wholesale — so the UI can add, edit, reorder, and delete suggestions,
+    including clearing them entirely (an empty override list is respected, not treated as
+    absence). Falls back to the file ``suggestions:`` key, then ``DEFAULT_SUGGESTIONS``.
+    """
+    from app import app_config
+
+    overlay = app_config.get_section("suggestions")
+    raw = overlay if overlay is not None else load_config().get("suggestions")
+    if raw is None:
+        raw = DEFAULT_SUGGESTIONS
+    out: list[dict[str, Any]] = []
+    for s in raw:
+        if not isinstance(s, dict) or not str(s.get("text", "")).strip():
+            continue
+        out.append({
+            "text": str(s["text"]).strip(),
+            "document_search": bool(s.get("document_search")),
+            "web_search": bool(s.get("web_search")),
+        })
+    return out
+
+
 def get_auth_config() -> dict[str, Any]:
     """Auth settings. ``enabled`` gates login; when off the app runs single-user (dev)."""
     cfg = dict(load_config().get("auth", {}) or {})

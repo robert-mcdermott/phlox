@@ -119,13 +119,32 @@ exec, auth, SQLite persistence) and a **React/Vite** frontend. Full details in
 backend/   FastAPI app (app/), config.yml, SQLite + Qdrant under data/
 frontend/  React + Vite + Tailwind SPA
 docs/      ARCHITECTURE, ROADMAP, DEPLOYMENT, DOCKER, AUTH, SANDBOX, MCP, THEMING, BUDGETS, ADDING_A_*
-scripts/   dev.ps1 / dev.sh
+scripts/   start.sh / start.ps1 (build + run), stop.sh / stop.ps1 (shut down + free ports)
 ```
 
 ## Quick start
 
-Prerequisites: **Python 3.11+** with [`uv`](https://docs.astral.sh/uv/), **Node 18+**, and
-a model provider (a local [Ollama](https://ollama.com) is the easiest).
+The fastest way to get running — one command builds/starts everything and opens your
+browser. It checks for [`uv`](https://docs.astral.sh/uv/) and Node (with install
+instructions if either is missing), installs dependencies on first run, and seeds
+`backend/config.yml` from the example:
+
+```bash
+# macOS/Linux
+./scripts/start.sh          # dev mode: hot-reload backend (:8000) + Vite (:5173)
+./scripts/start.sh prod     # prod mode: builds the SPA once, single process on :8000
+
+# Windows (PowerShell)
+.\scripts\start.ps1
+.\scripts\start.ps1 prod
+```
+
+Press **Ctrl+C** to stop and free the port(s) — or, if you started it detached
+(`-d`/`-Detach`) or just want to be sure everything's stopped, run `./scripts/stop.sh`
+(`.\scripts\stop.ps1` on Windows) any time.
+
+Prefer to run it by hand instead? Prerequisites: **Python 3.11+** with `uv`, **Node 18+**,
+and a model provider (a local [Ollama](https://ollama.com) is the easiest):
 
 ```bash
 # 1. Backend
@@ -139,8 +158,6 @@ cd frontend
 npm install
 npm run dev                              # open http://localhost:5173
 ```
-
-On Windows you can run both with `./scripts/dev.ps1`; on macOS/Linux `./scripts/dev.sh`.
 
 ### Configure a provider
 
@@ -213,10 +230,17 @@ so the agent doesn't pip-install packages on every run — see [docs/SANDBOX.md]
 ## Production build
 
 ```bash
+./scripts/start.sh prod      # or: .\scripts\start.ps1 prod   (Windows)
+```
+Or by hand:
+```bash
 cd frontend && npm run build      # outputs frontend/dist
 cd ../backend && uv run uvicorn app.main:app --port 8000
 ```
-FastAPI serves the built SPA from `frontend/dist` at `/`.
+FastAPI serves the built SPA from `frontend/dist` at `/`. For a real deployment (systemd,
+reverse proxy, TLS) see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) instead — this quick `prod`
+mode is meant for trying Phlox locally in something closer to its production shape, not
+for serving real traffic.
 
 ## Testing
 

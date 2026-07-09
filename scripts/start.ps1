@@ -65,7 +65,10 @@ function Wait-ForHttp([string]$Url, [System.Diagnostics.Process]$Proc, [string]$
         try {
             $resp = Invoke-WebRequest -UseBasicParsing -Uri $Url -TimeoutSec 2 -ErrorAction Stop
             if ($resp.StatusCode -eq 200) { return $true }
-        } catch {}
+        } catch {
+            # Expected while the server is still starting up — just keep polling.
+            Write-Verbose "Not ready yet ($Url): $($_.Exception.Message)"
+        }
         Start-Sleep -Milliseconds 500
     }
     return $false

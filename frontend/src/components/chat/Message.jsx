@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Copy, Check, Brain, Pencil, RefreshCw, FileText, Sparkles } from 'lucide-react'
 import Markdown from '../markdown/Markdown'
-import ToolCallCard from './ToolCallCard'
+import ToolCallGroup from './ToolCallGroup'
 import ArtifactViewer from './ArtifactViewer'
 import { useStore } from '../../store/useStore'
 
@@ -144,9 +144,7 @@ export default function Message({ message, conversationId, isLast }) {
     <div className="group flex justify-start">
       <div className="w-full max-w-[85%]">
         {message.thinking && <Thinking text={message.thinking} />}
-        {toolCalls.map((tc) => (
-          <ToolCallCard key={tc.id} call={tc} />
-        ))}
+        <ToolCallGroup calls={toolCalls} />
         {message.content && (
           <div className="rounded-2xl rounded-bl-sm border border-border bg-surface px-4 py-2 text-content">
             <Markdown>{message.content}</Markdown>

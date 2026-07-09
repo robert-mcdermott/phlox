@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { X, Cpu, Palette, FileText, Server, Wrench, Brain, Users, ShieldCheck, KeyRound, KeySquare, BarChart3, SlidersHorizontal, Wallet, Bot, Sparkles } from 'lucide-react'
+import { X, Cpu, Palette, FileText, Server, Wrench, Brain, Users, Shield, ShieldCheck, KeyRound, KeySquare, BarChart3, SlidersHorizontal, Wallet, Bot, Sparkles } from 'lucide-react'
 import ProviderSettings from './ProviderSettings'
 import AssistantsPanel from './AssistantsPanel'
 import ThemeSwitcher from './ThemeSwitcher'
@@ -8,6 +8,7 @@ import UsersPanel from './UsersPanel'
 import UsagePanel from './UsagePanel'
 import ConfigPanel from './ConfigPanel'
 import BudgetsPanel from './BudgetsPanel'
+import GuardrailsPanel from './GuardrailsPanel'
 import AuthSettingsPanel from './AuthSettingsPanel'
 import ApiKeysPanel from './ApiKeysPanel'
 import SkillsPanel from './SkillsPanel'
@@ -30,6 +31,7 @@ const ADMIN_TABS = [
   { id: 'users', label: 'Users', icon: Users },
   { id: 'usage', label: 'Usage & Cost', icon: BarChart3 },
   { id: 'budgets', label: 'Budgets', icon: Wallet },
+  { id: 'guardrails', label: 'Guardrails', icon: Shield },
   { id: 'config', label: 'Configuration', icon: SlidersHorizontal },
   { id: 'auth', label: 'Authentication', icon: KeyRound },
   { id: 'mcp', label: 'MCP Servers', icon: Server },
@@ -196,6 +198,7 @@ export default function SettingsDrawer({ initialTab = 'providers', onClose }) {
             {isAdmin && tab === 'users' && <UsersPanel />}
             {isAdmin && tab === 'usage' && <UsagePanel />}
             {isAdmin && tab === 'budgets' && <BudgetsPanel />}
+            {isAdmin && tab === 'guardrails' && <GuardrailsPanel />}
             {isAdmin && tab === 'config' && <ConfigPanel />}
             {isAdmin && tab === 'auth' && <AuthSettingsPanel />}
           </div>

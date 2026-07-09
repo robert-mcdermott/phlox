@@ -164,6 +164,16 @@ The things a user *feels* immediately; they make it a real agent, not "chat that
   (`AppConfig`), `config.py` (getter overlays), `routers/admin_config.py`,
   `sandbox/runner.py` (`reset_runner`), `ConfigPanel.jsx`. See [ARCHITECTURE.md](ARCHITECTURE.md)
   §6 + [AUTH.md](AUTH.md).
+- [x] **Guardrails (PII redaction & blocking).** Deployment-wide policy that redacts or
+  blocks PII (email/phone/SSN/credit card/API keys) and **custom regex patterns** in
+  content flowing to providers (input) and back to clients (output). Enforced at the
+  shared model-call seams — interactive chat, the harness (tool results, compaction,
+  sub-agents), and the `/v1` gateway — so Phase 2's agentic endpoint inherits it.
+  Streaming-safe redaction (holdback buffer so matches can't slip through split across
+  SSE chunks); admin **Guardrails** panel with per-pattern toggles + live preview;
+  config.yml seed + live `AppConfig` overlay. _Implemented in:_ `guardrails.py`,
+  `config.get_guardrails_config`, `routers/{gateway,chat,admin_config}.py`,
+  `agent/harness.py`, `GuardrailsPanel.jsx`. See [GUARDRAILS.md](GUARDRAILS.md).
 - [x] **Tests + CI + evals.** pytest backend suite (unit + TestClient API + scripted-provider
   agent-loop & fallback tests), **GitHub Actions CI** (ruff + pytest + frontend build), and a
   live-model **eval harness**. _Implemented in:_ `backend/tests/`, `.github/workflows/ci.yml`,

@@ -114,6 +114,16 @@ class AgentSession:
         enabled = self.allowed_tools if self.allowed_tools is not None else self.gate.enabled_names()
         tools = self.registry.specs(enabled_names=enabled)
 
+        # Guardrails (see app/guardrails.py): input rules scrub the outbound message
+        # copy before *every* provider round — covering user turns, tool results, and
+        # sub-agent traffic, since they all pass through here. Output rules wrap the
+        # streamed completion in a holdback redactor so a PII match can't slip through
+        # split across two SSE tokens.
+        from app.guardrails import StreamRedactor, get_rules, scrub_messages
+
+        guardrails_in = get_rules("input")
+        guardrails_out = get_rules("output")
+
         # If resuming, finish the previously-pending calls first.
         if initial_calls:
             paused = yield from self._process_calls(
@@ -130,10 +140,20 @@ class AgentSession:
             round_text = ""
             pending_calls: list[ToolCall] = []
             stop_reason: str | None = None
+            blocked = False
+            redactor = thinking_redactor = None
             while True:  # retry-this-round-with-fallback loop
                 streamed_any = False
+                if guardrails_out:
+                    # Fresh redactors per attempt so a fallback retry starts clean.
+                    # Text and reasoning stream independently, so each needs its own.
+                    redactor = StreamRedactor(guardrails_out)
+                    thinking_redactor = StreamRedactor(guardrails_out)
+                provider_messages = (
+                    scrub_messages(messages, guardrails_in)[0] if guardrails_in else messages
+                )
                 try:
-                    for delta in self.provider.stream(messages, tools, self.params):
+                    for delta in self.provider.stream(provider_messages, tools, self.params):
                         if self._cancelled():
                             # Best-effort: stop consuming further streamed tokens/tool
                             # calls as soon as we notice — the provider call itself may
@@ -142,11 +162,25 @@ class AgentSession:
                             break
                         if delta.type == "text":
                             streamed_any = True
-                            round_text += delta.text or ""
-                            yield events.token(delta.text or "")
+                            chunk = delta.text or ""
+                            if redactor is not None:
+                                chunk = redactor.feed(chunk)
+                                if redactor.blocked:
+                                    blocked = True
+                                    break
+                            if chunk:
+                                round_text += chunk
+                                yield events.token(chunk)
                         elif delta.type == "reasoning":
                             streamed_any = True
-                            yield events.thinking(delta.text or "")
+                            chunk = delta.text or ""
+                            if thinking_redactor is not None:
+                                chunk = thinking_redactor.feed(chunk)
+                                if thinking_redactor.blocked:
+                                    blocked = True
+                                    break
+                            if chunk:
+                                yield events.thinking(chunk)
                         elif delta.type == "usage":
                             u = delta.usage or {}
                             for k in ("input", "output", "total"):
@@ -174,6 +208,32 @@ class AgentSession:
                     yield events.error(f"Model error: {e}")
                     yield from self._finalize(round_text, tool_steps, all_artifacts)
                     return
+
+            # Drain the guardrails redactors: emit the held-back tail (or discover a
+            # block match sitting in it). On block, the withheld text is discarded, a
+            # visible notice is persisted in its place, and the turn ends here.
+            if redactor is not None and not blocked:
+                think_tail = thinking_redactor.flush()
+                tail = redactor.flush()
+                if redactor.blocked or thinking_redactor.blocked:
+                    blocked = True
+                else:
+                    if think_tail:
+                        yield events.thinking(think_tail)
+                    if tail:
+                        round_text += tail
+                        yield events.token(tail)
+            if blocked:
+                matched = sorted(redactor.matched | thinking_redactor.matched)
+                note = (
+                    "\n\n> 🛡️ **Response blocked by guardrails policy"
+                    + (f" ({', '.join(matched)})" if matched else "")
+                    + ".**"
+                )
+                round_text += note
+                yield events.token(note)
+                yield from self._finalize(round_text, tool_steps, all_artifacts)
+                return
 
             # The turn hit the output-token limit before finishing (common with heavy
             # "thinking" models or large file output) — make it visible, not silent.

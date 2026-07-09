@@ -361,6 +361,21 @@ async def chat(
 
     enforce_budget(db, user, model)
 
+    # Guardrails input gate: a block-action match refuses the turn before anything is
+    # persisted (mirrors the budget 4xx above — surfaced as the chat error banner).
+    # Redaction happens later, at the provider seams, so the stored transcript keeps
+    # the user's original words.
+    from app.guardrails import apply_rules, get_rules
+
+    guardrails_input = get_rules("input")
+    if guardrails_input and not req.regenerate:
+        res = apply_rules(req.message, guardrails_input)
+        if res.blocked:
+            raise HTTPException(
+                400,
+                f"Message blocked by guardrails policy (matched: {', '.join(sorted(res.matched))}).",
+            )
+
     if conversation is None:
         conversation = Conversation(
             title=req.message[:60] or ("Document chat" if req.document_ids else "New chat"),
@@ -465,6 +480,14 @@ async def chat(
         db.refresh(conversation)
 
     history = _build_history(conversation, system_prompt)
+    # Guardrails input redaction: scrub the outbound history copy (system prompt, user
+    # turns, replayed tool output) before it feeds compaction or the model. The harness
+    # re-scrubs before every provider round; this covers the compaction call too. The
+    # persisted messages above are untouched.
+    if guardrails_input:
+        from app.guardrails import scrub_messages
+
+        history, _, _ = scrub_messages(history, guardrails_input)
     params = {
         **generation_params(settings),
         **((assistant.params if assistant else None) or {}),

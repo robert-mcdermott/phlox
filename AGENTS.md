@@ -16,6 +16,7 @@ lifecycle. Then the focused guides:
 - [docs/ADDING_A_PROVIDER.md](docs/ADDING_A_PROVIDER.md)
 - [docs/AUTH.md](docs/AUTH.md) — auth, roles, multi-user isolation, Entra ID SSO
 - [docs/API_GATEWAY.md](docs/API_GATEWAY.md) — OpenAI-compatible API gateway: keys + `/v1/*`
+- [docs/GUARDRAILS.md](docs/GUARDRAILS.md) — PII/custom-pattern redaction & blocking at the model-call seams
 - [docs/SANDBOX.md](docs/SANDBOX.md) — local vs Podman/Docker code-exec sandbox
 - [docs/THEMING.md](docs/THEMING.md)
 - [docs/MCP.md](docs/MCP.md)

@@ -341,6 +341,17 @@ code { font-family: var(--mono); font-size: 0.86em; }
 .theme-chip b { font-size: 0.88rem; font-weight: 600; margin-left: 4px; }
 
 /* ---------- Quick start ---------- */
+.qs-req { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin: 0 0 26px; }
+.qs-req-chip {
+  display: flex; align-items: center; gap: 8px; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; padding: 10px 14px; font-size: 0.88rem; color: var(--text-muted);
+}
+.qs-req-chip::before {
+  content: ""; width: 8px; height: 8px; border-radius: 50%; flex: none;
+  background: radial-gradient(circle at 35% 30%, var(--accent-2), var(--accent));
+  box-shadow: 0 0 10px rgba(223, 0, 255, 0.4);
+}
+.qs-req-chip code { background: var(--surface-3); color: #f4d9ff; padding: 1px 6px; border-radius: 5px; border: 1px solid var(--border); }
 .qs-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 .qs-note { text-align: center; color: var(--text-muted); margin: 26px auto 0; max-width: 680px; font-size: 0.95rem; }
 .qs-note strong { color: var(--accent-2); }

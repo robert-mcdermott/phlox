@@ -584,33 +584,41 @@
         <div class="section-head reveal">
           <span class="kicker">Up and running in minutes</span>
           <h2 class="section-title">Quick start</h2>
-          <p class="section-lead center">Prerequisites: Python 3.11+ with <code>uv</code>, Node 18+, and a model provider — a local Ollama is the easiest.</p>
+          <p class="section-lead center">One command builds and starts everything — it checks your prerequisites, installs dependencies on first run, seeds <code>backend/config.yml</code>, and opens your browser.</p>
+        </div>
+        <div class="qs-req reveal">
+          <span class="qs-req-chip">Python 3.11+ via <code>uv</code></span>
+          <span class="qs-req-chip">Node 18+</span>
+          <span class="qs-req-chip">A model provider — a local Ollama is the easiest</span>
+          <span class="qs-req-chip">macOS, Linux, or Windows</span>
         </div>
         <div class="qs-grid">
           <div class="code-card reveal">
             <div class="code-head">
-              <span class="code-file">1 · Backend</span>
-              <button class="copy-btn" data-copy-target="qs-be">Copy</button>
+              <span class="code-file">macOS / Linux</span>
+              <button class="copy-btn" data-copy-target="qs-nix">Copy</button>
             </div>
-<pre class="code-block" id="qs-be"><code><span class="c-cmt"># from backend/</span>
-uv sync
-cp config.yml.example config.yml   <span class="c-cmt"># set your provider</span>
-uv run uvicorn app.main:app --reload --port 8000</code></pre>
+<pre class="code-block" id="qs-nix"><code>git clone https://github.com/robert-mcdermott/phlox.git
+cd phlox
+./scripts/start.sh        <span class="c-cmt"># dev: hot reload on :5173 + :8000</span>
+./scripts/start.sh prod   <span class="c-cmt"># prod: single server on :8000</span></code></pre>
           </div>
           <div class="code-card reveal">
             <div class="code-head">
-              <span class="code-file">2 · Frontend</span>
-              <button class="copy-btn" data-copy-target="qs-fe">Copy</button>
+              <span class="code-file">Windows (PowerShell)</span>
+              <button class="copy-btn" data-copy-target="qs-win">Copy</button>
             </div>
-<pre class="code-block" id="qs-fe"><code><span class="c-cmt"># from frontend/, separate terminal</span>
-npm install
-npm run dev
-<span class="c-cmt"># open http://localhost:5173</span></code></pre>
+<pre class="code-block" id="qs-win"><code>git clone https://github.com/robert-mcdermott/phlox.git
+cd phlox
+.\scripts\start.ps1        <span class="c-cmt"># dev: hot reload on :5173 + :8000</span>
+.\scripts\start.ps1 prod   <span class="c-cmt"># prod: single server on :8000</span></code></pre>
           </div>
         </div>
         <p class="qs-note reveal">
-          On Windows run both with <code>./scripts/dev.ps1</code>; on macOS/Linux <code>./scripts/dev.sh</code> —
-          or run the whole thing as a single <strong>Docker/Podman container</strong> (see docs).
+          Missing <code>uv</code> or Node? The script tells you how to install them.
+          Press <strong>Ctrl+C</strong> to stop and free the ports — or run <code>./scripts/stop.sh</code>
+          (<code>.\scripts\stop.ps1</code> on Windows) any time. Prefer manual setup or a
+          <strong>Docker/Podman container</strong>? See the README and docs.
           Auth is on by default with a seeded <code>admin / admin</code> —
           <strong>change it and set a real <code>jwt_secret</code> before sharing access.</strong>
         </p>

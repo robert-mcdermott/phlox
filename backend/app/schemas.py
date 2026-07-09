@@ -394,6 +394,31 @@ class SuggestionsUpdate(BaseModel):
     suggestions: list[SuggestionItem]
 
 
+class GuardrailCustomPattern(BaseModel):
+    name: str
+    regex: str
+    action: str = "redact"           # "redact" | "block"
+    replacement: str = ""            # empty -> falls back to the policy redaction_text
+    enabled: bool = True
+
+
+class GuardrailsUpdate(BaseModel):
+    enabled: bool = False
+    input_action: str = "redact"     # off | redact | block
+    output_action: str = "off"       # off | redact | block
+    redaction_text: str = "[REDACTED]"
+    builtin: dict[str, bool] = {}    # built-in detector id -> enabled (missing = enabled)
+    custom_patterns: list[GuardrailCustomPattern] = []
+
+
+class GuardrailsPreviewRequest(BaseModel):
+    text: str
+    direction: str = "input"         # which policy to apply: "input" | "output"
+    # When provided, previews the (possibly unsaved) form state instead of the active
+    # policy, so admins can test edits before saving.
+    policy: GuardrailsUpdate | None = None
+
+
 class BudgetCreate(BaseModel):
     scope_type: str                  # "user" | "department"
     scope_value: str                 # user id, or department name

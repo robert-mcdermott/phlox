@@ -17,11 +17,13 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from app import app_config, config
+from app import app_config, config, guardrails
 from app.auth.deps import require_admin
 from app.models import User
 from app.schemas import (
     GenerationUpdate,
+    GuardrailsPreviewRequest,
+    GuardrailsUpdate,
     PricingUpdate,
     ProfilesUpdate,
     ResilienceUpdate,
@@ -67,6 +69,12 @@ def _effective_config() -> dict:
         "generation": config.default_generation_params(),
         "sandbox": {"runner": sandbox.get("runner"), "container": sandbox.get("container", {})},
         "suggestions": config.get_suggestions(),
+        "guardrails": config.get_guardrails_config(),
+        # Read-only metadata for the guardrails UI: the built-in detectors' labels,
+        # regexes (shown on the info tooltip), and replacement tokens.
+        "guardrails_builtins": [
+            {"id": pid, **spec} for pid, spec in guardrails.BUILTIN_PATTERNS.items()
+        ],
         "meta": {
             # Read-only context the UI surfaces but cannot change here.
             "sandbox_runner": sandbox.get("runner"),
@@ -146,6 +154,57 @@ def update_suggestions(body: SuggestionsUpdate, user: User = Depends(require_adm
         raise HTTPException(422, "At most 12 suggestions")
     app_config.set_section("suggestions", items, user.id)
     return _effective_config()
+
+
+def _validate_guardrails(body: GuardrailsUpdate) -> dict:
+    """Validate + normalize a guardrails policy; 422 with a pointed message on error."""
+    import re as _re
+
+    if body.input_action not in guardrails.ACTIONS:
+        raise HTTPException(422, "input_action must be one of: off, redact, block")
+    if body.output_action not in guardrails.ACTIONS:
+        raise HTTPException(422, "output_action must be one of: off, redact, block")
+    for key in body.builtin:
+        if key not in guardrails.BUILTIN_PATTERNS:
+            raise HTTPException(422, f"Unknown built-in pattern id: {key!r}")
+    for p in body.custom_patterns:
+        if not p.name.strip():
+            raise HTTPException(422, "Every custom pattern needs a name")
+        if p.action not in guardrails.PATTERN_ACTIONS:
+            raise HTTPException(422, f"Pattern {p.name!r}: action must be 'redact' or 'block'")
+        try:
+            _re.compile(p.regex)
+        except _re.error as e:
+            raise HTTPException(422, f"Pattern {p.name!r}: invalid regex — {e}") from e
+    return body.model_dump()
+
+
+@router.put("/guardrails")
+def update_guardrails(body: GuardrailsUpdate, user: User = Depends(require_admin)):
+    """Replace the guardrails policy (the UI always saves the complete policy)."""
+    app_config.set_section("guardrails", _validate_guardrails(body), user.id)
+    return _effective_config()
+
+
+@router.post("/guardrails/preview")
+def preview_guardrails(body: GuardrailsPreviewRequest, _: User = Depends(require_admin)):
+    """Dry-run the input or output policy against sample text (nothing is stored).
+
+    Previews the request's inline ``policy`` (the admin's unsaved form state) when
+    given, else the active policy. Reports what the provider/client would receive.
+    """
+    if body.direction not in ("input", "output"):
+        raise HTTPException(422, "direction must be 'input' or 'output'")
+    cfg = _validate_guardrails(body.policy) if body.policy else config.get_guardrails_config()
+    rules = guardrails.get_rules(body.direction, cfg)
+    res = guardrails.apply_rules(body.text, rules)
+    return {
+        "result": res.text,
+        "matched": list(res.matched),
+        "blocked": res.blocked,
+        # False when the policy is disabled or this direction's action is "off".
+        "active": bool(rules),
+    }
 
 
 @router.put("/sandbox")

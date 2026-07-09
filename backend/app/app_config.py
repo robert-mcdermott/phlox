@@ -18,7 +18,7 @@ from __future__ import annotations
 from typing import Any
 
 # Section names that may be overridden. Kept here so config.py and the router agree.
-SECTIONS = ("profiles", "pricing", "resilience", "generation", "sandbox", "suggestions")
+SECTIONS = ("profiles", "pricing", "resilience", "generation", "sandbox", "suggestions", "guardrails")
 
 # Process-wide cache: section name -> stored value (dict/list). Absent key => not loaded;
 # present-but-None => loaded and confirmed to have no DB override.

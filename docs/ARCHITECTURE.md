@@ -87,6 +87,7 @@ deals with provider-specific shapes.
 | **Observability** | `observability.py`, `usage_ledger.py`, `routers/usage.py` | Per-request logging, OTel seam, per-turn token/cost capture + durable chargeback ledger. See [OBSERVABILITY.md](OBSERVABILITY.md) |
 | **Budgets** | `budgets.py`, `routers/budgets.py` | Monthly USD spend caps per user/department: current-month spend (from the ledger), warn/block status, and `enforce_budget` applied at the chat + gateway choke points. See [BUDGETS.md](BUDGETS.md) |
 | **API gateway** | `api_keys.py`, `routers/api_keys.py`, `routers/gateway.py` | Per-user API keys (SHA-256 hashed) + OpenAI-compatible `/v1/chat/completions` & `/v1/models`; usage flows through `usage_ledger`. See [API_GATEWAY.md](API_GATEWAY.md) |
+| **Guardrails** | `guardrails.py` | PII/custom-pattern **redaction & blocking** (input + output, streaming-safe `StreamRedactor`), enforced in `routers/{chat,gateway}.py` + `agent/harness.py`. See [GUARDRAILS.md](GUARDRAILS.md) |
 | **Routers** | `routers/*.py` | `auth, chat, conversations, providers, settings, documents, assistants, mcp, tools, files, memories, checkpoints, attachments, usage, admin_config, api_keys, gateway, budgets` |
 
 ### Key design decisions
@@ -214,6 +215,13 @@ deals with provider-specific shapes.
   `observability.pricing`); free/local models stay usable. Because cost is known only after a
   turn finishes, it blocks the *next* turn once at/over budget rather than mid-turn. See
   [BUDGETS.md](BUDGETS.md).
+- **Guardrails enforce at the same choke points** (`guardrails.py`). The admin policy
+  redacts or blocks PII/custom-pattern matches in content sent to providers (checked in
+  `routers/chat.py`, `routers/gateway.py`, and re-applied in `agent/harness.py` before
+  *every* provider round, covering tool results and sub-agents) and in model output
+  (streaming-safe via a holdback `StreamRedactor`). The persisted transcript keeps the
+  user's original words — only the provider-bound copy is scrubbed. See
+  [GUARDRAILS.md](GUARDRAILS.md).
 
 ## 4. Frontend module map (`frontend/src/`)
 
@@ -226,7 +234,7 @@ deals with provider-specific shapes.
 | **Chat** | `components/chat/*` | `Message`, `ToolCallCard`, `ArtifactViewer`, `Composer`; `pages/ChatPage.jsx` |
 | **Canvas** | `components/canvas/CanvasPanel.jsx`, `utils/canvas.js` | Side-panel live preview of html/markdown/text artifacts (see below) |
 | **Markdown** | `components/markdown/Markdown.jsx` | react-markdown + GFM + syntax highlight + copy |
-| **Settings** | `components/settings/*`, `documents/*`, `mcp/*`, `tools/*` | Drawer with user tabs (Model, Appearance, Documents, Memory, API Keys) + admin tabs (**Assistants**, Users, Usage & Cost, **Budgets**, **Configuration**, Authentication, MCP, Tools) |
+| **Settings** | `components/settings/*`, `documents/*`, `mcp/*`, `tools/*` | Drawer with user tabs (Model, Appearance, Documents, Memory, API Keys) + admin tabs (**Assistants**, Users, Usage & Cost, **Budgets**, **Guardrails**, **Configuration**, Authentication, MCP, Tools) |
 | **Assistants** | `components/assistants/AssistantAvatar.jsx`, `settings/AssistantsPanel.jsx` | Avatar renderer (image / emoji / initials) + admin editor (persona, model, suggestions, capabilities, KB upload); picker chips live in `ChatPage.jsx`, active-assistant pill in `Header.jsx` |
 
 The frontend renders a rich turn: collapsible **tool cards** (args + results), a
@@ -293,9 +301,10 @@ Three layers, each with a clear job:
   (`@lru_cache`).
 - **Deployment overrides** (DB `AppConfig` table, `app_config.py`): admin-edited, **live**
   overrides for a curated set of sections — provider `profiles`, model `pricing`,
-  `resilience`, generation defaults, and sandbox **limits**. The getters in `config.py`
-  (`get_profiles`, `get_observability_config`, `get_resilience_config`, `get_defaults`,
-  `get_sandbox_config`) merge the overlay over the file, so every existing consumer picks up
+  `resilience`, generation defaults, sandbox **limits**, and the `guardrails` policy. The
+  getters in `config.py` (`get_profiles`, `get_observability_config`,
+  `get_resilience_config`, `get_defaults`, `get_sandbox_config`,
+  `get_guardrails_config`) merge the overlay over the file, so every existing consumer picks up
   changes with no restart. Edited via `routers/admin_config.py` → **Settings → (Admin)
   Configuration**. Provider **secrets are write-only** (masked on read, preserved on save);
   the sandbox **runner type** is never overlay-settable (flipping isolation at runtime is
@@ -319,6 +328,9 @@ Three layers, each with a clear job:
 - **A new settings tab / panel** → add a tab in `components/settings/SettingsDrawer.jsx`.
 - **A spend/quota check on model calls** → add it to `budgets.py` and call it from the gate
   in both `routers/chat.py` and `routers/gateway.py` (the two model-call choke points).
+- **A content filter on model traffic** → add a detector/rule in `guardrails.py` (built-ins
+  live in `BUILTIN_PATTERNS`); it is already enforced at both choke points + the harness.
+  See [GUARDRAILS.md](GUARDRAILS.md).
 - **Harder code-exec isolation** → implement `DockerRunner` in `sandbox/runner.py`.
 - **Bigger RAG corpus** → replace `rag/retrieve.search_chunks` with a vector index; keep
   the signature so `search_documents` is unaffected.

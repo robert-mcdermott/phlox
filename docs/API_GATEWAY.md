@@ -64,6 +64,11 @@ requested model is priced, the call is rejected with **HTTP 402** in the OpenAI 
 envelope (`type: "insufficient_quota"`) before any upstream call. Models with no assigned
 cost are never blocked. See [BUDGETS.md](BUDGETS.md).
 
+When the admin **guardrails** policy is enabled, request messages are redacted (or the
+request refused with **HTTP 400**, `type: "guardrails_violation"`) before any upstream
+call, and responses are redacted/blocked on the way out — streaming included (an output
+action of `block` rejects streaming requests up front). See [GUARDRAILS.md](GUARDRAILS.md).
+
 ### Examples
 
 ```bash

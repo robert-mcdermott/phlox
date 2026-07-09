@@ -231,6 +231,26 @@ def get_suggestions() -> list[dict[str, Any]]:
     return out
 
 
+def get_guardrails_config() -> dict[str, Any]:
+    """Guardrails policy: PII/custom-pattern redaction & blocking (see :mod:`app.guardrails`).
+
+    Admin-editable: a ``guardrails`` override (see :mod:`app.app_config`) *replaces* the
+    file section wholesale — the admin UI always saves the complete policy. Disabled by
+    default; the file section is only a seed for fresh deployments.
+    """
+    from app import app_config
+
+    overlay = app_config.get_section("guardrails")
+    cfg = dict(overlay if overlay is not None else (load_config().get("guardrails", {}) or {}))
+    cfg.setdefault("enabled", False)
+    cfg.setdefault("input_action", "redact")   # off | redact | block
+    cfg.setdefault("output_action", "off")     # off | redact | block
+    cfg.setdefault("redaction_text", "[REDACTED]")
+    cfg.setdefault("builtin", {})              # detector id -> bool (missing = enabled)
+    cfg.setdefault("custom_patterns", [])      # [{name, regex, action, replacement, enabled}]
+    return cfg
+
+
 def get_auth_config() -> dict[str, Any]:
     """Auth settings. ``enabled`` gates login; when off the app runs single-user (dev)."""
     cfg = dict(load_config().get("auth", {}) or {})

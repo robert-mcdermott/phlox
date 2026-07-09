@@ -234,3 +234,25 @@ vector_store:
 # for a host install).
 # database:
 #   url: "postgresql+psycopg://phlox:phlox@localhost:5432/phlox"
+
+# Guardrails: PII / custom-pattern redaction & blocking, enforced at every model-call
+# seam (interactive chat AND the /v1 API gateway). This section only SEEDS a fresh
+# deployment — the policy is admin-editable live in Settings -> Guardrails (a DB
+# overlay wins over these values once saved there). See docs/GUARDRAILS.md.
+# guardrails:
+#   enabled: false
+#   input_action: redact           # off | redact | block  (content sent TO providers)
+#   output_action: off             # off | redact | block  (model output sent back)
+#   redaction_text: "[REDACTED]"   # default replacement for custom patterns
+#   builtin:                       # built-in detectors (default: all enabled)
+#     email: true
+#     phone: true
+#     ssn: true
+#     credit_card: true
+#     api_key: true
+#   custom_patterns:               # organization-specific identifiers (Python `re` syntax)
+#     - name: MRN
+#       regex: '\bMRN-\d{6}\b'
+#       action: redact             # redact | block (block also redacts, then refuses)
+#       replacement: "[MRN]"
+#       enabled: true

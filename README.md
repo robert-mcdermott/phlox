@@ -77,6 +77,11 @@ models).
   get a warning banner at an adjustable threshold (default 90%) and **priced** models are
   blocked once a budget is reached (free models stay usable), enforced for both chat and the
   API gateway and resetting each month. See [docs/BUDGETS.md](docs/BUDGETS.md).
+- 🛡️ **Guardrails (PII redaction & blocking)** — built-in detectors (email, phone, SSN,
+  credit card, API keys) plus **custom regex patterns** that **redact or block** sensitive
+  content flowing to model providers and back to clients, streaming included. One
+  admin-set policy enforced identically in chat and the API gateway, with a live
+  test-pattern preview. See [docs/GUARDRAILS.md](docs/GUARDRAILS.md).
 - ⚙️ **Live admin configuration** — edit provider profiles (keys write-only), model
   pricing, resilience, generation defaults, and sandbox limits from an admin-only
   **Configuration** panel, applied without a server restart. `config.yml` remains the seed.
@@ -103,6 +108,7 @@ models).
 | [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md) | Token usage/cost, structured logs, OpenTelemetry tracing |
 | [docs/BUDGETS.md](docs/BUDGETS.md) | Monthly spend budgets per user/department: warnings + enforcement |
 | [docs/API_GATEWAY.md](docs/API_GATEWAY.md) | OpenAI-compatible API gateway: API keys + `/v1/*` endpoints |
+| [docs/GUARDRAILS.md](docs/GUARDRAILS.md) | PII/custom-pattern **redaction & blocking** at the model-call seams |
 | [docs/MCP.md](docs/MCP.md) | Connecting MCP servers |
 | [docs/SKILLS.md](docs/SKILLS.md) | Agent skills: slash commands, auto-activation, SKILL.md import/export |
 | [docs/THEMING.md](docs/THEMING.md) | The theme token system + adding themes |
@@ -118,7 +124,7 @@ exec, auth, SQLite persistence) and a **React/Vite** frontend. Full details in
 ```
 backend/   FastAPI app (app/), config.yml, SQLite + Qdrant under data/
 frontend/  React + Vite + Tailwind SPA
-docs/      ARCHITECTURE, ROADMAP, DEPLOYMENT, DOCKER, AUTH, SANDBOX, MCP, THEMING, BUDGETS, ADDING_A_*
+docs/      ARCHITECTURE, ROADMAP, DEPLOYMENT, DOCKER, AUTH, SANDBOX, MCP, THEMING, BUDGETS, GUARDRAILS, ADDING_A_*
 scripts/   start.sh / start.ps1 (build + run), stop.sh / stop.ps1 (shut down + free ports)
 ```
 

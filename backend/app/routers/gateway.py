@@ -128,13 +128,40 @@ def chat_completions(
         enforce_budget(db, user, model)
     except HTTPException as e:
         return _err(402, e.detail, etype="insufficient_quota")
+
+    # Guardrails: scrub/refuse inbound content before it reaches any provider, and
+    # decide the output policy up front (streaming can't be un-sent, so an output
+    # action of "block" refuses streaming requests outright). See docs/GUARDRAILS.md.
+    from app.config import get_guardrails_config
+    from app.guardrails import get_rules, scrub_messages
+
+    grd = get_guardrails_config()
+    in_rules = get_rules("input", grd)
+    out_rules = get_rules("output", grd)
+    output_blocks = bool(out_rules) and grd.get("output_action") == "block"
+    if output_blocks and req.stream:
+        return _err(
+            400,
+            "Streaming is unavailable while the guardrails output action is 'block'. "
+            'Retry with "stream": false.',
+            etype="guardrails_violation",
+        )
+
+    messages = _canonical(req.messages)
+    if in_rules:
+        messages, matched, blocked = scrub_messages(messages, in_rules)
+        if blocked:
+            return _err(
+                400,
+                f"Request blocked by guardrails policy (matched: {', '.join(sorted(matched))}).",
+                etype="guardrails_violation",
+            )
+
     try:
         provider = build_provider(profile, model)
     except Exception as e:  # noqa: BLE001
         logger.exception("Gateway provider build failed")
         return _err(502, f"Provider error: {e}", etype="api_error")
-
-    messages = _canonical(req.messages)
     params = {
         "temperature": req.temperature if req.temperature is not None else 0.3,
         "max_tokens": req.max_tokens or 4096,
@@ -146,16 +173,20 @@ def chat_completions(
 
     if req.stream:
         return StreamingResponse(
-            _stream(db, provider, messages, params, request_id, created, advertised_model, user.id),
+            _stream(db, provider, messages, params, request_id, created, advertised_model,
+                    user.id, out_rules),
             media_type="text/event-stream",
         )
-    return _buffered(db, provider, messages, params, request_id, created, advertised_model, user.id)
+    return _buffered(db, provider, messages, params, request_id, created, advertised_model,
+                     user.id, out_rules)
 
 
 def _buffered(
-    db, provider, messages, params, request_id, created, advertised_model, user_id
+    db, provider, messages, params, request_id, created, advertised_model, user_id, out_rules
 ) -> JSONResponse:
     """Run one non-streaming model call and return a full OpenAI ``chat.completion``."""
+    from app.guardrails import apply_rules
+
     text = ""
     usage = {"input": 0, "output": 0, "total": 0}
     finish_reason = "stop"
@@ -172,6 +203,18 @@ def _buffered(
         return _err(502, f"Upstream model error: {e}", etype="api_error")
 
     _record(db, request_id=request_id, user_id=user_id, model=provider.model, usage=usage)
+
+    if out_rules:
+        res = apply_rules(text, out_rules)
+        if res.blocked:
+            # The model already ran (usage is recorded above); the content just doesn't
+            # leave the deployment.
+            return _err(
+                400,
+                f"Response blocked by guardrails policy (matched: {', '.join(sorted(res.matched))}).",
+                etype="guardrails_violation",
+            )
+        text = res.text
     return JSONResponse(
         content={
             "id": request_id,
@@ -195,15 +238,30 @@ def _buffered(
 
 
 def _stream(
-    db, provider, messages, params, request_id, created, advertised_model, user_id
+    db, provider, messages, params, request_id, created, advertised_model, user_id, out_rules
 ) -> Iterator[str]:
-    """Emit OpenAI-compatible ``chat.completion.chunk`` SSE frames for one model call."""
+    """Emit OpenAI-compatible ``chat.completion.chunk`` SSE frames for one model call.
+
+    With output guardrails in redact mode, chunks pass through a :class:`StreamRedactor`
+    (a small holdback prevents a match from slipping through split across chunks). A
+    block-action custom pattern matching mid-stream terminates the stream with an error
+    frame — the withheld tail is never sent.
+    """
+    from app.guardrails import StreamRedactor
+
     base = {"id": request_id, "object": "chat.completion.chunk", "created": created,
             "model": advertised_model}
 
     def frame(delta: dict, finish_reason=None) -> str:
         payload = {**base, "choices": [{"index": 0, "delta": delta, "finish_reason": finish_reason}]}
         return f"data: {json.dumps(payload)}\n\n"
+
+    def blocked_frame(redactor) -> str:
+        msg = (f"Response blocked by guardrails policy "
+               f"(matched: {', '.join(sorted(redactor.matched))}).")
+        return f"data: {json.dumps({'error': {'message': msg, 'type': 'guardrails_violation'}})}\n\n"
+
+    redactor = StreamRedactor(out_rules) if out_rules else None
 
     # First chunk carries the assistant role, per the OpenAI streaming contract.
     yield frame({"role": "assistant"})
@@ -212,7 +270,17 @@ def _stream(
     try:
         for delta in provider.stream(messages, [], params):
             if delta.type == "text" and delta.text:
-                yield frame({"content": delta.text})
+                text = delta.text
+                if redactor:
+                    text = redactor.feed(text)
+                    if redactor.blocked:
+                        yield blocked_frame(redactor)
+                        yield "data: [DONE]\n\n"
+                        _record(db, request_id=request_id, user_id=user_id,
+                                model=provider.model, usage=usage)
+                        return
+                if text:
+                    yield frame({"content": text})
             elif delta.type == "usage":
                 usage = delta.usage or usage
             elif delta.type == "done":
@@ -224,6 +292,15 @@ def _stream(
         yield "data: [DONE]\n\n"
         return
 
+    if redactor:
+        tail = redactor.flush()
+        if redactor.blocked:
+            yield blocked_frame(redactor)
+            yield "data: [DONE]\n\n"
+            _record(db, request_id=request_id, user_id=user_id, model=provider.model, usage=usage)
+            return
+        if tail:
+            yield frame({"content": tail})
     yield frame({}, finish_reason=finish_reason)
     yield "data: [DONE]\n\n"
     _record(db, request_id=request_id, user_id=user_id, model=provider.model, usage=usage)

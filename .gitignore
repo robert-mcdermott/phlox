@@ -27,3 +27,6 @@ frontend/.vite/
 .vscode/
 *.log
 .claude/
+
+# scripts/start.sh / start.ps1 runtime state (PIDs + logs)
+.run/

@@ -26,6 +26,13 @@ lifecycle. Then the focused guides:
 - **Frontend**: React 18 + Vite + Tailwind + Zustand. Code in `frontend/src/`.
 
 ## Run it
+Easiest: `./scripts/start.sh dev` (macOS/Linux) or `.\scripts\start.ps1 dev` (Windows). It
+checks/installs `uv` + Node prerequisites, runs `uv sync`/`npm install` if needed, seeds
+`backend/config.yml`, starts both servers, and opens your browser. `./scripts/stop.sh` (or
+`.\scripts\stop.ps1`) frees the ports again. `prod` instead of `dev` builds the SPA once and
+runs a single Uvicorn process (`:8000`) instead of two dev servers.
+
+Manual equivalent:
 ```bash
 # backend  (terminal 1)
 cd backend && uv sync && cp config.yml.example config.yml   # edit profiles
@@ -34,7 +41,6 @@ uv run uvicorn app.main:app --reload --port 8000
 # frontend (terminal 2)
 cd frontend && npm install && npm run dev    # http://localhost:5173
 ```
-Or use `scripts/dev.ps1` (Windows) / `scripts/dev.sh` (POSIX).
 
 ## Test it (run before you claim something works)
 ```bash

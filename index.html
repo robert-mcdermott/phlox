@@ -4,13 +4,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Phlox — A full-featured, self-hostable AI platform</title>
-  <meta name="description" content="Phlox is a full-featured, self-hostable AI platform with an agentic harness, a live artifact canvas, custom assistants, reusable agent skills, document RAG, sandboxed code execution, an OpenAI-compatible gateway, per-user cost accounting and budgets, and MCP integration — running over any model provider: AWS Bedrock or any OpenAI-compatible endpoint, including fully local models." />
+  <meta name="description" content="Phlox is a full-featured, self-hostable AI platform with an agentic harness, a live artifact canvas, custom assistants, reusable agent skills, document RAG, sandboxed code execution, an OpenAI-compatible gateway, PII guardrails, per-user cost accounting and budgets, and MCP integration — running over any model provider: AWS Bedrock or any OpenAI-compatible endpoint, including fully local models." />
   <meta name="author" content="Robert McDermott" />
 
   <!-- Open Graph -->
   <meta property="og:type" content="website" />
   <meta property="og:title" content="Phlox — A full-featured, self-hostable AI platform" />
-  <meta property="og:description" content="Agentic harness, artifact canvas, custom assistants, document RAG, sandboxed code execution, and MCP integration over any model provider. Self-hostable, open source, Apache 2.0." />
+  <meta property="og:description" content="Agentic harness, artifact canvas, custom assistants, document RAG, sandboxed code execution, PII guardrails, and MCP integration over any model provider. Self-hostable, open source, Apache 2.0." />
   <meta property="og:image" content="images/phlox-screenshot-canvas.png" />
 
   <link rel="icon" type="image/svg+xml" href="images/favicon.svg" />
@@ -233,6 +233,11 @@
             <div class="feature-ic">🧮</div>
             <h3>Spend budgets</h3>
             <p>Set a monthly cost cap per user or department. Warn at an adjustable threshold, then block priced models once the budget is reached — across chat and the API gateway. Resets each month.</p>
+          </article>
+          <article class="feature-card reveal">
+            <div class="feature-ic">🛡️</div>
+            <h3>PII guardrails</h3>
+            <p>Redact or block emails, phone numbers, SSNs, credit cards, API keys, and your own custom regex patterns — in what reaches the provider and what streams back — across chat and the gateway.</p>
           </article>
           <article class="feature-card reveal">
             <div class="feature-ic">🎨</div>
@@ -466,6 +471,36 @@
       </div>
     </section>
 
+    <!-- ===== Guardrails ===== -->
+    <section class="section" id="guardrails">
+      <div class="container">
+        <div class="split reverse">
+          <div class="split-copy reveal">
+            <span class="kicker">Guardrails</span>
+            <h2 class="section-title">Sensitive data never leaves your deployment</h2>
+            <p class="section-lead">
+              One admin-set policy inspects everything flowing to model providers — user
+              messages, replayed history, tool results — and everything streaming back.
+              Built-in detectors catch emails, phone numbers, SSNs, credit cards, and API
+              keys; <strong>custom regex patterns</strong> cover the identifiers only your
+              organization knows about. Content is inspected in memory and never stored.
+            </p>
+            <ul class="check-list">
+              <li><strong>Redact or block</strong>, set per direction — filter what reaches the provider, what comes back to users, or both</li>
+              <li><strong>Streaming-safe</strong> — a holdback redactor means a match can't slip through split across streamed chunks</li>
+              <li>Per-pattern actions: redact PII globally while <strong>hard-blocking</strong> project codenames or record numbers</li>
+              <li>Enforced identically in interactive chat and the OpenAI-compatible <code>/v1</code> gateway</li>
+              <li>Built-in <strong>test-pattern preview</strong> — try a policy against sample text before you save it</li>
+            </ul>
+          </div>
+          <figure class="shot reveal">
+            <img src="images/shot-guardrails.png" alt="The admin Guardrails panel: policy enable and save controls with input action set to Redact, five built-in PII detectors with replacement tokens, a custom MRN regex pattern, and a test-pattern preview showing 'Contact me at [EMAIL], call [PHONE], my social security number is [SSN]' with a status footer of policy chips" loading="lazy" />
+            <figcaption>Settings → Guardrails — global input/output actions, five built-in detectors, custom regex patterns, and a live preview of what the provider would receive.</figcaption>
+          </figure>
+        </div>
+      </div>
+    </section>
+
     <!-- ===== Platform: gateway, cost & governance ===== -->
     <section class="section section-alt" id="platform">
       <div class="container">
@@ -642,6 +677,7 @@ cd phlox
           <a class="doc-card" href="https://github.com/robert-mcdermott/phlox/blob/main/docs/OBSERVABILITY.md" target="_blank" rel="noopener"><h3>Observability</h3><p>Token usage/cost, structured logs, OpenTelemetry tracing.</p></a>
           <a class="doc-card" href="https://github.com/robert-mcdermott/phlox/blob/main/docs/BUDGETS.md" target="_blank" rel="noopener"><h3>Budgets</h3><p>Monthly spend caps per user/department — warnings and enforcement.</p></a>
           <a class="doc-card" href="https://github.com/robert-mcdermott/phlox/blob/main/docs/API_GATEWAY.md" target="_blank" rel="noopener"><h3>API Gateway</h3><p>OpenAI-compatible keys and <code>/v1/*</code> endpoints.</p></a>
+          <a class="doc-card" href="https://github.com/robert-mcdermott/phlox/blob/main/docs/GUARDRAILS.md" target="_blank" rel="noopener"><h3>Guardrails</h3><p>PII and custom-pattern redaction &amp; blocking at the model-call seams.</p></a>
           <a class="doc-card" href="https://github.com/robert-mcdermott/phlox/blob/main/docs/SKILLS.md" target="_blank" rel="noopener"><h3>Skills</h3><p>Reusable <code>SKILL.md</code> workflows — invocation and auto-activation.</p></a>
           <a class="doc-card" href="https://github.com/robert-mcdermott/phlox/blob/main/docs/MCP.md" target="_blank" rel="noopener"><h3>MCP</h3><p>Connecting Model Context Protocol servers.</p></a>
           <a class="doc-card" href="https://github.com/robert-mcdermott/phlox/blob/main/docs/THEMING.md" target="_blank" rel="noopener"><h3>Theming</h3><p>The theme token system and adding new themes.</p></a>
@@ -683,6 +719,7 @@ cd phlox
           <a href="#skills">Agent skills</a>
           <a href="#knowledge">Documents &amp; RAG</a>
           <a href="#security">Security</a>
+          <a href="#guardrails">Guardrails</a>
         </div>
         <div class="footer-col">
           <h4>Docs</h4>

@@ -23,7 +23,7 @@ export default function UsersPanel() {
     await api.updateUser(u.id, { password: resetPw })
     setResetId(null)
     setResetPw('')
-    setNotice(`Password reset for ${u.username}.`)
+    setNotice(`Password reset for ${u.username}; they must replace it at next sign-in.`)
     setTimeout(() => setNotice(null), 3000)
   }
 
@@ -78,6 +78,7 @@ export default function UsersPanel() {
                   {u.username} · {u.auth_provider}
                   {u.department ? ` · ${u.department}` : ' · no dept'}
                   {!u.is_active && ' · disabled'}
+                  {u.must_change_password && ' · password change required'}
                 </div>
               </div>
               <button onClick={() => toggleRole(u)} className="rounded border border-border px-2 py-0.5 text-[11px] text-content hover:border-accent">

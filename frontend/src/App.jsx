@@ -3,6 +3,7 @@ import Sidebar from './components/layout/Sidebar'
 import Header from './components/layout/Header'
 import ChatPage from './pages/ChatPage'
 import LoginScreen from './components/auth/LoginScreen'
+import PasswordChangeScreen from './components/auth/PasswordChangeScreen'
 import CanvasPanel from './components/canvas/CanvasPanel'
 import { useStore } from './store/useStore'
 
@@ -59,6 +60,9 @@ export default function App() {
   }
   if (authConfig?.enabled && !user) {
     return <LoginScreen />
+  }
+  if (authConfig?.enabled && user?.must_change_password) {
+    return <PasswordChangeScreen />
   }
 
   return (

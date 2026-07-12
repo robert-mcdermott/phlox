@@ -159,7 +159,7 @@ podman run -d --name phlox \
 
 | Variable | Default (in image) | Purpose |
 |---|---|---|
-| `PHLOX_JWT_SECRET` | *(insecure default)* | **Set this** to a strong 32B+ secret before any shared use |
+| `PHLOX_JWT_SECRET` | *(required)* | Strong, stable 32B+ secret; production startup fails if it is missing or a placeholder |
 | `SEARXNG_URL` | — | Optional: use SearXNG for web search instead of the default ddgs |
 | `PHLOX_CONFIG` | `/app/backend/config.yml` | Config path. Left at default so the mounted `backend/config.yml` is used — override only for an unusual layout |
 | `PHLOX_DATA` | `/app/backend/data` | Data root. Left at default so the mounted `backend/data/` is used — override only for an unusual layout |

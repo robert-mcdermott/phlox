@@ -175,9 +175,21 @@ if ($Mode -eq 'dev') { $backendArgs += '--reload' }
 
 # uvicorn logs mostly go to stderr, so both streams are captured (to backend.log and
 # backend.log.err) — Show-LastLog prints both if startup fails.
-$backend = Start-Process -PassThru -WorkingDirectory $backendDir -WindowStyle Hidden `
-    -FilePath 'uv' -ArgumentList $backendArgs `
-    -RedirectStandardOutput $backendLog -RedirectStandardError "${backendLog}.err"
+$oldPhloxEnv = $env:PHLOX_ENV
+$oldCaptureMarkers = $env:PHLOX_STARTUP_CAPTURE_MARKERS
+$oldForceColor = $env:PHLOX_FORCE_COLOR
+$env:PHLOX_ENV = if ($Mode -eq 'prod') { 'production' } else { 'development' }
+$env:PHLOX_STARTUP_CAPTURE_MARKERS = '1'
+$env:PHLOX_FORCE_COLOR = '1'
+try {
+    $backend = Start-Process -PassThru -WorkingDirectory $backendDir -WindowStyle Hidden `
+        -FilePath 'uv' -ArgumentList $backendArgs `
+        -RedirectStandardOutput $backendLog -RedirectStandardError "${backendLog}.err"
+} finally {
+    $env:PHLOX_ENV = $oldPhloxEnv
+    $env:PHLOX_STARTUP_CAPTURE_MARKERS = $oldCaptureMarkers
+    $env:PHLOX_FORCE_COLOR = $oldForceColor
+}
 "$($backend.Id)" | Out-File -FilePath (Join-Path $runDir 'backend.pid') -Encoding ascii
 
 if (-not (Wait-ForHttp "http://localhost:$backendPort/api/health" $backend $backendLog 60)) {
@@ -216,15 +228,19 @@ if (-not $NoBrowser) {
 }
 
 # ── 9. banner ──────────────────────────────────────────────────────────────────
-Write-Host ""
-Write-Host "Phlox is running!" -ForegroundColor Green
+$showStartup = $false
+Get-Content $backendLog -ErrorAction SilentlyContinue | ForEach-Object {
+    if ($_ -eq 'PHLOX_STARTUP_BEGIN') { $showStartup = $true }
+    elseif ($_ -eq 'PHLOX_STARTUP_END') { $showStartup = $false }
+    elseif ($showStartup) { Write-Host $_ }
+}
+Write-Host "Phlox is running." -ForegroundColor Green
 Write-Host "  App:      $appUrl" -ForegroundColor Cyan
 if ($Mode -eq 'dev') {
     Write-Host "  API:      http://localhost:$backendPort  (hot-reload dev server)"
 } else {
     Write-Host "  Mode:     production build (single process)"
 }
-Write-Host "  Sign in:  admin / admin  (change this under Settings -> Admin -> Users)"
 Write-Host ""
 
 if ($Detach) {

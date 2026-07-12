@@ -60,6 +60,9 @@ class User(Base):
     # Cost-center / department for chargeback accounting (editable; mappable from SSO).
     department: Mapped[str | None] = mapped_column(String(200), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Bootstrap/admin-reset passwords are temporary.  While this is true the auth
+    # dependency permits only session inspection and the password-change endpoint.
+    must_change_password: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
 

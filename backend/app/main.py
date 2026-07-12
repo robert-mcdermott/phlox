@@ -21,7 +21,9 @@ from fastapi.staticfiles import StaticFiles
 from app.agent.permissions import seed_tool_prefs
 from app.agent.registry import REGISTRY
 from app.agent.tools import register_builtin_tools
+from app.branding import emit_startup_banner, get_version
 from app.config import BACKEND_DIR
+from app.config import validate_auth_startup
 from app.database import SessionLocal, init_db
 from app.observability import setup_observability
 from app.routers import (
@@ -51,6 +53,7 @@ logger = logging.getLogger("phlox")
 
 
 def _bootstrap() -> None:
+    validate_auth_startup()
     init_db()
     register_builtin_tools(REGISTRY)
     db = SessionLocal()
@@ -61,7 +64,11 @@ def _bootstrap() -> None:
         from app.auth.service import claim_orphans, seed_default_admin
         from app.models import User
 
-        seed_default_admin(db)
+        bootstrap_admin = seed_default_admin(db)
+        # Print immediately after the transaction commits. If a later optional subsystem
+        # fails during startup, the operator still receives the unrecoverable one-time
+        # credential instead of being locked out on the next restart.
+        emit_startup_banner(bootstrap_admin)
         first_admin = (
             db.query(User).filter(User.role == "admin").order_by(User.created_at).first()
         )
@@ -120,7 +127,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="Phlox", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="Phlox", version=get_version(display=False), lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

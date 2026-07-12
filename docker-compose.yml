@@ -26,8 +26,9 @@ services:
       - ./backend/config.yml:/app/backend/config.yml   # the one and only config file
       - ./backend/data:/app/backend/data               # SQLite DB (unless DATABASE_URL is set), embedded Qdrant, workspaces, uploads, attachments
     environment:
-      # Generate once and keep it stable:  openssl rand -hex 32
-      PHLOX_JWT_SECRET: ${PHLOX_JWT_SECRET:-please-change-me-set-a-real-32B+-secret}
+      # Required. Generate once, store it securely, and keep it stable across restarts:
+      #   export PHLOX_JWT_SECRET="$(openssl rand -hex 32)"
+      PHLOX_JWT_SECRET: ${PHLOX_JWT_SECRET:?Set PHLOX_JWT_SECRET to at least 32 random bytes}
       # Unset (default) = SQLite under ./backend/data. Set to deploy against Postgres instead,
       # e.g. postgresql+psycopg://phlox:phlox@postgres:5432/phlox — see the `postgres`
       # service below (enable with --profile with-postgres).

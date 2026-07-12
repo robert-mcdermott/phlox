@@ -217,11 +217,12 @@ e.g. Ollama's `nomic-embed-text` — so the whole stack stays offline.
 
 ### Sign in
 
-Auth is **on by default** with a seeded admin: **`admin` / `admin`**. Manage users, reset
-passwords, and view/configure SSO under **Settings → (Admin) Users / Authentication**.
-**Change the default admin password and set a real `auth.jwt_secret`** before sharing
-access — see [docs/AUTH.md](docs/AUTH.md). To run single-user with no login, set
-`auth.enabled: false`.
+Auth is **on by default**. On a clean database Phlox creates the `admin` account with a
+random one-time password, shows it once in the startup console, and requires a password
+change before the app can be used. Manage users, reset passwords, and view/configure SSO
+under **Settings → (Admin) Users / Authentication**. Production startup requires a stable,
+strong `PHLOX_JWT_SECRET`; see [docs/AUTH.md](docs/AUTH.md). To run single-user with no
+login, set `auth.enabled: false`.
 
 ### Code-execution sandbox
 
@@ -296,8 +297,8 @@ cd backend && uv run python -m evals.run_evals
 
 ## Security notes
 
-- **Auth:** change the seeded `admin`/`admin` and set a strong `auth.jwt_secret` (env
-  `PHLOX_JWT_SECRET`) before any shared use. Data is isolated per user; admin features
+- **Auth:** save the first-run admin password securely, replace it at first login, and set a
+  strong, stable `PHLOX_JWT_SECRET` before production startup. Data is isolated per user; admin features
   are role-gated.
 - **Sandbox:** the local runner trusts the host (fine for single-user/local). For
   untrusted/multi-user execution use `sandbox.runner: container` (on-host, isolated) or

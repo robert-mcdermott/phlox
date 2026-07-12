@@ -26,6 +26,11 @@ export const api = {
   login: (username, password) => req('POST', '/api/auth/login', { username, password }),
   register: (body) => req('POST', '/api/auth/register', body),
   me: () => req('GET', '/api/auth/me'),
+  changePassword: (currentPassword, newPassword) =>
+    req('POST', '/api/auth/change-password', {
+      current_password: currentPassword,
+      new_password: newPassword,
+    }),
   listUsers: () => req('GET', '/api/auth/users'),
   createUser: (body) => req('POST', '/api/auth/users', body),
   updateUser: (id, body) => req('PATCH', `/api/auth/users/${id}`, body),

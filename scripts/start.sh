@@ -159,10 +159,20 @@ BACKEND_LOG="$LOG_DIR/backend.log"
 : > "$BACKEND_LOG"
 
 step "Starting the backend on :$BACKEND_PORT..."
-if [ "$MODE" = "dev" ]; then
-  ( cd "$ROOT/backend" && exec nohup uv run uvicorn app.main:app --host 127.0.0.1 --port "$BACKEND_PORT" --reload ) >>"$BACKEND_LOG" 2>&1 </dev/null &
+if [ "$MODE" = "prod" ]; then
+  PHLOX_RUN_ENV="production"
 else
-  ( cd "$ROOT/backend" && exec nohup uv run uvicorn app.main:app --host 127.0.0.1 --port "$BACKEND_PORT" ) >>"$BACKEND_LOG" 2>&1 </dev/null &
+  PHLOX_RUN_ENV="development"
+fi
+if [ -t 1 ]; then
+  PHLOX_BANNER_COLOR=1
+else
+  PHLOX_BANNER_COLOR=0
+fi
+if [ "$MODE" = "dev" ]; then
+  ( cd "$ROOT/backend" && export PHLOX_ENV="$PHLOX_RUN_ENV" PHLOX_FORCE_COLOR="$PHLOX_BANNER_COLOR" PHLOX_STARTUP_CAPTURE_MARKERS=1 && exec nohup uv run uvicorn app.main:app --host 127.0.0.1 --port "$BACKEND_PORT" --reload ) >>"$BACKEND_LOG" 2>&1 </dev/null &
+else
+  ( cd "$ROOT/backend" && export PHLOX_ENV="$PHLOX_RUN_ENV" PHLOX_FORCE_COLOR="$PHLOX_BANNER_COLOR" PHLOX_STARTUP_CAPTURE_MARKERS=1 && exec nohup uv run uvicorn app.main:app --host 127.0.0.1 --port "$BACKEND_PORT" ) >>"$BACKEND_LOG" 2>&1 </dev/null &
 fi
 BACKEND_PID=$!
 echo "$BACKEND_PID" > "$RUN_DIR/backend.pid"
@@ -230,15 +240,18 @@ if [ "$NO_BROWSER" = false ]; then
 fi
 
 # ── 9. banner ─────────────────────────────────────────────────────────────────
-echo
-echo "${GREEN}${BOLD}Phlox is running!${RESET}"
+awk '
+  /^PHLOX_STARTUP_BEGIN$/ { showing=1; next }
+  /^PHLOX_STARTUP_END$/ { showing=0; next }
+  showing { print }
+' "$BACKEND_LOG"
+echo "${GREEN}${BOLD}Phlox is running.${RESET}"
 echo "  App:      ${CYAN}${BOLD}$APP_URL${RESET}"
 if [ "$MODE" = "dev" ]; then
   echo "  API:      http://localhost:$BACKEND_PORT  ${DIM}(hot-reload dev server)${RESET}"
 else
   echo "  Mode:     production build (single process)"
 fi
-echo "  Sign in:  ${BOLD}admin / admin${RESET}  ${DIM}(change this under Settings → Admin → Users)${RESET}"
 echo
 
 if [ "$DETACH" = true ]; then

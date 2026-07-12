@@ -42,7 +42,7 @@ export const useStore = create((set, get) => ({
 
   // -- auth ----------------------------------------------------------------
   authConfig: null, // {enabled, allow_registration, entra_enabled}
-  user: null, // the signed-in user (or a synthetic admin when auth disabled)
+  user: null, // signed-in user; must_change_password gates the app until setup is complete
   authReady: false, // true once we've determined auth state
 
   async init() {
@@ -65,7 +65,7 @@ export const useStore = create((set, get) => ({
     try {
       const user = await api.me()
       set({ user, authReady: true })
-      await get().loadApp()
+      if (!user.must_change_password) await get().loadApp()
     } catch {
       setToken(null)
       set({ user: null, authReady: true })
@@ -132,12 +132,18 @@ export const useStore = create((set, get) => ({
     const { token, user } = await api.login(username, password)
     setToken(token)
     set({ user })
-    await get().loadApp()
+    if (!user.must_change_password) await get().loadApp()
   },
 
   async registerAccount(body) {
     const { token, user } = await api.register(body)
     setToken(token)
+    set({ user })
+    await get().loadApp()
+  },
+
+  async changePassword(currentPassword, newPassword) {
+    const user = await api.changePassword(currentPassword, newPassword)
     set({ user })
     await get().loadApp()
   },

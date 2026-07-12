@@ -130,8 +130,10 @@ deals with provider-specific shapes.
   OIDC seam for production SSO. `get_current_user`/`require_admin` gate requests; data
   (conversations, documents, memories, settings) is scoped strictly per `user_id` —
   **admins manage accounts but cannot read other users' content**, and ownership checks
-  return 404 (not 403) so existence isn't leaked. When `auth.enabled` is false the app runs
-  single-user (synthetic admin). See [AUTH.md](AUTH.md).
+  return 404 (not 403) so existence isn't leaked. A clean database gets a random, one-time
+  admin password in the startup banner; `must_change_password` restricts that session to
+  password setup before any application route is available. When `auth.enabled` is false
+  the app runs single-user (synthetic admin). See [AUTH.md](AUTH.md).
 - **Workspaces isolate file/exec tools** per conversation under
   `backend/data/workspaces/<conversation_id>/`. `resolve_in_workspace` blocks traversal.
 - **Vector store is a swappable interface** (`rag/store.py`). Default `QdrantVectorStore`

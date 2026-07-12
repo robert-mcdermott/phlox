@@ -7,12 +7,15 @@ regardless of provider, so the rest of the app is auth-method-agnostic.
 ## How it works
 
 - **Models:** `User` (`models.py`) with `role` (`user` | `admin`), `auth_provider`
-  (`local` | `entra`), and `password_hash` (bcrypt) for local users.
+  (`local` | `entra`), `password_hash` (bcrypt) for local users, and
+  `must_change_password` for restricted bootstrap/reset sessions.
 - **Security:** `auth/security.py` — bcrypt hashing + PyJWT HS256 session tokens.
-- **Dependencies:** `auth/deps.py` — `get_current_user` (validates the `Authorization:
-  Bearer` JWT) and `require_admin`. When `auth.enabled` is **false**, a synthetic local
-  admin is returned so the app runs single-user with no login (handy for dev).
-- **Endpoints:** `routers/auth.py` — `login`, `register`, `me`, admin `users` CRUD, and
+- **Dependencies:** `auth/deps.py` — `get_authenticated_user` validates the session for
+  `/me` and password setup; `get_current_user` additionally rejects accounts that still
+  have a temporary password; `require_admin` adds the role gate. When `auth.enabled` is
+  **false**, a synthetic local admin is returned so the app runs single-user with no login.
+- **Endpoints:** `routers/auth.py` — `login`, `register`, `me`, `change-password`, admin
+  `users` CRUD, and
   the Entra `entra/login` + `entra/callback` flow.
 - **Frontend:** `api/token.js` stores the JWT and injects it into every request (REST +
   SSE + uploads); `components/auth/LoginScreen.jsx` gates the app; the Header shows the
@@ -72,12 +75,10 @@ regardless of provider, so the rest of the app is auth-method-agnostic.
 ```yaml
 auth:
   enabled: true                 # false => single-user dev mode, no login
-  jwt_secret: "<32+ byte secret>"   # or set env PHLOX_JWT_SECRET
   session_hours: 12
   allow_registration: true      # disable in production if using SSO only
-  default_admin:                # seeded on first run if no users exist
+  default_admin:                # username seeded on first run if no users exist
     username: admin
-    password: admin             # CHANGE THIS
   # Production SSO (Microsoft Entra ID). When tenant_id + client_id are set, the
   # "Sign in with Microsoft" button appears and the OIDC code flow is enabled.
   entra:
@@ -86,6 +87,18 @@ auth:
     client_secret: "<secret>"
     redirect_uri: "https://your-host/api/auth/entra/callback"
 ```
+
+On a clean database, Phlox generates a 192-bit random temporary password for this account
+and prints it in the colored startup banner. The plaintext is never stored in config or the
+database. After login, the session can call only `/api/auth/me` and
+`/api/auth/change-password`; every normal UI, admin, data, and gateway path remains blocked
+until the password is replaced. Administrator-created accounts and administrator password
+resets use the same forced-change behavior.
+
+For production (`PHLOX_ENV=production`), set `PHLOX_JWT_SECRET` to at least 32 bytes of
+random material and keep it stable across restarts. Production startup fails closed if it is
+missing, short, or a known placeholder. Local development without this variable gets a
+strong per-process ephemeral secret, so sessions intentionally do not survive a restart.
 
 ### Entra ID setup (production)
 1. Register an app in Entra ID; add a Web redirect URI of `…/api/auth/entra/callback`.
@@ -96,7 +109,7 @@ auth:
    JWT). The local/admin account still works as a break-glass login.
 
 ## Notes / next
-- The default dev secret and `admin/admin` are **for dev only** — set a real secret and
-  change the admin password before any shared use.
+- Treat first-run console output as sensitive because it contains the one-time admin
+  password. Delete or restrict captured startup logs after the password is changed.
 - Audit logging + secrets management are **Tier 5** (sensitive-data deployment). Postgres
   is available now (`DATABASE_URL`, see [DOCKER.md](DOCKER.md)) if you want it sooner.

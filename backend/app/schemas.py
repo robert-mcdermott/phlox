@@ -228,7 +228,7 @@ class ChatRequest(BaseModel):
     # (the conversation's pinned assistant wins).
     assistant_id: str | None = None
     # When true, tools whose policy is "ask" are auto-approved for this turn.
-    auto_approve: bool = True
+    auto_approve: bool = False
     # When true, advertise web_search to the model for this turn.
     web_search: bool = False
     # When true, advertise search_documents and instruct the model to use it this turn.

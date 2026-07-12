@@ -6,7 +6,7 @@ import shutil
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.auth.deps import get_current_user
+from app.auth.deps import get_current_user, require_owned_conversation
 from app.config import WORKSPACES_DIR
 from app.database import get_db
 from app.models import Conversation, User
@@ -27,11 +27,7 @@ def _visible(query, user: User):
 
 
 def _owned(db: Session, conversation_id: str, user: User) -> Conversation:
-    conv = db.get(Conversation, conversation_id)
-    # Return 404 (not 403) for conversations the user doesn't own, so existence isn't leaked.
-    if not conv or conv.user_id != user.id:
-        raise HTTPException(404, "Conversation not found")
-    return conv
+    return require_owned_conversation(db, conversation_id, user)
 
 
 @router.get("", response_model=list[ConversationOut])

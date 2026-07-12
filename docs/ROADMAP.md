@@ -113,7 +113,7 @@ The things a user *feels* immediately; they make it a real agent, not "chat that
   seam, targeting the **Docker-compatible CLI** (verified with **Podman** on Windows/WSL2,
   also works with Docker; portable to macOS/Linux). Per-execution ephemeral container with
   CPU/mem/PID limits + network isolation; per-conversation workspace bind-mounted; engine
-  auto-detection with graceful fallback to local. Select via `sandbox.runner: container`.
+  auto-detection with fail-closed startup/execution. Select via `sandbox.runner: container`.
   _Implemented in:_ `sandbox/runner.py`, `config.get_sandbox_config`.
 - [x] **Observability.** Per-message **token usage + cost** persisted (`Message.usage`,
   priced from `config.yml`) with a `/api/usage` aggregate and in-UI token meter; structured

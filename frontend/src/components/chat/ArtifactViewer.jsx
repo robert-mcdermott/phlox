@@ -2,19 +2,10 @@ import { useState } from 'react'
 import { Download, Eye, FileText, Image as ImageIcon, X } from 'lucide-react'
 import { canvasKind } from '../../utils/canvas'
 import { useStore } from '../../store/useStore'
+import { api } from '../../api/client'
+import AuthenticatedImage from '../auth/AuthenticatedImage'
 
 const IMAGE_EXTS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg']
-
-function Lightbox({ url, name, onClose }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-6" onClick={onClose}>
-      <button className="absolute right-4 top-4 rounded-full bg-white/10 p-2 text-white hover:bg-white/20" onClick={onClose}>
-        <X size={20} />
-      </button>
-      <img src={url} alt={name} className="max-h-full max-w-full rounded-lg object-contain" onClick={(e) => e.stopPropagation()} />
-    </div>
-  )
-}
 
 export default function ArtifactViewer({ artifacts, conversationId }) {
   const [lightbox, setLightbox] = useState(null)
@@ -30,7 +21,7 @@ export default function ArtifactViewer({ artifacts, conversationId }) {
           <div key={i} className="overflow-hidden rounded-lg border border-border bg-surface-2">
             {isImage ? (
               <button onClick={() => setLightbox({ url, name: a.name })} title="Click to enlarge">
-                <img src={url} alt={a.name} className="max-h-72 max-w-xs cursor-zoom-in object-contain" />
+                <AuthenticatedImage url={url} alt={a.name} className="max-h-72 max-w-xs cursor-zoom-in object-contain" />
               </button>
             ) : viewable ? (
               <button
@@ -47,17 +38,22 @@ export default function ArtifactViewer({ artifacts, conversationId }) {
                 <span className="text-sm text-content">{a.name}</span>
               </div>
             )}
-            <a
-              href={url}
-              download={a.name}
+            <button
+              type="button"
+              onClick={() => api.downloadFile(url, a.name)}
               className="flex items-center gap-1 border-t border-border px-2 py-1 text-xs text-muted hover:text-accent"
             >
               {isImage ? <ImageIcon size={12} /> : <Download size={12} />} {a.name}
-            </a>
+            </button>
           </div>
         )
       })}
-      {lightbox && <Lightbox {...lightbox} onClose={() => setLightbox(null)} />}
+      {lightbox && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-6" onClick={() => setLightbox(null)}>
+          <button className="absolute right-4 top-4 rounded-full bg-white/10 p-2 text-white hover:bg-white/20" onClick={() => setLightbox(null)}><X size={20} /></button>
+          <AuthenticatedImage url={lightbox.url} alt={lightbox.name} className="max-h-full max-w-full rounded-lg object-contain" onClick={(e) => e.stopPropagation()} />
+        </div>
+      )}
     </div>
   )
 }

@@ -92,6 +92,8 @@ models).
   Night/Sandstone/**Terminal** (CRT phosphor-green), instant switching. See
   [docs/THEMING.md](docs/THEMING.md).
 - 🛡️ **Per-tool permissions** — `auto | ask | deny`, with an "Agent mode" toggle.
+  Agent mode is off by default; it auto-approves `ask` tools only when explicitly enabled
+  for that turn.
   Live web and document-library search are separate per-prompt toggles and are off by
   default unless the user directly references a document.
 
@@ -226,13 +228,17 @@ login, set `auth.enabled: false`.
 
 ### Code-execution sandbox
 
-By default code runs in a **local subprocess** (fast, trusts the host). For isolation, set
+By default code runs in a **local subprocess** (fast, but **not an isolation boundary** and
+appropriate only for trusted single-user use). For isolation, set
 `sandbox.runner: container` to run each execution in an ephemeral **Podman/Docker**
 container with CPU/memory/PID limits and network isolation, or `sandbox.runner: agentcore`
 to run it **off-host** in an AWS Bedrock AgentCore Code Interpreter microVM (Firecracker,
 kernel-level isolation — no local Docker needed). For data-analysis workloads you
 can optionally build the **batteries-included images** (numpy/pandas/matplotlib/… preinstalled)
 so the agent doesn't pip-install packages on every run — see [docs/SANDBOX.md](docs/SANDBOX.md).
+Configured isolation fails closed: Phlox never silently switches container/AgentCore work to
+the host. Auth-enabled production refuses the local runner and reports runner availability at
+`/api/readiness` and in the admin Configuration panel.
 
 ## Production build
 

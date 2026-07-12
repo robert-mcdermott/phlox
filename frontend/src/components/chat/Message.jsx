@@ -4,6 +4,8 @@ import Markdown from '../markdown/Markdown'
 import ToolCallGroup from './ToolCallGroup'
 import ArtifactViewer from './ArtifactViewer'
 import { useStore } from '../../store/useStore'
+import AuthenticatedImage from '../auth/AuthenticatedImage'
+import { api } from '../../api/client'
 
 function CopyBtn({ text }) {
   const [copied, setCopied] = useState(false)
@@ -87,9 +89,9 @@ export default function Message({ message, conversationId, isLast }) {
           {images.length > 0 && (
             <div className="flex flex-wrap justify-end gap-2">
               {images.map((img, i) => (
-                <a key={i} href={img.url} target="_blank" rel="noreferrer">
-                  <img src={img.url} alt="attachment" className="max-h-48 rounded-xl border border-border object-cover" />
-                </a>
+                <button key={i} type="button" onClick={() => api.openFile(img.url)} title="Open attachment">
+                  <AuthenticatedImage url={img.url} alt="attachment" className="max-h-48 rounded-xl border border-border object-cover" />
+                </button>
               ))}
             </div>
           )}

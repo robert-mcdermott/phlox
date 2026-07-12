@@ -343,7 +343,7 @@ async def chat(
     if req.conversation_id:
         conversation = db.get(Conversation, req.conversation_id)
         # Conversations are private to their creator (admins included).
-        if conversation and conversation.user_id != user.id:
+        if conversation is None or conversation.user_id != user.id:
             raise HTTPException(404, "Conversation not found")
 
     # The pinned assistant wins on existing conversations; req.assistant_id only applies
@@ -555,25 +555,16 @@ async def approve(
 ):
     """Resume a paused turn. ``decisions`` maps tool-call id -> 'allow' | 'deny'."""
     pending = db.get(PendingApproval, req.pending_id)
+    if pending is None:
+        raise HTTPException(404, "Approval request not found")
+    conversation = db.get(Conversation, pending.conversation_id)
+    if conversation is None or conversation.user_id != user.id:
+        raise HTTPException(404, "Approval request not found")
     cancel_event = threading.Event()
 
     def stream():
         try:
-            if pending is None:
-                yield events.error("This approval request is no longer valid.")
-                yield events.done("")
-                return
-
             state = pending.state
-            conversation = db.get(Conversation, pending.conversation_id)
-            if conversation is None:
-                yield events.error("Conversation not found.")
-                yield events.done("")
-                return
-            if conversation.user_id != user.id:
-                yield events.error("Not authorized.")
-                yield events.done("")
-                return
 
             yield events.sse("conversation", id=conversation.id, title=conversation.title)
             try:

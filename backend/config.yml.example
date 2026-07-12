@@ -21,7 +21,8 @@
 auth:
   enabled: true
   session_hours: 12
-  allow_registration: true
+  # Explicitly opt in only when self-service account creation is intended.
+  allow_registration: false
   default_admin:
     username: admin
 
@@ -196,11 +197,12 @@ web_fetch:
 #   runner: container  -> run in an ephemeral, resource-limited container per execution.
 #   runner: agentcore  -> run OFF-HOST in an AWS Bedrock AgentCore Code Interpreter microVM
 #                         (kernel-level Firecracker isolation; untrusted code never touches
-#                         the Phlox host). Needs AWS creds + the IAM actions below. Falls
-#                         back to local on any AWS error.
+#                         the Phlox host). Needs AWS creds + the IAM actions below.
 # The container runner targets the Docker-compatible CLI, so it works with Podman
 # (including Podman's Docker-compat mode) and Docker, on Windows/macOS/Linux. Required for
-# untrusted / multi-user execution. Falls back to local if no engine is found.
+# untrusted / multi-user execution. Configured isolation fails closed: Phlox refuses startup
+# when the container engine/remote credentials are unavailable and never runs locally instead.
+# Auth-enabled production also refuses runner: local.
 sandbox:
   runner: local                  # FILE-ONLY: changing the runner type needs a restart (and
                                  # is never UI-editable — flipping isolation at runtime is unsafe).

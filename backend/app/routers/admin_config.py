@@ -62,12 +62,15 @@ def _effective_config() -> dict:
     """Build the masked, effective-config payload shared by GET and every PUT response."""
     profiles = config.get_profiles()
     sandbox = config.get_sandbox_config()
+    from app.sandbox.runner import sandbox_status
+
     return {
         "providers": [_mask_profile(n, c) for n, c in profiles.items()],
         "pricing": config.get_observability_config().get("pricing", {}),
         "resilience": config.get_resilience_config(),
         "generation": config.default_generation_params(),
         "sandbox": {"runner": sandbox.get("runner"), "container": sandbox.get("container", {})},
+        "sandbox_status": sandbox_status(),
         "suggestions": config.get_suggestions(),
         "guardrails": config.get_guardrails_config(),
         # Read-only metadata for the guardrails UI: the built-in detectors' labels,
@@ -216,4 +219,8 @@ def update_sandbox(body: SandboxUpdate, user: User = Depends(require_admin)):
     from app.sandbox.runner import reset_runner
 
     reset_runner()
-    return _effective_config()
+    response = _effective_config()
+    # Status collection constructs the selected runner. Drop it once more so the next
+    # real execution rebuilds from the just-saved limits.
+    reset_runner()
+    return response

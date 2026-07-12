@@ -1,7 +1,7 @@
 # Authentication & Multi-User
 
-Phlox supports **local username/password** accounts now, with a **Microsoft Entra ID
-(Azure AD) OIDC** seam ready for production SSO. Sessions are Phlox-issued JWTs
+Phlox supports **local username/password** accounts and a hardened **Microsoft Entra ID
+(Azure AD) OIDC** authorization-code browser flow. Sessions are Phlox-issued JWTs
 regardless of provider, so the rest of the app is auth-method-agnostic.
 
 ## How it works
@@ -14,17 +14,18 @@ regardless of provider, so the rest of the app is auth-method-agnostic.
   `/me` and password setup; `get_current_user` additionally rejects accounts that still
   have a temporary password; `require_admin` adds the role gate. When `auth.enabled` is
   **false**, a synthetic local admin is returned so the app runs single-user with no login.
-- **Endpoints:** `routers/auth.py` — `login`, `register`, `me`, `change-password`, admin
-  `users` CRUD, and
-  the Entra `entra/login` + `entra/callback` flow.
+- **Endpoints:** `routers/auth.py` — `login`, opt-in/rate-limited `register`, `me`,
+  `change-password`, admin `users` CRUD, and the Entra `entra/login` + `entra/callback` +
+  one-time `entra/complete` browser flow.
 - **Frontend:** `api/token.js` stores the JWT and injects it into every request (REST +
   SSE + uploads); `components/auth/LoginScreen.jsx` gates the app; the Header shows the
   signed-in user + sign-out.
 
 ## Roles & isolation
 
-- **Private user data (no admin bypass):** conversations, documents, memories, and
-  runtime settings are scoped strictly by `user_id`. A user only sees their own —
+- **Private user data (no admin bypass):** conversations/messages, workspace files,
+  attachments, checkpoints, documents, memories, private skills, API keys, and runtime
+  settings are scoped strictly by `user_id`. A user only sees their own —
   **including admins**. There is no endpoint that returns another user's chats, and
   ownership checks return **404** (not 403) so existence isn't leaked.
 - **Assistant knowledge bases are deliberately shared.** Documents an admin attaches to a
@@ -35,7 +36,7 @@ regardless of provider, so the rest of the app is auth-method-agnostic.
   base), and retrieval only widens to an assistant's documents after a visibility check on
   the conversation's pinned assistant (see [ARCHITECTURE.md](ARCHITECTURE.md) §3 "Custom
   assistants"). Private (`visibility: private`) assistants are visible only to their
-  creator and admins.
+  creator, including when another administrator probes them.
 - **Admins manage accounts, not content.** `require_admin` gates MCP server management,
   tool enable/permissions, **custom assistants** (create/edit/delete personas and their
   shared knowledge bases), **deployment configuration** (see below), and **user
@@ -76,7 +77,7 @@ regardless of provider, so the rest of the app is auth-method-agnostic.
 auth:
   enabled: true                 # false => single-user dev mode, no login
   session_hours: 12
-  allow_registration: true      # disable in production if using SSO only
+  allow_registration: false     # explicitly opt in to self-service registration
   default_admin:                # username seeded on first run if no users exist
     username: admin
   # Production SSO (Microsoft Entra ID). When tenant_id + client_id are set, the
@@ -99,14 +100,28 @@ For production (`PHLOX_ENV=production`), set `PHLOX_JWT_SECRET` to at least 32 b
 random material and keep it stable across restarts. Production startup fails closed if it is
 missing, short, or a known placeholder. Local development without this variable gets a
 strong per-process ephemeral secret, so sessions intentionally do not survive a restart.
+To rotate the production secret, schedule a sign-out event, replace it in the deployment
+secret store, restart every Phlox process together, and require users to sign in again;
+there is currently no overlapping old/new verification window.
+
+Self-service registration is disabled by default. If explicitly enabled, every registered
+account receives the `user` role (never first-user/admin promotion) and registration is
+process-limited by source IP. Multi-process deployments should add a shared limit at the
+reverse proxy as well.
 
 ### Entra ID setup (production)
-1. Register an app in Entra ID; add a Web redirect URI of `…/api/auth/entra/callback`.
+1. Register a single-tenant app in Entra ID; add a Web redirect URI of
+   `…/api/auth/entra/callback`. Configure the directory tenant UUID (not `common`,
+   `organizations`, or `consumers`).
 2. Grant delegated `openid profile email` scopes; create a client secret.
 3. Fill `auth.entra` above. New SSO users are created with the `user` role — promote to
    admin in **Settings → Users**.
-4. Test the round-trip (`entra/login` → Microsoft → `entra/callback` issues a Phlox
-   JWT). The local/admin account still works as a break-glass login.
+4. Test the round-trip. Phlox stores a short-lived, one-use random `state`, binds an OIDC
+   nonce and PKCE S256 verifier, validates the ID-token signature/issuer/tenant/audience and
+   required claims, then redirects with a one-use handoff code. The browser exchanges that
+   code for a Phlox JWT; the JWT itself is never placed in a URL. Replays and identity
+   collisions with local/other SSO accounts are rejected. The local administrator account
+   remains available as a break-glass login.
 
 ## Notes / next
 - Treat first-run console output as sensitive because it contains the one-time admin

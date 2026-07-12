@@ -38,7 +38,7 @@ function docStatus(doc) {
 
 export default function Composer() {
   const [text, setText] = useState('')
-  const [autoApprove, setAutoApprove] = useState(true)
+  const [autoApprove, setAutoApprove] = useState(false)
   const [webSearch, setWebSearch] = useState(false)
   const [documentSearch, setDocumentSearch] = useState(false)
   const [uploading, setUploading] = useState(false)

@@ -272,7 +272,7 @@ def get_auth_config() -> dict[str, Any]:
         or _EPHEMERAL_JWT_SECRET
     )
     cfg.setdefault("session_hours", 12)
-    cfg.setdefault("allow_registration", True)
+    cfg.setdefault("allow_registration", False)
     admin = dict(cfg.get("default_admin") or {})
     admin.pop("password", None)  # legacy values are intentionally ignored
     admin.setdefault("username", "admin")

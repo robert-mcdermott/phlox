@@ -107,6 +107,9 @@ Leave `vector_store` at the embedded default (no Qdrant server) unless you're sc
 The database defaults to SQLite too — see [§5d](#5d-optional-postgres-instead-of-sqlite) to
 use Postgres instead. Review `auth` and the sandbox section (see §8).
 
+This guide sets `PHLOX_ENV=production`; with authentication enabled, startup therefore
+requires `sandbox.runner: container` or `agentcore`. Complete §8 before starting the service.
+
 > **Config precedence:** `config.yml` is only the **seed for a fresh database**. Once a
 > provider profile is edited in the app's **Settings → (Admin) Configuration** panel, that
 > value is stored in the DB and **overrides `config.yml`**. After go-live, change provider
@@ -177,6 +180,7 @@ User=phlox
 Group=phlox
 WorkingDirectory=/opt/phlox/app/backend
 EnvironmentFile=/etc/phlox/phlox.env
+Environment=PHLOX_ENV=production
 # Bind to loopback and put a TLS reverse proxy in front (see §7).
 # To expose Phlox directly instead, change 127.0.0.1 to 0.0.0.0 and open the firewall.
 ExecStart=/opt/phlox/app/backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
@@ -210,11 +214,13 @@ journalctl -u phlox -f            # follow logs
 Verify locally:
 
 ```bash
-curl http://127.0.0.1:8000/api/health     # -> {"status":"ok","tools":N}
+curl http://127.0.0.1:8000/api/health
+curl --fail http://127.0.0.1:8000/api/readiness
 ```
 
-First sign-in is the seeded admin **`admin` / `admin`** — change it immediately under
-**Settings → (Admin) Users**.
+On a clean database, the startup journal prints a random one-time administrator password.
+Sign in with it and Phlox requires a replacement password before any application route is
+available. Treat the first-run journal as sensitive and preserve it only until setup succeeds.
 
 ## 7. Reverse proxy + TLS (recommended)
 
@@ -255,9 +261,10 @@ server {
   sudo firewall-cmd --reload
   ```
 
-## 8. (Optional) Container code-execution sandbox
+## 8. Required isolation for shared production
 
-Running on the host means you **can** use the stronger per-execution sandbox:
+Auth-enabled production refuses `sandbox.runner: local`. Running on the host lets you use
+the per-execution container sandbox:
 `sandbox.runner: container` in `config.yml` makes Phlox run agent code in ephemeral,
 resource-limited **podman** containers (recommended for untrusted/multi-user use). See
 [SANDBOX.md](SANDBOX.md). It needs **rootless podman working for the `phlox` user**:

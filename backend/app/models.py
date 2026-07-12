@@ -398,6 +398,29 @@ class PendingApproval(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
 
+class OAuthLoginState(Base):
+    """One-use, server-bound OIDC state plus nonce and PKCE verifier."""
+
+    __tablename__ = "oauth_login_states"
+
+    state_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    nonce: Mapped[str] = mapped_column(String(100))
+    code_verifier: Mapped[str] = mapped_column(String(150))
+    expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
+class AuthHandoff(Base):
+    """Short-lived one-use browser handoff; no session token appears in a URL."""
+
+    __tablename__ = "auth_handoffs"
+
+    code_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(32), index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
 class AppConfig(Base):
     """Admin-edited overrides for deployment config, applied live (no restart).
 

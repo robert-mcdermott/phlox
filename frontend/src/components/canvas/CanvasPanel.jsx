@@ -111,23 +111,22 @@ export default function CanvasPanel() {
           <button onClick={load} className="rounded p-1.5 text-muted hover:bg-surface-3 hover:text-content" title="Refresh">
             <RefreshCw size={15} />
           </button>
-          <a
-            href={rawUrl}
-            target="_blank"
-            rel="noreferrer"
+          <button
+            type="button"
+            onClick={() => api.openFile(rawUrl)}
             className="rounded p-1.5 text-muted hover:bg-surface-3 hover:text-content"
             title="Open raw file in a new tab"
           >
             <ExternalLink size={15} />
-          </a>
-          <a
-            href={rawUrl}
-            download={canvas.name}
+          </button>
+          <button
+            type="button"
+            onClick={() => api.downloadFile(rawUrl, canvas.name)}
             className="rounded p-1.5 text-muted hover:bg-surface-3 hover:text-content"
             title="Download"
           >
             <Download size={15} />
-          </a>
+          </button>
           <button onClick={closeCanvas} className="rounded p-1.5 text-muted hover:bg-surface-3 hover:text-content" title="Close">
             <X size={16} />
           </button>

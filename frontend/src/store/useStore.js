@@ -142,6 +142,13 @@ export const useStore = create((set, get) => ({
     await get().loadApp()
   },
 
+  async completeEntraLogin(handoff) {
+    const { token, user } = await api.entraComplete(handoff)
+    setToken(token)
+    set({ user })
+    await get().loadApp()
+  },
+
   async changePassword(currentPassword, newPassword) {
     const user = await api.changePassword(currentPassword, newPassword)
     set({ user })
@@ -253,7 +260,7 @@ export const useStore = create((set, get) => ({
   async sendMessage(
     text,
     {
-      autoApprove = true,
+      autoApprove = false,
       webSearch = false,
       documentSearch = false,
       images = [],
@@ -341,7 +348,7 @@ export const useStore = create((set, get) => ({
     await api.truncateFrom(get().activeId, msgs[idx].id)
     set((s) => ({ messages: s.messages.slice(0, idx), streaming: true, live: emptyLive(), error: null }))
     const abortFn = streamChat(
-      { conversation_id: get().activeId, regenerate: true, auto_approve: true },
+      { conversation_id: get().activeId, regenerate: true, auto_approve: false },
       (ev) => get()._onEvent(ev),
       () => get()._finalize(),
       (err) => set({ error: String(err), streaming: false, live: null }),

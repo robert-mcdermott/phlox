@@ -25,7 +25,14 @@ router = APIRouter(prefix="/api/assistants", tags=["assistants"])
 
 def _visible(db: Session, assistant_id: str, user: User) -> Assistant:
     a = db.get(Assistant, assistant_id)
-    if not a or (a.visibility != "public" and a.created_by != user.id and user.role != "admin"):
+    if not a or (a.visibility != "public" and a.created_by != user.id):
+        raise HTTPException(404, "Assistant not found")
+    return a
+
+
+def _manageable(db: Session, assistant_id: str, user: User) -> Assistant:
+    a = db.get(Assistant, assistant_id)
+    if not a or (a.visibility == "private" and a.created_by != user.id):
         raise HTTPException(404, "Assistant not found")
     return a
 
@@ -53,11 +60,7 @@ def _out(a: Assistant, n_documents: int) -> AssistantOut:
 @router.get("", response_model=list[AssistantOut])
 def list_assistants(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     q = db.query(Assistant).filter(Assistant.is_active.is_(True))
-    if user.role != "admin":
-        # Admins see all assistants (they manage them); users see public + their own.
-        q = q.filter(
-            (Assistant.visibility == "public") | (Assistant.created_by == user.id)
-        )
+    q = q.filter((Assistant.visibility == "public") | (Assistant.created_by == user.id))
     rows = q.order_by(Assistant.created_at).all()
     counts = _doc_counts(db, [a.id for a in rows])
     return [_out(a, counts.get(a.id, 0)) for a in rows]
@@ -87,11 +90,9 @@ def update_assistant(
     assistant_id: str,
     body: AssistantUpdate,
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    user: User = Depends(require_admin),
 ):
-    a = db.get(Assistant, assistant_id)
-    if not a:
-        raise HTTPException(404, "Assistant not found")
+    a = _manageable(db, assistant_id, user)
     for key, value in body.model_dump(exclude_unset=True).items():
         setattr(a, key, value)
     db.commit()
@@ -101,11 +102,9 @@ def update_assistant(
 
 @router.delete("/{assistant_id}")
 def delete_assistant(
-    assistant_id: str, db: Session = Depends(get_db), _: User = Depends(require_admin)
+    assistant_id: str, db: Session = Depends(get_db), user: User = Depends(require_admin)
 ):
-    a = db.get(Assistant, assistant_id)
-    if not a:
-        raise HTTPException(404, "Assistant not found")
+    a = _manageable(db, assistant_id, user)
     # Cascade the knowledge base: rows (chunks cascade via ORM), upload files, vectors.
     docs = db.query(Document).filter(Document.assistant_id == assistant_id).all()
     doc_ids = [d.id for d in docs]
@@ -129,10 +128,9 @@ def delete_assistant(
 # -- knowledge base ----------------------------------------------------------
 @router.get("/{assistant_id}/documents", response_model=list[DocumentOut])
 def list_assistant_documents(
-    assistant_id: str, db: Session = Depends(get_db), _: User = Depends(require_admin)
+    assistant_id: str, db: Session = Depends(get_db), user: User = Depends(require_admin)
 ):
-    if not db.get(Assistant, assistant_id):
-        raise HTTPException(404, "Assistant not found")
+    _manageable(db, assistant_id, user)
     return (
         db.query(Document)
         .filter(Document.assistant_id == assistant_id)
@@ -147,10 +145,9 @@ async def upload_assistant_document(
     background: BackgroundTasks,
     file: UploadFile,
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    user: User = Depends(require_admin),
 ):
-    if not db.get(Assistant, assistant_id):
-        raise HTTPException(404, "Assistant not found")
+    _manageable(db, assistant_id, user)
     doc = Document(
         filename=file.filename or "upload",
         mime=file.content_type,
@@ -178,8 +175,9 @@ def delete_assistant_document(
     assistant_id: str,
     document_id: str,
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    user: User = Depends(require_admin),
 ):
+    _manageable(db, assistant_id, user)
     doc = db.get(Document, document_id)
     if not doc or doc.assistant_id != assistant_id:
         raise HTTPException(404, "Document not found")

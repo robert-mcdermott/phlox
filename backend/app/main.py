@@ -54,6 +54,9 @@ logger = logging.getLogger("phlox")
 
 def _bootstrap() -> None:
     validate_auth_startup()
+    from app.sandbox.runner import validate_sandbox_startup
+
+    validate_sandbox_startup()
     init_db()
     register_builtin_tools(REGISTRY)
     db = SessionLocal()
@@ -147,7 +150,23 @@ setup_observability(app)
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "tools": len(REGISTRY.names())}
+    from app.sandbox.runner import sandbox_status
+
+    return {"status": "ok", "tools": len(REGISTRY.names()), "sandbox": sandbox_status()}
+
+
+@app.get("/api/readiness")
+def readiness():
+    from fastapi.responses import JSONResponse
+
+    from app.sandbox.runner import sandbox_status
+
+    sandbox = sandbox_status()
+    status_code = 200 if sandbox["available"] else 503
+    return JSONResponse(
+        {"status": "ready" if status_code == 200 else "not-ready", "sandbox": sandbox},
+        status_code=status_code,
+    )
 
 
 # Serve the built SPA in production (no-op in dev).

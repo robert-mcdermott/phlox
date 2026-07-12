@@ -99,8 +99,9 @@ deals with provider-specific shapes.
   calls into complete `ToolCall`s and emit the same `StreamDelta` types.
 - **Permission gate is the security seam** (`agent/permissions.py`). Each tool has a
   default policy (`auto|ask|deny`); read-only tools are `auto`, mutating/exec tools are
-  `ask`. "Agent mode" in the composer sets `auto_approve`, which promotes `ask`→`allow`
-  for that turn. Users override per-tool in the Tool Manager (persisted in `ToolPref`). A
+  `ask`. Agent mode is **off by default**; explicitly enabling it in the composer sets
+  `auto_approve`, which promotes `ask`→`allow` for that turn. Users override per-tool in
+  the Tool Manager (persisted in `ToolPref`). A
   second flag, `interactive`, covers *unattended* execution (sub-agents — see below): with
   no human able to answer an approval pause, `ask` resolves to `deny` there instead of
   either hanging or silently becoming `allow`.
@@ -126,6 +127,10 @@ deals with provider-specific shapes.
   process **tree**, not just the immediate child — a shell that forked a build/test process
   no longer keeps running as an orphan after the tool call is reported as timed
   out/cancelled. See [SANDBOX.md](SANDBOX.md) §"Live output & cancellation".
+  Configured isolation is fail-closed: an unavailable container engine or AgentCore failure
+  is an execution/startup error, never a switch to host-local execution. Auth-enabled
+  production refuses the local runner. `/api/readiness` and the admin Configuration panel
+  report the selected runner's availability without exposing credentials.
 - **Auth & multi-user.** Local username/password (bcrypt) + JWT sessions, with an Entra ID
   OIDC seam for production SSO. `get_current_user`/`require_admin` gate requests; data
   (conversations, documents, memories, settings) is scoped strictly per `user_id` —

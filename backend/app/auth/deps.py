@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.auth.security import decode_access_token
 from app.config import get_auth_config
 from app.database import get_db
-from app.models import User
+from app.models import Conversation, User
 
 # Stable id used for all data when auth is disabled (single-user dev mode).
 LOCAL_USER_ID = "local"
@@ -55,6 +55,14 @@ def require_admin(user: User = Depends(get_current_user)) -> User:
     if user.role != "admin":
         raise HTTPException(403, "Admin privileges required")
     return user
+
+
+def require_owned_conversation(db: Session, conversation_id: str, user: User) -> Conversation:
+    """Return an owned conversation without revealing whether a foreign id exists."""
+    conversation = db.get(Conversation, conversation_id)
+    if conversation is None or conversation.user_id != user.id:
+        raise HTTPException(404, "Conversation not found")
+    return conversation
 
 
 def require_api_key(

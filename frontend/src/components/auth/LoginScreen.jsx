@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { LogIn, Loader2, UserPlus } from 'lucide-react'
 import { useStore } from '../../store/useStore'
 import { api } from '../../api/client'
@@ -7,11 +7,28 @@ export default function LoginScreen() {
   const authConfig = useStore((s) => s.authConfig)
   const login = useStore((s) => s.login)
   const registerAccount = useStore((s) => s.registerAccount)
+  const completeEntraLogin = useStore((s) => s.completeEntraLogin)
   const [mode, setMode] = useState('login')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.hash.replace(/^#/, ''))
+    const handoff = params.get('sso_handoff')
+    const ssoError = params.get('sso_error')
+    if (!handoff && !ssoError) return
+    window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`)
+    if (ssoError) {
+      setError('Microsoft sign-in could not be completed. Please try again.')
+      return
+    }
+    setBusy(true)
+    completeEntraLogin(handoff)
+      .catch(() => setError('Microsoft sign-in expired or could not be completed. Please try again.'))
+      .finally(() => setBusy(false))
+  }, [completeEntraLogin])
 
   const submit = async (e) => {
     e.preventDefault()

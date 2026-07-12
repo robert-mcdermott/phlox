@@ -3,8 +3,9 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import RedirectResponse
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.auth import entra, service
@@ -13,6 +14,7 @@ from app.auth.security import create_access_token, verify_password
 from app.config import get_auth_config
 from app.database import get_db
 from app.models import User
+from app.rate_limit import check_rate_limit
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -44,6 +46,8 @@ class TokenOut(BaseModel):
 
 
 class RegisterIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     username: str
     password: str
     email: str | None = None
@@ -53,6 +57,10 @@ class RegisterIn(BaseModel):
 class ChangePasswordIn(BaseModel):
     current_password: str
     new_password: str
+
+
+class EntraCompleteIn(BaseModel):
+    handoff: str
 
 
 class CreateUserIn(RegisterIn):
@@ -88,16 +96,16 @@ def login(body: LoginIn, db: Session = Depends(get_db)):
 
 
 @router.post("/register", response_model=TokenOut)
-def register(body: RegisterIn, db: Session = Depends(get_db)):
+def register(body: RegisterIn, request: Request, db: Session = Depends(get_db)):
     cfg = get_auth_config()
     if not cfg["allow_registration"]:
         raise HTTPException(403, "Registration is disabled")
+    client_ip = request.client.host if request.client else "unknown"
+    check_rate_limit("registration", client_ip, limit=5, window_seconds=3600)
     if service.get_by_username(db, body.username):
         raise HTTPException(409, "Username already taken")
-    # First registered user becomes admin if none exist.
-    role = "admin" if db.query(User).count() == 0 else "user"
     user = service.create_user(
-        db, username=body.username, password=body.password, role=role,
+        db, username=body.username, password=body.password, role="user",
         email=body.email, display_name=body.display_name,
     )
     return {"token": create_access_token(user.id, user.role), "user": user}
@@ -130,17 +138,39 @@ def change_password(
 
 # --- Entra (SSO) ---------------------------------------------------------
 @router.get("/entra/login")
-def entra_login(state: str = "phlox"):
+def entra_login(db: Session = Depends(get_db)):
     if not entra.is_enabled():
         raise HTTPException(404, "Entra SSO is not configured")
-    return {"authorize_url": entra.authorize_url(state)}
+    return {"authorize_url": entra.begin_login(db)}
 
 
-@router.get("/entra/callback", response_model=TokenOut)
-def entra_callback(code: str, db: Session = Depends(get_db)):
+@router.get("/entra/callback")
+def entra_callback(
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+    db: Session = Depends(get_db),
+):
     if not entra.is_enabled():
         raise HTTPException(404, "Entra SSO is not configured")
-    user = entra.exchange_code_and_upsert(db, code)
+    if error or not code or not state:
+        return RedirectResponse(url="/#sso_error=1", status_code=303)
+    try:
+        user = entra.exchange_code_and_upsert(db, code, state)
+        handoff = entra.create_handoff(db, user.id)
+    except entra.EntraFlowError:
+        return RedirectResponse(url="/#sso_error=1", status_code=303)
+    return RedirectResponse(url=f"/#sso_handoff={handoff}", status_code=303)
+
+
+@router.post("/entra/complete", response_model=TokenOut)
+def entra_complete(body: EntraCompleteIn, db: Session = Depends(get_db)):
+    if not entra.is_enabled():
+        raise HTTPException(404, "Entra SSO is not configured")
+    try:
+        user = entra.consume_handoff(db, body.handoff)
+    except entra.EntraFlowError as exc:
+        raise HTTPException(400, str(exc)) from exc
     return {"token": create_access_token(user.id, user.role), "user": user}
 
 

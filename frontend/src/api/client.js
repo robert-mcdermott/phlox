@@ -20,7 +20,35 @@ async function req(method, path, body) {
   return res.json()
 }
 
+async function getBlob(path) {
+  const res = await fetch(path, { headers: { ...authHeaders() } })
+  if (res.status === 401) {
+    setToken(null)
+    window.dispatchEvent(new Event('phlox-unauthorized'))
+  }
+  if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`)
+  return res.blob()
+}
+
+async function openBlob(path, filename, newTab = false) {
+  const blob = await getBlob(path)
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  if (newTab) {
+    link.target = '_blank'
+    link.rel = 'noreferrer'
+  } else {
+    link.download = filename || 'download'
+  }
+  link.click()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
 export const api = {
+  getBlob,
+  downloadFile: (path, filename) => openBlob(path, filename, false),
+  openFile: (path) => openBlob(path, null, true),
   // auth
   authConfig: () => req('GET', '/api/auth/config'),
   login: (username, password) => req('POST', '/api/auth/login', { username, password }),
@@ -36,6 +64,7 @@ export const api = {
   updateUser: (id, body) => req('PATCH', `/api/auth/users/${id}`, body),
   deleteUser: (id) => req('DELETE', `/api/auth/users/${id}`),
   entraLoginUrl: () => req('GET', '/api/auth/entra/login'),
+  entraComplete: (handoff) => req('POST', '/api/auth/entra/complete', { handoff }),
 
   // conversations
   listConversations: () => req('GET', '/api/conversations'),

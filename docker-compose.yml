@@ -17,6 +17,7 @@ services:
       dockerfile: Dockerfile
     image: phlox:latest
     container_name: phlox
+    user: "10001:10001"
     ports:
       - "8000:8000"          # host:container — browse http://localhost:8000
     volumes:

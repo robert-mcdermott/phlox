@@ -123,6 +123,10 @@ class SandboxRunner(ABC):
         """
         return None
 
+    def readiness(self) -> tuple[bool, str]:
+        """Return a non-secret operational status for health/admin surfaces."""
+        return True, "available"
+
 
 def snapshot_dir(workdir: Path) -> dict[str, float]:
     snap: dict[str, float] = {}
@@ -372,7 +376,14 @@ class ContainerRunner(SandboxRunner):
         self.engine = detect_container_engine(config.get("engine", "auto"))
         if not self.engine:
             raise RuntimeError("No container engine (podman/docker) found")
-        self._fallback = LocalSubprocessRunner()
+        try:
+            probe = subprocess.run(
+                [self.engine, "info"], capture_output=True, text=True, timeout=10, check=False
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise RuntimeError("Configured container engine is not usable") from exc
+        if probe.returncode != 0:
+            raise RuntimeError("Configured container engine is not usable")
         logger.info("ContainerRunner using engine: %s", self.engine)
 
     def _limit_flags(self) -> list[str]:
@@ -487,8 +498,8 @@ class AgentCoreCodeInterpreterRunner(SandboxRunner):
     run files in the session are synced *out* into the local dir — so all of Phlox's
     local FS tools (read/write/edit/glob/grep) and mtime-based artifact detection keep
     working untouched. ``close_session()`` tears the session down deterministically when
-    the conversation is deleted. Any AWS error falls back to the local runner so a
-    misconfiguration degrades gracefully instead of breaking the turn.
+    the conversation is deleted. AWS failures are surfaced as execution errors; remote
+    isolation never degrades into local host execution.
     """
 
     def __init__(self, config: dict):
@@ -506,7 +517,6 @@ class AgentCoreCodeInterpreterRunner(SandboxRunner):
         self._sessions: dict[str, str] = {}        # workdir.name -> sessionId
         self._baseline: dict[str, set[str]] = {}   # workdir.name -> pre-existing top-level entries
         self._lock = threading.Lock()
-        self._fallback = LocalSubprocessRunner()
 
     # -- AWS client / session lifecycle -------------------------------------
     def _c(self):
@@ -520,6 +530,18 @@ class AgentCoreCodeInterpreterRunner(SandboxRunner):
             else:
                 self._client = boto3.client("bedrock-agentcore", region_name=self.region)
         return self._client
+
+    def readiness(self) -> tuple[bool, str]:
+        """Validate that the configured AWS credential chain can supply credentials."""
+        try:
+            import boto3
+
+            session = boto3.Session(profile_name=self.profile, region_name=self.region)
+            if session.get_credentials() is None:
+                return False, "AWS credentials are unavailable"
+        except Exception:  # noqa: BLE001
+            return False, "AWS credentials are unavailable"
+        return True, "available"
 
     def _session_for(self, workdir: Path) -> str:
         key = workdir.name
@@ -553,12 +575,10 @@ class AgentCoreCodeInterpreterRunner(SandboxRunner):
         return sid
 
     def _capture_baseline(self, sid: str) -> set[str]:
-        try:
-            listing = self._consume(self._invoke(sid, "listFiles", {"directoryPath": "."}))
-            return {b.get("name") for b in listing["content"] if b.get("name")}
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("AgentCore baseline capture failed: %s", exc)
-            return set()
+        listing = self._consume(self._invoke(sid, "listFiles", {"directoryPath": "."}))
+        if listing["is_error"]:
+            raise RuntimeError("AgentCore baseline listing failed")
+        return {b.get("name") for b in listing["content"] if b.get("name")}
 
     def _stop(self, sid: str) -> None:
         try:
@@ -668,7 +688,9 @@ class AgentCoreCodeInterpreterRunner(SandboxRunner):
                 entry["blob"] = data             # binary file -> blob (model supports it)
             files.append(entry)
         if files:
-            self._invoke(sid, "writeFiles", {"content": files})
+            written = self._consume(self._invoke(sid, "writeFiles", {"content": files}))
+            if written["is_error"]:
+                raise RuntimeError("AgentCore workspace upload failed")
 
     def _sync_out(self, sid: str, workdir: Path) -> None:
         """Pull files the run produced/changed back into the local workspace.
@@ -680,21 +702,18 @@ class AgentCoreCodeInterpreterRunner(SandboxRunner):
         """
         if not self.sync_back:
             return
-        try:
-            baseline = self._baseline.get(workdir.name, set()) | _CI_SYSTEM_NAMES
-            paths = self._walk_remote(sid, ".", baseline)
-            if not paths:
-                return
-            if len(paths) > _CI_MAX_SYNC_FILES:
-                logger.warning("AgentCore sync_out: %d files exceed cap %d; syncing first %d",
-                               len(paths), _CI_MAX_SYNC_FILES, _CI_MAX_SYNC_FILES)
-                paths = paths[:_CI_MAX_SYNC_FILES]
-            read = self._consume(self._invoke(sid, "readFiles", {"paths": paths}))
-            self._write_back(read["content"], workdir)
-        except Exception as exc:  # noqa: BLE001
-            # Best-effort: the local dir stays authoritative, so a sync-out miss never
-            # breaks the run — it just means produced files may not appear locally.
-            logger.warning("AgentCore sync_out failed: %s", exc)
+        baseline = self._baseline.get(workdir.name, set()) | _CI_SYSTEM_NAMES
+        paths = self._walk_remote(sid, ".", baseline)
+        if not paths:
+            return
+        if len(paths) > _CI_MAX_SYNC_FILES:
+            logger.warning("AgentCore sync_out: %d files exceed cap %d; syncing first %d",
+                           len(paths), _CI_MAX_SYNC_FILES, _CI_MAX_SYNC_FILES)
+            paths = paths[:_CI_MAX_SYNC_FILES]
+        read = self._consume(self._invoke(sid, "readFiles", {"paths": paths}))
+        if read["is_error"]:
+            raise RuntimeError("AgentCore workspace download failed")
+        self._write_back(read["content"], workdir)
 
     def _walk_remote(self, sid: str, dirpath: str, baseline: set[str], depth: int = 0) -> list[str]:
         """Recursively list the session FS, returning relative file paths worth syncing.
@@ -706,6 +725,8 @@ class AgentCoreCodeInterpreterRunner(SandboxRunner):
         if depth > _CI_MAX_SYNC_DEPTH:
             return []
         listing = self._consume(self._invoke(sid, "listFiles", {"directoryPath": dirpath}))
+        if listing["is_error"]:
+            raise RuntimeError("AgentCore workspace listing failed")
         files: list[str] = []
         for block in listing["content"]:
             name = block.get("name")
@@ -789,7 +810,6 @@ class AgentCoreCodeInterpreterRunner(SandboxRunner):
         return self._run(
             lambda sid: self._invoke(sid, "executeCommand", {"command": command}),
             workdir,
-            lambda: self._fallback.run_command(argv, workdir, timeout, on_output=on_output, cancel_event=cancel_event),
             on_output=on_output,
             cancel_event=cancel_event,
         )
@@ -814,7 +834,6 @@ class AgentCoreCodeInterpreterRunner(SandboxRunner):
         return self._run(
             lambda sid: self._invoke(sid, "executeCode", {"language": lang, "code": code}),
             workdir,
-            lambda: self._fallback.run_code(code, language, workdir, timeout, on_output=on_output, cancel_event=cancel_event),
             on_output=on_output,
             cancel_event=cancel_event,
         )
@@ -823,7 +842,6 @@ class AgentCoreCodeInterpreterRunner(SandboxRunner):
         self,
         do_invoke,
         workdir: Path,
-        fallback,
         on_output: OutputCallback | None = None,
         cancel_event: threading.Event | None = None,
     ) -> ExecResult:
@@ -854,8 +872,13 @@ class AgentCoreCodeInterpreterRunner(SandboxRunner):
                 artifacts=collect_artifacts(workdir, before),
             )
         except Exception as e:  # noqa: BLE001
-            logger.warning("AgentCore runner failed (%s); falling back to local", e)
-            return fallback()
+            logger.exception("AgentCore execution failed")
+            return ExecResult(
+                stdout="",
+                stderr=f"Remote sandbox execution failed ({type(e).__name__}).",
+                exit_code=1,
+                duration_s=round(time.monotonic() - start, 3),
+            )
 
 
 _runner: SandboxRunner | None = None
@@ -870,20 +893,48 @@ def get_runner() -> SandboxRunner:
         cfg = get_sandbox_config()
         runner_type = cfg.get("runner")
         if runner_type == "container":
-            try:
-                _runner = ContainerRunner(cfg["container"])
-            except Exception as e:  # noqa: BLE001
-                logger.warning("Container runner unavailable (%s); falling back to local", e)
-                _runner = LocalSubprocessRunner()
+            _runner = ContainerRunner(cfg["container"])
         elif runner_type == "agentcore":
-            try:
-                _runner = AgentCoreCodeInterpreterRunner(cfg.get("agentcore", {}))
-            except Exception as e:  # noqa: BLE001
-                logger.warning("AgentCore runner unavailable (%s); falling back to local", e)
-                _runner = LocalSubprocessRunner()
-        else:
+            _runner = AgentCoreCodeInterpreterRunner(cfg.get("agentcore", {}))
+        elif runner_type == "local":
             _runner = LocalSubprocessRunner()
+        else:
+            raise RuntimeError(f"Unknown sandbox runner: {runner_type!r}")
     return _runner
+
+
+def sandbox_status() -> dict[str, str | bool]:
+    """Return selected-runner availability without exposing engine or credential data."""
+    from app.config import get_sandbox_config
+
+    runner_type = str(get_sandbox_config().get("runner", "local"))
+    try:
+        runner = get_runner()
+        available, detail = runner.readiness()
+    except Exception as exc:  # noqa: BLE001
+        return {"runner": runner_type, "available": False, "detail": str(exc)}
+    return {"runner": runner_type, "available": available, "detail": detail}
+
+
+def validate_sandbox_startup() -> None:
+    """Fail closed for unavailable isolation and unsafe shared production execution."""
+    from app.config import get_auth_config, get_sandbox_config
+
+    runner_type = str(get_sandbox_config().get("runner", "local"))
+    production = os.environ.get("PHLOX_ENV", "").lower() in {"prod", "production"}
+    if production and get_auth_config().get("enabled") and runner_type == "local":
+        raise RuntimeError(
+            "Auth-enabled production startup requires sandbox.runner=container or agentcore; "
+            "the local runner can access the application host and its secrets."
+        )
+    status = sandbox_status()
+    if not status["available"]:
+        raise RuntimeError(f"Configured {runner_type} sandbox is unavailable: {status['detail']}")
+    if runner_type == "local":
+        logger.warning(
+            "LOCAL SANDBOX ACTIVE: model-executed code runs on the Phlox host. "
+            "Use only for a trusted single-user deployment."
+        )
 
 
 def reset_runner() -> None:

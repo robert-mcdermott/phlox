@@ -1,9 +1,13 @@
 """Serve workspace files / artifacts produced by tools."""
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
+from sqlalchemy.orm import Session
 
+from app.auth.deps import get_current_user, require_owned_conversation
+from app.database import get_db
+from app.models import User
 from app.workspace.manager import resolve_in_workspace, workspace_dir
 
 router = APIRouter(prefix="/api/files", tags=["files"])
@@ -13,7 +17,13 @@ _HIDDEN_DIRS = {".git", ".phlox", ".hutchchat", "__pycache__", "node_modules", "
 
 
 @router.get("/{conversation_id}")
-def get_file(conversation_id: str, path: str = Query(...)):
+def get_file(
+    conversation_id: str,
+    path: str = Query(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    require_owned_conversation(db, conversation_id, user)
     try:
         p = resolve_in_workspace(conversation_id, path)
     except ValueError as e:
@@ -24,7 +34,12 @@ def get_file(conversation_id: str, path: str = Query(...)):
 
 
 @router.get("/{conversation_id}/list")
-def list_files(conversation_id: str):
+def list_files(
+    conversation_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    require_owned_conversation(db, conversation_id, user)
     root = workspace_dir(conversation_id)
     files = []
     for p in sorted(root.rglob("*")):

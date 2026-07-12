@@ -3,6 +3,7 @@ import { X, FolderOpen, Download, Image as ImageIcon, FileText, Loader2, Refresh
 import { api } from '../../api/client'
 import { canvasKind } from '../../utils/canvas'
 import { useStore } from '../../store/useStore'
+import AuthenticatedImage from '../auth/AuthenticatedImage'
 
 const IMAGE_EXTS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg']
 
@@ -64,7 +65,7 @@ export default function WorkspaceFilesModal({ conversationId, onClose }) {
                     className="flex items-center gap-3 rounded-lg border border-border bg-surface px-3 py-2 hover:border-accent"
                   >
                     {isImg ? (
-                      <img src={url} alt="" className="h-9 w-9 shrink-0 rounded border border-border object-cover" />
+                      <AuthenticatedImage url={url} alt="" className="h-9 w-9 shrink-0 rounded border border-border object-cover" />
                     ) : (
                       <FileText size={18} className="shrink-0 text-accent" />
                     )}
@@ -81,9 +82,9 @@ export default function WorkspaceFilesModal({ conversationId, onClose }) {
                         <Eye size={15} />
                       </button>
                     )}
-                    <a href={url} download={f.name} className="shrink-0 rounded p-1 text-muted hover:text-accent" title="Download">
+                    <button type="button" onClick={() => api.downloadFile(url, f.name)} className="shrink-0 rounded p-1 text-muted hover:text-accent" title="Download">
                       {isImg ? <ImageIcon size={15} /> : <Download size={15} />}
-                    </a>
+                    </button>
                   </div>
                 )
               })}

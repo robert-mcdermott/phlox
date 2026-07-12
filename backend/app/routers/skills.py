@@ -32,15 +32,15 @@ MAX_IMPORT_BYTES = 512 * 1024
 
 def _visible(db: Session, skill_id: str, user: User) -> Skill:
     s = db.get(Skill, skill_id)
-    if not s or (s.visibility != "public" and s.created_by != user.id and user.role != "admin"):
+    if not s or (s.visibility != "public" and s.created_by != user.id):
         raise HTTPException(404, "Skill not found")
     return s
 
 
 def _require_owner(db: Session, skill_id: str, user: User) -> Skill:
     s = _visible(db, skill_id, user)
-    if user.role != "admin" and s.created_by != user.id:
-        raise HTTPException(403, "Only the skill's creator or an admin can modify it")
+    if s.created_by != user.id and not (user.role == "admin" and s.visibility == "public"):
+        raise HTTPException(404, "Skill not found")
     return s
 
 
@@ -88,9 +88,6 @@ def _create(db: Session, body: SkillCreate, user: User) -> Skill:
 
 @router.get("", response_model=list[SkillOut])
 def list_skills(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    if user.role == "admin":
-        # Admins manage all skills, including other users' private ones and inactive rows.
-        return db.query(Skill).order_by(Skill.name).all()
     return visible_skills(db, user.id, include_inactive=True)
 
 

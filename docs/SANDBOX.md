@@ -6,7 +6,7 @@ implementations ship; pick one in `config.yml`.
 
 | Runner | Isolation | When to use |
 |---|---|---|
-| `local` (default) | Subprocess on the host, rooted at the conversation workspace, with timeouts + output caps | Single-user / local / trusted dev |
+| `local` (default) | **No isolation boundary**: subprocess on the host with the application's environment, rooted at the conversation workspace | Single-user / local / trusted dev only |
 | `container` | Ephemeral **Podman/Docker** container, resource-limited, network-isolated, workspace bind-mounted | Untrusted input, multi-user, anything shared, on your own host |
 | `agentcore` | **Off-host** AWS Bedrock AgentCore Code Interpreter microVM (Firecracker, kernel-level isolation) | Untrusted/multi-user when you'd rather run code off the Phlox host entirely (no local Docker needed) |
 
@@ -41,8 +41,12 @@ in **Settings → (Admin) Configuration** — those overrides are stored in the 
 precedence over the file, and apply to the next execution with no restart (the cached runner
 is rebuilt). The **runner type itself is never UI-editable** — flipping isolation
 (`local`↔`container`) at runtime would be a security surprise, so changing `runner:` still
-requires editing this file and restarting. If `runner: container` but no engine is found,
-Phlox logs a warning and **falls back to `local`** so the app keeps working.
+    requires editing this file and restarting. Configured isolation is fail-closed: an
+unavailable container engine or AgentCore credential chain fails startup/readiness, and a
+remote runtime error is returned as an execution error. Phlox never runs that command locally.
+Auth-enabled production (`PHLOX_ENV=production`) refuses `runner: local`. The selected runner
+and non-secret availability state appear at `/api/readiness` and in the admin Configuration
+panel.
 
 ## Container engine setup
 
@@ -130,9 +134,9 @@ dir. The runner therefore:
 5. tears the session down deterministically when the **conversation is deleted** (via the
    additive `SandboxRunner.close_session(workdir)` hook) — no leaked sessions, no TTL reaper.
 
-On **any AWS error** (missing creds, region without Code Interpreter, throttling) the runner
-**falls back to the local runner** for that call, so a misconfiguration degrades gracefully
-instead of breaking the turn.
+On any AWS error (missing credentials, unavailable region, throttling, network or mid-stream
+failure), the runner returns an explicit execution error. It never executes the command in a
+local subprocess.
 
 ### Setup
 
@@ -159,7 +163,7 @@ instead of breaking the turn.
 throwaway temp data dir and tears its session down afterwards):
 
 ```bash
-python scripts/e2e_agentcore.py --region us-west-2        # add --profile NAME if needed
+uv run scripts/e2e_agentcore.py --region us-west-2        # add --profile NAME if needed
 ```
 
 It drives the real tools (`execute_python`/`run_shell`/`write_file`/…) through the runner,
@@ -233,5 +237,5 @@ Docker — or Firecracker/gVisor) by implementing `SandboxRunner` and returning 
 per-conversation remote state should override the no-op `close_session(workdir)` hook to
 release it when the conversation is deleted (as the `agentcore` runner does); `local` and
 `container` hold no session and inherit the no-op unchanged. The `agentcore` runner is the
-reference implementation for a **remote** backend: local workspace authoritative, sync
-in/out around each run, graceful fallback to local on error.
+  reference implementation for a **remote** backend: local workspace authoritative, sync
+  in/out around each run, and fail-closed errors.

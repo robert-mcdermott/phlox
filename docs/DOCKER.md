@@ -21,22 +21,31 @@ container config**.
 ```bash
 # from the repo root
 cp backend/config.yml.example backend/config.yml   # if you don't already have one
-$EDITOR backend/config.yml                          # set provider endpoint + auth (see below)
+$EDITOR backend/config.yml                          # set provider, auth, and sandbox (see below)
+mkdir -p backend/data
+# Linux Docker only, if the bind mount is not writable:
+sudo chown -R 10001:10001 backend/data
 
 export PHLOX_JWT_SECRET=$(openssl rand -hex 32)     # keep this stable across restarts
 docker compose up -d --build
 docker compose logs -f phlox                        # watch it boot
 ```
 
+Before starting, choose the sandbox posture in `config.yml`: shared/authenticated
+production requires `runner: agentcore` in this container image; a deliberately trusted
+single-user container may use `runner: local` only with `auth.enabled: false`. The default
+auth-enabled + local combination is rejected at production startup.
+
 **Podman:** use `podman compose` (Podman 4.x+, or install `podman-compose`) — same file,
 same commands (`podman compose up -d --build`).
 
-> On **rootless Podman**, files written into `backend/data/` may end up owned by a
-> high-numbered subordinate UID on the host. That's expected — see [Podman notes](#podman-notes)
-> for `:U`/`--userns=keep-id` if it gets in your way.
+> On **rootless Podman**, prepare the bind mount with
+> `podman unshare chown -R 10001:10001 backend/data`. See [Podman notes](#podman-notes)
+> for SELinux labeling. The image always runs as non-root uid/gid `10001:10001`.
 
-Open **http://localhost:8000** and sign in with the seeded admin **`admin` / `admin`**
-(change it immediately under Settings → Admin → Users).
+Open **http://localhost:8000**. On a clean database, `docker compose logs phlox` shows the
+random one-time administrator password; the first login must replace it before continuing.
+Treat that first-run output as sensitive.
 
 > **`backend/config.yml` must exist before you start** (the compose file bind-mounts it).
 > If it's missing, create it from `config.yml.example` first — otherwise the container
@@ -215,30 +224,31 @@ one at deployment time (or migrate data out-of-band if you need to move later).
 
 ## Code-execution sandbox
 
-**When Phlox runs in a container, use `sandbox.runner: local` (the default).** This is the
-only supported sandbox mode for the dockerized deployment.
+The application container is a useful process boundary, but it is not a safe per-user code
+sandbox: model-executed local code shares the Phlox process environment, mounted database,
+configuration, provider credentials, and every conversation workspace. Therefore an
+auth-enabled production container refuses `sandbox.runner: local`.
 
 | Deployment | Sandbox mode | What isolates the code |
 |---|---|---|
-| **Dockerized** (this guide) | `local` only | The **Phlox container itself** — agent code runs as a subprocess inside it, not on your host |
-| **On the host** (run directly, no container) | `local` or `container` | `container` mode spawns ephemeral, resource-limited sandbox containers per execution |
+| **Dockerized, trusted single-user** | `local` with `auth.enabled: false`, or `agentcore` | Local trusts the whole app container; AgentCore executes off-host |
+| **Dockerized, shared/authenticated** | `agentcore` | Off-host managed microVM; no application secrets or mounts are exposed |
+| **On the host** (run directly) | `container` or `agentcore` | Ephemeral resource-limited container, or off-host microVM |
 
-With the dockerized deployment, `local` already means "code runs inside the Phlox
-container, not on the host machine" — a meaningful boundary for single-user/trusted use.
-`execute_python` and `run_shell` work out of the box; `execute_node` needs Node in the
-image (uncomment the `nodejs` install in the `Dockerfile`).
+For a deliberately trusted, unauthenticated single-user container, `local` runs inside the
+non-root Phlox container; `execute_python` and `run_shell` work out of the box. This posture
+does not protect the mounted Phlox data or secrets from model-executed code.
 
 **`sandbox.runner: container` is not supported inside a container** and is intentionally
 left undocumented for that case: it would require Phlox to drive the host's container engine
 over a mounted socket *and* keep workspace bind-mount paths identical inside the container
 and on the host — fragile, and it silently mounts the wrong directory if you get it wrong.
-If you set `runner: container` in a dockerized instance with no engine reachable, Phlox logs
-a warning and falls back to `local` automatically.
+If you set `runner: container` in a dockerized instance without a usable engine, Phlox fails
+startup rather than silently running locally.
 
-> **Need per-execution container isolation** (untrusted input, multi-user)? **Run Phlox
-> directly on the host** (see the top-level [README](../README.md)) and set
-> `sandbox.runner: container` — see [SANDBOX.md](SANDBOX.md). That's the supported path for
-> strong per-run isolation with CPU/memory/PID caps.
+> For shared use, configure `agentcore` in the container, or run Phlox directly on the host
+> with `sandbox.runner: container`. See [SANDBOX.md](SANDBOX.md). Readiness returns `503`
+> when configured isolation is unavailable.
 
 ---
 

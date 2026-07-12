@@ -43,3 +43,14 @@ jobs:
         run: npm ci
       - name: Build
         run: npm run build
+
+  container-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build production image
+        run: docker build -t phlox-ci .
+      - name: Assert non-root runtime identity and writable data path
+        run: |
+          test "$(docker image inspect phlox-ci --format '{{.Config.User}}')" = "10001:10001"
+          docker run --rm --entrypoint sh phlox-ci -c 'test "$(id -u)" = 10001 && test "$(id -g)" = 10001 && test -w /app/backend/data && test ! -w /app/backend/app'

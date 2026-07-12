@@ -18,7 +18,7 @@ fi
 
 # Production auth must never start with a missing, short, or known placeholder secret.
 case "${PHLOX_JWT_SECRET:-}" in
-    ""|change-me|please-change-me-set-a-real-32B+-secret|dev-insecure-change-me-please-set-a-real-32B+-secret)
+    ""|change-me|changeme|replace-me|secret|please-change-me-set-a-real-32B+-secret|dev-insecure-change-me-please-set-a-real-32B+-secret)
         echo "Phlox: ERROR PHLOX_JWT_SECRET is missing or is a known placeholder." >&2
         echo "       Generate and persist one with: openssl rand -hex 32" >&2
         exit 1

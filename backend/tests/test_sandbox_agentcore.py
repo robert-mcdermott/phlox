@@ -139,7 +139,7 @@ def test_get_runner_returns_agentcore_when_configured(monkeypatch):
         runner_mod.reset_runner()
 
 
-def test_get_runner_falls_back_to_local_on_construction_error(monkeypatch):
+def test_get_runner_fails_closed_on_construction_error(monkeypatch):
     from app import config
 
     monkeypatch.setattr(
@@ -153,7 +153,8 @@ def test_get_runner_falls_back_to_local_on_construction_error(monkeypatch):
     monkeypatch.setattr(runner_mod, "AgentCoreCodeInterpreterRunner", boom)
     runner_mod.reset_runner()
     try:
-        assert isinstance(runner_mod.get_runner(), LocalSubprocessRunner)
+        with pytest.raises(RuntimeError, match="no creds"):
+            runner_mod.get_runner()
     finally:
         runner_mod.reset_runner()
 
@@ -284,18 +285,20 @@ def test_write_back_ignores_unsafe_uris(fake_runner, tmp_path):
 # --------------------------------------------------------------------------- #
 # AWS failure -> graceful local fallback
 # --------------------------------------------------------------------------- #
-def test_run_falls_back_to_local_on_aws_error(tmp_path):
+@pytest.mark.parametrize("reason", ["missing credentials", "throttled", "network down", "stream failed"])
+def test_run_never_falls_back_to_local_on_aws_error(tmp_path, reason):
     r = AgentCoreCodeInterpreterRunner({"region": "us-west-2"})
 
     class Boom:
         def start_code_interpreter_session(self, **kw):
-            raise RuntimeError("network down")
+            raise RuntimeError(reason)
 
     r._client = Boom()
-    res = r.run_code("print('local fallback works')", "python", tmp_path)
-    # The local runner actually executed the code.
-    assert res.exit_code == 0
-    assert "local fallback works" in res.stdout
+    marker = tmp_path / "must-not-exist"
+    res = r.run_code(f"open({str(marker)!r}, 'w').write('local')", "python", tmp_path)
+    assert res.exit_code != 0
+    assert "Remote sandbox execution failed" in res.stderr
+    assert not marker.exists()
 
 
 # --------------------------------------------------------------------------- #

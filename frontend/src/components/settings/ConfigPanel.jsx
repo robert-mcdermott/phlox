@@ -528,6 +528,7 @@ function SandboxCard({ cfg, onSaved }) {
   const { busy, err, ok, save } = useSaver(onSaved)
   useEffect(() => { setC(cfg.sandbox.container) }, [cfg.sandbox.container])
   const runner = cfg.sandbox.runner
+  const status = cfg.sandbox_status || { available: false, detail: 'status unavailable' }
 
   const submit = () => save('sandbox', {
     container: {
@@ -545,6 +546,9 @@ function SandboxCard({ cfg, onSaved }) {
         <ShieldAlert size={14} className={runner === 'container' ? 'text-green-600' : 'text-muted'} />
         <span className="text-muted">Active runner:</span>
         <span className="font-mono text-content">{runner}</span>
+        <span className={status.available ? 'text-green-600' : 'text-red-600'}>
+          — {status.available ? 'available' : `unavailable: ${status.detail}`}
+        </span>
         {runner !== 'container' && (
           <span className="text-muted">— limits below apply only when the runner is <code className="rounded bg-surface-3 px-1">container</code> (set in config.yml).</span>
         )}

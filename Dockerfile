@@ -38,7 +38,9 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 # (Add nodejs here too if you need the execute_node tool with the LOCAL sandbox.)
 RUN apt-get update \
     && apt-get install -y --no-install-recommends git tini \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --gid 10001 phlox \
+    && useradd --uid 10001 --gid phlox --no-create-home --shell /usr/sbin/nologin phlox
 
 WORKDIR /app/backend
 
@@ -69,10 +71,16 @@ COPY --from=frontend /app/frontend/dist /app/frontend/dist
 
 # Thin entrypoint: a couple of startup sanity checks, then exec the server.
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh \
+    && mkdir -p /app/backend/data \
+    && chown -R phlox:phlox /app/backend/data
 
 EXPOSE 8000
 VOLUME ["/app/backend/data"]
+
+# A fixed numeric uid/gid works with rootless Podman and lets operators pre-create bind
+# mounts with predictable ownership. Application code and dependencies remain read-only.
+USER 10001:10001
 
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/entrypoint.sh"]
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

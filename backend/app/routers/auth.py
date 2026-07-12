@@ -8,8 +8,8 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.auth import entra, service
-from app.auth.deps import get_current_user, require_admin
-from app.auth.security import create_access_token
+from app.auth.deps import get_authenticated_user, require_admin
+from app.auth.security import create_access_token, verify_password
 from app.config import get_auth_config
 from app.database import get_db
 from app.models import User
@@ -26,6 +26,7 @@ class UserOut(BaseModel):
     role: str
     auth_provider: str
     is_active: bool
+    must_change_password: bool
     created_at: datetime | None = None
 
     class Config:
@@ -47,6 +48,11 @@ class RegisterIn(BaseModel):
     password: str
     email: str | None = None
     display_name: str | None = None
+
+
+class ChangePasswordIn(BaseModel):
+    current_password: str
+    new_password: str
 
 
 class CreateUserIn(RegisterIn):
@@ -98,7 +104,27 @@ def register(body: RegisterIn, db: Session = Depends(get_db)):
 
 
 @router.get("/me", response_model=UserOut)
-def me(user: User = Depends(get_current_user)):
+def me(user: User = Depends(get_authenticated_user)):
+    return user
+
+
+@router.post("/change-password", response_model=UserOut)
+def change_password(
+    body: ChangePasswordIn,
+    user: User = Depends(get_authenticated_user),
+    db: Session = Depends(get_db),
+):
+    """Replace a local password, including the one-time bootstrap credential."""
+    if user.auth_provider != "local":
+        raise HTTPException(400, "Password changes are only available for local accounts")
+    if not verify_password(body.current_password, user.password_hash):
+        raise HTTPException(400, "Current password is incorrect")
+    if len(body.new_password) < 12:
+        raise HTTPException(422, "New password must be at least 12 characters")
+    if verify_password(body.new_password, user.password_hash):
+        raise HTTPException(422, "New password must differ from the current password")
+    service.set_password(db, user, body.new_password)
+    db.refresh(user)
     return user
 
 
@@ -131,6 +157,7 @@ def create_user(body: CreateUserIn, _: User = Depends(require_admin), db: Sessio
     return service.create_user(
         db, username=body.username, password=body.password, role=body.role,
         email=body.email, display_name=body.display_name, department=body.department,
+        must_change_password=True,
     )
 
 
@@ -151,7 +178,14 @@ def update_user(
     if body.department is not None:
         user.department = body.department
     if body.password:
-        service.set_password(db, user, body.password)
+        # A password set by another administrator is temporary.  An admin changing their
+        # own password here has already authenticated and is not forced through setup again.
+        service.set_password(
+            db,
+            user,
+            body.password,
+            must_change_password=user.id != admin.id,
+        )
     db.commit()
     db.refresh(user)
     return user

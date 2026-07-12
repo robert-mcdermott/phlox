@@ -6,7 +6,7 @@ features:
 
 - 20 believable users across 5 departments (Bridgeworks, SoftwareEng, SciComp,
   Bioinformatics, Datascience), all with password ``Demo123!``.
-- The default admin account (admin / admin) if no users exist yet.
+- A first-run admin with a random temporary password if no users exist yet.
 - The model pricing overlay (same priced models as the source deployment) so cost
   computation and budget enforcement work on a fresh DB. Existing pricing is kept.
 - ~2.5 months of conversations + messages with realistic token usage, priced via the
@@ -49,6 +49,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app import app_config  # noqa: E402
 from app.auth.service import create_user, get_by_username, seed_default_admin  # noqa: E402
+from app.branding import emit_startup_banner  # noqa: E402
 from app.budgets import budget_status, current_month_spend, month_bounds  # noqa: E402
 from app.config import get_observability_config, get_profiles  # noqa: E402
 from app.database import SessionLocal, init_db  # noqa: E402
@@ -394,7 +395,9 @@ def main() -> None:
                 sys.exit("Demo users already exist — rerun with --reset to reseed.")
             purge_demo_data(db)
 
-        seed_default_admin(db)  # admin/admin on a fresh DB; no-op otherwise
+        bootstrap_admin = seed_default_admin(db)
+        if bootstrap_admin:
+            emit_startup_banner(bootstrap_admin)
         pricing = seed_pricing()
         by_dept = seed_users(db)
         print("Generating conversations, messages, and ledger rows...")
@@ -406,7 +409,8 @@ def main() -> None:
 
     print(f"""
 Done. Demo walkthrough:
-  - Admin (admin/admin unless changed): Settings -> Admin -> Usage for the chargeback
+  - Admin: use the existing password, or the one-time password printed above on a clean DB.
+    After replacing a temporary password, open Settings -> Admin -> Usage for the chargeback
     report, Settings -> Admin -> Budgets for per-department spend vs limit.
   - Log in as a Bridgeworks user (e.g. sokafor / {DEMO_PASSWORD}): priced models are
     blocked — the budget-exceeded state.

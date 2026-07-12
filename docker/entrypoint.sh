@@ -16,10 +16,17 @@ if [ ! -f "$CONFIG" ]; then
     echo "       restart. The app will start with no provider profiles until then."
 fi
 
-# Warn if the JWT secret was left at the insecure default.
-if [ -z "$PHLOX_JWT_SECRET" ]; then
-    echo "Phlox: WARNING PHLOX_JWT_SECRET is not set — using an insecure default."
-    echo "       Set it (e.g. PHLOX_JWT_SECRET=\$(openssl rand -hex 32)) before sharing access."
+# Production auth must never start with a missing, short, or known placeholder secret.
+case "${PHLOX_JWT_SECRET:-}" in
+    ""|change-me|please-change-me-set-a-real-32B+-secret|dev-insecure-change-me-please-set-a-real-32B+-secret)
+        echo "Phlox: ERROR PHLOX_JWT_SECRET is missing or is a known placeholder." >&2
+        echo "       Generate and persist one with: openssl rand -hex 32" >&2
+        exit 1
+        ;;
+esac
+if [ "${#PHLOX_JWT_SECRET}" -lt 32 ]; then
+    echo "Phlox: ERROR PHLOX_JWT_SECRET must contain at least 32 bytes." >&2
+    exit 1
 fi
 
 exec "$@"

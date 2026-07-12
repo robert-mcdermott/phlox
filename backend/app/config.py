@@ -8,11 +8,19 @@ theme) live in the database ``Setting`` table — see ``app/routers/settings.py`
 from __future__ import annotations
 
 import os
+import secrets
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+_EPHEMERAL_JWT_SECRET = secrets.token_urlsafe(48)
+_INSECURE_JWT_SECRETS = {
+    "dev-insecure-change-me-please-set-a-real-32B+-secret",
+    "please-change-me-set-a-real-32B+-secret",
+    "change-me",
+}
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -255,17 +263,45 @@ def get_auth_config() -> dict[str, Any]:
     """Auth settings. ``enabled`` gates login; when off the app runs single-user (dev)."""
     cfg = dict(load_config().get("auth", {}) or {})
     cfg.setdefault("enabled", True)
-    cfg.setdefault(
-        "jwt_secret",
-        os.environ.get("PHLOX_JWT_SECRET", "dev-insecure-change-me-please-set-a-real-32B+-secret"),
+    # Environment wins so orchestrators can inject the secret without modifying config.
+    # For local development only, use a strong per-process secret rather than a committed
+    # shared fallback. Production startup rejects the absence of PHLOX_JWT_SECRET below.
+    cfg["jwt_secret"] = (
+        os.environ.get("PHLOX_JWT_SECRET")
+        or cfg.get("jwt_secret")
+        or _EPHEMERAL_JWT_SECRET
     )
     cfg.setdefault("session_hours", 12)
     cfg.setdefault("allow_registration", True)
-    cfg.setdefault("default_admin", {"username": "admin", "password": "admin"})
+    admin = dict(cfg.get("default_admin") or {})
+    admin.pop("password", None)  # legacy values are intentionally ignored
+    admin.setdefault("username", "admin")
+    cfg["default_admin"] = admin
     # entra (Microsoft Entra ID / Azure AD) — OIDC; wired but optional. When `tenant_id`
     # and `client_id` are present, the SSO login path becomes available.
     cfg.setdefault("entra", {})
     return cfg
+
+
+def validate_auth_startup() -> None:
+    """Fail closed when an auth-enabled production process lacks a strong JWT secret."""
+    cfg = get_auth_config()
+    if not cfg["enabled"] or os.environ.get("PHLOX_ENV", "").lower() not in {
+        "prod",
+        "production",
+    }:
+        return
+
+    secret = os.environ.get("PHLOX_JWT_SECRET", "")
+    if (
+        len(secret.encode("utf-8")) < 32
+        or secret.lower() in _INSECURE_JWT_SECRETS
+        or len(set(secret)) < 8
+    ):
+        raise RuntimeError(
+            "Auth-enabled production startup requires PHLOX_JWT_SECRET with at least "
+            "32 bytes of high-entropy secret material. Keep it stable across restarts."
+        )
 
 
 def get_vector_store_config() -> dict[str, Any]:

@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import logging
+import secrets
+from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
@@ -10,6 +12,14 @@ from app.config import get_auth_config
 from app.models import User
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class BootstrapAdmin:
+    """The one-time credential returned only by a successful first-user seed."""
+
+    username: str
+    password: str
 
 
 def get_by_username(db: Session, username: str) -> User | None:
@@ -34,6 +44,7 @@ def create_user(
     auth_provider: str = "local",
     external_id: str | None = None,
     department: str | None = None,
+    must_change_password: bool = False,
 ) -> User:
     user = User(
         username=username,
@@ -44,6 +55,7 @@ def create_user(
         auth_provider=auth_provider,
         external_id=external_id,
         department=department,
+        must_change_password=must_change_password,
     )
     db.add(user)
     db.commit()
@@ -60,8 +72,15 @@ def authenticate_local(db: Session, username: str, password: str) -> User | None
     return user
 
 
-def set_password(db: Session, user: User, password: str) -> None:
+def set_password(
+    db: Session,
+    user: User,
+    password: str,
+    *,
+    must_change_password: bool = False,
+) -> None:
     user.password_hash = hash_password(password)
+    user.must_change_password = must_change_password
     db.commit()
 
 
@@ -141,16 +160,27 @@ def claim_orphans(db: Session, admin_id: str) -> int:
     return n
 
 
-def seed_default_admin(db: Session) -> None:
-    """Create the bootstrap admin from config if no users exist yet."""
+def seed_default_admin(db: Session) -> BootstrapAdmin | None:
+    """Create a bootstrap admin with a random, one-time password.
+
+    The plaintext exists only in the returned object, allowing the startup path to show it
+    once.  It is never read from config or persisted outside the bcrypt hash.
+    """
     if db.query(User).count() > 0:
-        return
+        return None
     cfg = get_auth_config()
     admin = cfg.get("default_admin") or {}
     username = admin.get("username", "admin")
-    password = admin.get("password", "admin")
-    create_user(db, username=username, password=password, role="admin", display_name="Administrator")
-    logger.warning(
-        "Seeded default admin account '%s' (change the password in config.yml / via the UI).",
-        username,
+    # 32 characters from a 64-symbol alphabet gives 192 bits of entropy while remaining
+    # easy to paste in shells, terminals, and password managers.
+    password = secrets.token_urlsafe(24)
+    create_user(
+        db,
+        username=username,
+        password=password,
+        role="admin",
+        display_name="Administrator",
+        must_change_password=True,
     )
+    logger.warning("Seeded bootstrap admin account '%s' with a one-time password.", username)
+    return BootstrapAdmin(username=username, password=password)

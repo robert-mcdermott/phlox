@@ -51,7 +51,8 @@ WORKDIR /app/backend
 # and one data dir, used whether you run Phlox in a container or directly on the host.
 ENV UV_PROJECT_ENVIRONMENT=/app/backend/.venv \
     PATH="/app/backend/.venv/bin:$PATH" \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    PHLOX_ENV=production
 
 # Install Python deps first (cached unless pyproject/uv.lock change). Includes the
 # `postgres` extra (psycopg) so DATABASE_URL can point at Postgres with no rebuild —
@@ -61,6 +62,7 @@ RUN uv sync --frozen --no-dev --no-install-project --extra postgres
 
 # App source.
 COPY backend/app ./app
+COPY VERSION /app/VERSION
 
 # Built SPA from stage 1.
 COPY --from=frontend /app/frontend/dist /app/frontend/dist

@@ -14,6 +14,17 @@
 # file-only (for bootstrap/security): `auth` (incl. jwt_secret), `vector_store`, `web_fetch`,
 # the sandbox `runner` *type*, and `observability.otel`/`request_logging`.
 
+# Authentication is enabled by default. On a clean database Phlox creates `admin` with a
+# random one-time password, prints it once in the startup banner, and requires a password
+# change before the account can access the app. The password is never read from this file.
+# Production also requires a stable PHLOX_JWT_SECRET environment variable (32+ random bytes).
+auth:
+  enabled: true
+  session_hours: 12
+  allow_registration: true
+  default_admin:
+    username: admin
+
 # Which profile is active on first launch (can be changed in the UI afterwards).
 default_profile: local-ollama
 

@@ -21,13 +21,15 @@ LOCAL_USER_ID = "local"
 def _dev_admin() -> User:
     u = User(id=LOCAL_USER_ID, username="local", display_name="Local User", role="admin")
     u.is_active = True
+    u.must_change_password = False
     return u
 
 
-def get_current_user(
+def get_authenticated_user(
     authorization: str | None = Header(default=None),
     db: Session = Depends(get_db),
 ) -> User:
+    """Resolve a valid session, including a session restricted to password setup."""
     if not get_auth_config()["enabled"]:
         return _dev_admin()
 
@@ -39,6 +41,13 @@ def get_current_user(
     user = db.get(User, payload.get("sub"))
     if not user or not user.is_active:
         raise HTTPException(401, "User not found or inactive")
+    return user
+
+
+def get_current_user(user: User = Depends(get_authenticated_user)) -> User:
+    """Require a fully initialized account for normal application access."""
+    if user.must_change_password:
+        raise HTTPException(403, "Password change required")
     return user
 
 
@@ -75,4 +84,6 @@ def require_api_key(
         return _dev_admin()
     if user is None or not user.is_active:
         raise HTTPException(401, "The user for this API key is inactive or no longer exists.")
+    if user.must_change_password:
+        raise HTTPException(403, "Password change required before API keys can be used.")
     return user

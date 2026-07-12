@@ -4,13 +4,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Phlox — A full-featured, self-hostable AI platform</title>
-  <meta name="description" content="Phlox is a full-featured, self-hostable AI platform with an agentic harness, a live artifact canvas, custom assistants, reusable agent skills, document RAG, sandboxed code execution, an OpenAI-compatible gateway, PII guardrails, per-user cost accounting and budgets, and MCP integration — running over any model provider: AWS Bedrock or any OpenAI-compatible endpoint, including fully local models." />
+  <meta name="description" content="Phlox is a full-featured, self-hostable AI platform with an agentic harness, a live artifact canvas, custom assistants, reusable agent skills, document RAG, configurable code-execution runners, an OpenAI-compatible gateway, optional text-pattern guardrails, per-user cost accounting and budgets, and MCP integration — running over any model provider: AWS Bedrock or any OpenAI-compatible endpoint, including fully local models." />
   <meta name="author" content="Robert McDermott" />
 
   <!-- Open Graph -->
   <meta property="og:type" content="website" />
   <meta property="og:title" content="Phlox — A full-featured, self-hostable AI platform" />
-  <meta property="og:description" content="Agentic harness, artifact canvas, custom assistants, document RAG, sandboxed code execution, PII guardrails, and MCP integration over any model provider. Self-hostable, open source, Apache 2.0." />
+  <meta property="og:description" content="Agentic harness, artifact canvas, custom assistants, document RAG, configurable code-execution runners, optional text-pattern guardrails, and MCP integration over any model provider. Self-hostable, open source, Apache 2.0." />
   <meta property="og:image" content="images/phlox-screenshot-canvas.png" />
 
   <link rel="icon" type="image/svg+xml" href="images/favicon.svg" />
@@ -67,7 +67,7 @@
           </h1>
           <p class="hero-sub">
             Phlox is a self-hostable AI platform — an agentic tool-using harness with a live
-            artifact canvas, custom assistants, reusable skills, document RAG, sandboxed code
+            artifact canvas, custom assistants, reusable skills, document RAG, configurable code
             execution, an OpenAI-compatible gateway, and per-user cost accounting and budgets —
             running over <strong>any</strong> model provider: AWS Bedrock or any
             OpenAI-compatible endpoint, including fully local models.
@@ -109,7 +109,7 @@
       <div class="container strip-inner">
         <div class="strip-item reveal"><span class="strip-num">~40</span><span class="strip-label">built-in agent tools</span></div>
         <div class="strip-item reveal"><span class="strip-num">100%</span><span class="strip-label">self-hostable &amp; offline-capable</span></div>
-        <div class="strip-item reveal"><span class="strip-num">3</span><span class="strip-label">sandbox isolation levels</span></div>
+        <div class="strip-item reveal"><span class="strip-num">3</span><span class="strip-label">code-execution runners</span></div>
         <div class="strip-item reveal"><span class="strip-num">6+</span><span class="strip-label">model providers, one config</span></div>
       </div>
     </section>
@@ -167,7 +167,7 @@
           <article class="feature-card reveal">
             <div class="feature-ic">🤖</div>
             <h3>Agentic harness</h3>
-            <p>The model uses tools in a loop — filesystem, shell, Python/Node execution, document search, plus planning, sub-agents, memory, and checkpoints — all in a sandboxed workspace.</p>
+            <p>The model uses tools in a loop — filesystem, shell, Python/Node execution, document search, plus planning, sub-agents, memory, and checkpoints — in a per-conversation workspace. Isolated execution uses the container or AgentCore runner.</p>
           </article>
           <article class="feature-card reveal">
             <div class="feature-ic">🤝</div>
@@ -236,8 +236,8 @@
           </article>
           <article class="feature-card reveal">
             <div class="feature-ic">🛡️</div>
-            <h3>PII guardrails</h3>
-            <p>Redact or block emails, phone numbers, SSNs, credit cards, API keys, and your own custom regex patterns — in what reaches the provider and what streams back — across chat and the gateway.</p>
+            <h3>Optional PII pattern guardrails</h3>
+            <p>When enabled, redact or block emails, phone numbers, SSNs, credit cards, API keys, and custom regex matches — in provider-bound text and streamed output across chat and the gateway.</p>
           </article>
           <article class="feature-card reveal">
             <div class="feature-ic">🎨</div>
@@ -254,7 +254,7 @@
         <div class="section-head reveal">
           <span class="kicker">The agentic core</span>
           <h2 class="section-title">A real agent, not "chat that calls tools"</h2>
-          <p class="section-lead center">Each turn, the model works in a loop — calling tools, planning, and recovering — inside a per-conversation sandboxed workspace you can inspect, snapshot, and roll back.</p>
+          <p class="section-lead center">Each turn, the model works in a loop — calling tools, planning, and recovering — inside a per-conversation workspace you can inspect, snapshot, and roll back. Choose container or AgentCore when execution isolation is required.</p>
         </div>
         <div class="split">
           <div class="split-list reveal">
@@ -404,24 +404,24 @@
       <div class="container">
         <div class="section-head reveal">
           <span class="kicker">Built for teams</span>
-          <h2 class="section-title">Multi-user, isolated, and accountable</h2>
-          <p class="section-lead center">Auth is on by default, data is scoped strictly per user, and every sensitive tool runs behind a permission gate you control.</p>
+          <h2 class="section-title">Multi-user controls and accountability</h2>
+          <p class="section-lead center">Auth is on by default. Owner-scoped routes and cross-user regression tests protect private user content, while sensitive tools run behind a permission gate you control.</p>
         </div>
         <div class="grid-3">
           <article class="info-card reveal">
             <div class="feature-ic">🔐</div>
             <h3>Auth &amp; SSO</h3>
-            <p>Local accounts (bcrypt + JWT) or <strong>Microsoft Entra ID</strong> SSO. <code>user</code> / <code>admin</code> roles, strict per-user isolation — admins manage accounts but can't read others' content.</p>
+            <p>Local accounts (bcrypt + JWT) or <strong>Microsoft Entra ID</strong> SSO. The Entra authorization-code flow validates one-use state, nonce, PKCE, issuer, tenant, and audience. Administrators manage accounts without a bypass to users' private content.</p>
           </article>
           <article class="info-card reveal">
             <div class="feature-ic">📦</div>
-            <h3>Sandbox, three isolation levels</h3>
-            <p>Run agent code in a fast local subprocess, an ephemeral <strong>Podman/Docker</strong> container with CPU/memory/PID limits and network isolation, or <strong>off-host</strong> in an AWS Bedrock AgentCore microVM with kernel-level isolation.</p>
+            <h3>Three execution runners</h3>
+            <p>The fast local subprocess <strong>trusts the Phlox host and is not an isolation boundary</strong>; it is for trusted single-user use only. Shared deployments use an ephemeral <strong>Podman/Docker</strong> container with resource/network controls or <strong>off-host</strong> AWS Bedrock AgentCore execution. Configured isolation fails closed rather than silently running locally.</p>
           </article>
           <article class="info-card reveal">
             <div class="feature-ic">🛡️</div>
             <h3>Per-tool permissions</h3>
-            <p>Each tool is <code>auto</code>, <code>ask</code>, or <code>deny</code>. Mutating and execution tools default to <code>ask</code>; an Agent-mode toggle auto-approves for a single turn.</p>
+            <p>Each tool is <code>auto</code>, <code>ask</code>, or <code>deny</code>. Mutating and execution tools default to <code>ask</code>; Agent mode is off by default and auto-approves only when explicitly enabled for a turn.</p>
           </article>
           <article class="info-card reveal">
             <div class="feature-ic">⚙️</div>
@@ -477,13 +477,14 @@
         <div class="split reverse">
           <div class="split-copy reveal">
             <span class="kicker">Guardrails</span>
-            <h2 class="section-title">Sensitive data never leaves your deployment</h2>
+            <h2 class="section-title">Configurable controls for provider-bound text</h2>
             <p class="section-lead">
-              One admin-set policy inspects everything flowing to model providers — user
-              messages, replayed history, tool results — and everything streaming back.
-              Built-in detectors catch emails, phone numbers, SSNs, credit cards, and API
-              keys; <strong>custom regex patterns</strong> cover the identifiers only your
-              organization knows about. Content is inspected in memory and never stored.
+              Guardrails are optional and <strong>disabled by default</strong>. When enabled,
+              an administrator can apply text/regex-based rules to provider-bound messages,
+              replayed history, and tool results, and to model output streaming back.
+              Built-in patterns cover emails, phone numbers, SSNs, credit cards, and API
+              keys; <strong>custom regular expressions</strong> can cover organization-specific
+              identifiers. The original user transcript may still be stored by Phlox.
             </p>
             <ul class="check-list">
               <li><strong>Redact or block</strong>, set per direction — filter what reaches the provider, what comes back to users, or both</li>
@@ -491,7 +492,13 @@
               <li>Per-pattern actions: redact PII globally while <strong>hard-blocking</strong> project codenames or record numbers</li>
               <li>Enforced identically in interactive chat and the OpenAI-compatible <code>/v1</code> gateway</li>
               <li>Built-in <strong>test-pattern preview</strong> — try a policy against sample text before you save it</li>
+              <li><strong>Not a DLP guarantee</strong> — pattern matching can miss sensitive data; review provider retention, logging, and deployment controls separately</li>
             </ul>
+            <p class="qs-note">
+              Phlox does not currently support PHI or regulated-data deployments. Those uses
+              remain out of scope until the documented governance, managed-secrets, audit, and
+              independent-review gates are complete.
+            </p>
           </div>
           <figure class="shot reveal">
             <img src="images/shot-guardrails.png" alt="The admin Guardrails panel: policy enable and save controls with input action set to Redact, five built-in PII detectors with replacement tokens, a custom MRN regex pattern, and a test-pattern preview showing 'Contact me at [EMAIL], call [PHONE], my social security number is [SSN]' with a status footer of policy chips" loading="lazy" />
@@ -654,8 +661,9 @@ cd phlox
           Press <strong>Ctrl+C</strong> to stop and free the ports — or run <code>./scripts/stop.sh</code>
           (<code>.\scripts\stop.ps1</code> on Windows) any time. Prefer manual setup or a
           <strong>Docker/Podman container</strong>? See the README and docs.
-          Auth is on by default with a seeded <code>admin / admin</code> —
-          <strong>change it and set a real <code>jwt_secret</code> before sharing access.</strong>
+          Auth is on by default. A clean start prints a random one-time administrator password
+          and forces replacement after login. Production also requires a strong, stable
+          <code>PHLOX_JWT_SECRET</code> and container or AgentCore execution isolation.
         </p>
       </div>
     </section>
@@ -673,7 +681,7 @@ cd phlox
           <a class="doc-card" href="https://github.com/robert-mcdermott/phlox/blob/main/docs/DEPLOYMENT.md" target="_blank" rel="noopener"><h3>Deployment</h3><p>Production deployment on Linux under systemd.</p></a>
           <a class="doc-card" href="https://github.com/robert-mcdermott/phlox/blob/main/docs/DOCKER.md" target="_blank" rel="noopener"><h3>Docker</h3><p>Running Phlox in a container — Docker or Podman.</p></a>
           <a class="doc-card" href="https://github.com/robert-mcdermott/phlox/blob/main/docs/AUTH.md" target="_blank" rel="noopener"><h3>Auth</h3><p>Local accounts, roles, isolation, and Entra ID SSO setup.</p></a>
-          <a class="doc-card" href="https://github.com/robert-mcdermott/phlox/blob/main/docs/SANDBOX.md" target="_blank" rel="noopener"><h3>Sandbox</h3><p>Local vs container vs off-host AWS AgentCore execution.</p></a>
+          <a class="doc-card" href="https://github.com/robert-mcdermott/phlox/blob/main/docs/SANDBOX.md" target="_blank" rel="noopener"><h3>Sandbox</h3><p>Trusted local execution vs isolated container or off-host AWS AgentCore runners.</p></a>
           <a class="doc-card" href="https://github.com/robert-mcdermott/phlox/blob/main/docs/OBSERVABILITY.md" target="_blank" rel="noopener"><h3>Observability</h3><p>Token usage/cost, structured logs, OpenTelemetry tracing.</p></a>
           <a class="doc-card" href="https://github.com/robert-mcdermott/phlox/blob/main/docs/BUDGETS.md" target="_blank" rel="noopener"><h3>Budgets</h3><p>Monthly spend caps per user/department — warnings and enforcement.</p></a>
           <a class="doc-card" href="https://github.com/robert-mcdermott/phlox/blob/main/docs/API_GATEWAY.md" target="_blank" rel="noopener"><h3>API Gateway</h3><p>OpenAI-compatible keys and <code>/v1/*</code> endpoints.</p></a>

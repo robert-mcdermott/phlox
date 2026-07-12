@@ -1,6 +1,8 @@
 """Regression tests for secure first-run administrator setup."""
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
@@ -68,6 +70,38 @@ def test_auth_enabled_production_requires_strong_environment_secret(monkeypatch)
 
     monkeypatch.setenv("PHLOX_JWT_SECRET", "5bC8gY7sR2qL9nW4xT6mK3pD8vF1hJ0z")
     config.validate_auth_startup()
+
+
+def test_startup_preflight_explains_how_to_create_and_preserve_secret(monkeypatch, capsys):
+    from app import startup_preflight
+
+    def reject_startup() -> None:
+        raise RuntimeError("PHLOX_JWT_SECRET is missing")
+
+    monkeypatch.setattr(startup_preflight, "validate_auth_startup", reject_startup)
+
+    assert startup_preflight.main() == 1
+    message = capsys.readouterr().err
+    assert "secrets.token_hex(32)" in message
+    assert "export PHLOX_JWT_SECRET='<generated-value>'" in message
+    assert "reuse the same value on every restart" in message
+    assert "docs/AUTH.md" in message
+
+    assert startup_preflight.main("powershell") == 1
+    powershell_message = capsys.readouterr().err
+    assert "$env:PHLOX_JWT_SECRET = '<generated-value>'" in powershell_message
+    assert r".\scripts\start.ps1 prod" in powershell_message
+
+
+def test_start_scripts_run_preflight_before_frontend_build():
+    root = Path(__file__).resolve().parents[2]
+    for relative_path, build_command in (
+        ("scripts/start.sh", "npm run build"),
+        ("scripts/start.ps1", "npm run build"),
+    ):
+        script = (root / relative_path).read_text(encoding="utf-8")
+        assert "app.startup_preflight" in script
+        assert script.index("app.startup_preflight") < script.index(build_command)
 
 
 def test_temporary_password_session_is_restricted_until_changed(client, db, monkeypatch):

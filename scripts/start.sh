@@ -112,6 +112,19 @@ if [ ! -f "$ROOT/backend/config.yml" ]; then
   info "in the app under Settings → Admin → Configuration."
 fi
 
+# ── production security preflight ──────────────────────────────────────────
+# Validate production-only security requirements before doing the comparatively slow
+# frontend install/build or starting Uvicorn. The backend repeats this validation so
+# direct/non-script launches still fail closed.
+if [ "$MODE" = "prod" ]; then
+  step "Checking production security settings..."
+  if ! (cd "$ROOT/backend" && PHLOX_ENV=production uv run python -m app.startup_preflight); then
+    error "Production preflight failed. Phlox was not started."
+    exit 1
+  fi
+  success "Production security settings ready"
+fi
+
 # ── 3. frontend dependencies ─────────────────────────────────────────────────
 if [ ! -d "$ROOT/frontend/node_modules" ]; then
   step "Installing frontend dependencies (npm install)..."

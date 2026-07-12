@@ -120,6 +120,28 @@ if (-not (Test-Path $configPath)) {
     Write-Info "in the app under Settings -> Admin -> Configuration."
 }
 
+# ── production security preflight ──────────────────────────────────────────
+# Validate production-only security requirements before doing the comparatively slow
+# frontend install/build or starting Uvicorn. The backend repeats this validation so
+# direct/non-script launches still fail closed.
+if ($Mode -eq 'prod') {
+    Write-Step "Checking production security settings..."
+    $oldPhloxEnv = $env:PHLOX_ENV
+    $env:PHLOX_ENV = 'production'
+    Push-Location $backendDir
+    try {
+        uv run python -m app.startup_preflight --powershell
+        if ($LASTEXITCODE -ne 0) {
+            Write-Err "Production preflight failed. Phlox was not started."
+            exit 1
+        }
+    } finally {
+        Pop-Location
+        $env:PHLOX_ENV = $oldPhloxEnv
+    }
+    Write-Ok "Production security settings ready"
+}
+
 # ── 3. frontend dependencies ──────────────────────────────────────────────────
 $frontendDir = Join-Path $root 'frontend'
 if (-not (Test-Path (Join-Path $frontendDir 'node_modules'))) {

@@ -101,7 +101,7 @@ Write-Ok "Node found ($(node --version))"
 Write-Step "Checking backend dependencies..."
 $backendDir = Join-Path $root 'backend'
 if (-not (Test-Path (Join-Path $backendDir '.venv'))) {
-    Write-Info "First run — installing backend dependencies with uv (this can take a minute)..."
+    Write-Info "First run - installing backend dependencies with uv (this can take a minute)..."
 }
 Push-Location $backendDir
 try {
@@ -166,7 +166,7 @@ foreach ($port in $portsNeeded) {
     if (Test-PortBusy $port) {
         Write-Warn "Port $port is already in use - stopping the existing process first."
         & (Join-Path $PSScriptRoot 'stop.ps1') -Ports @($port) -Quiet
-        Start-Sleep -Seconds 1
+        Start-Sleep -Seconds 2
         if (Test-PortBusy $port) {
             Write-Err "Port $port is still in use by another application. Free it manually and re-run."
             exit 1
@@ -212,10 +212,18 @@ try {
     $env:PHLOX_STARTUP_CAPTURE_MARKERS = $oldCaptureMarkers
     $env:PHLOX_FORCE_COLOR = $oldForceColor
 }
+# Wait a moment for the process to potentially fail immediately
+Start-Sleep -Seconds 1
+if ($backend.HasExited) {
+    Write-Err "Backend process exited immediately. Check $backendLog and ${backendLog}.err"
+    Show-LastLog $backendLog
+    exit 1
+}
 "$($backend.Id)" | Out-File -FilePath (Join-Path $runDir 'backend.pid') -Encoding ascii
 
 if (-not (Wait-ForHttp "http://localhost:$backendPort/api/health" $backend $backendLog 60)) {
     Write-Err "Backend didn't become ready in time. Check $backendLog and ${backendLog}.err"
+    Show-LastLog $backendLog
     Stop-Process -Id $backend.Id -Force -ErrorAction SilentlyContinue
     exit 1
 }

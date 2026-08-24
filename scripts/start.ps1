@@ -29,6 +29,10 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 
+# Windows PowerShell 5.1 does not load this framework assembly automatically.
+# Wait-ForHttp uses HttpClient so its requests can bypass proxy configuration.
+Add-Type -AssemblyName System.Net.Http
+
 $root = Split-Path -Parent $PSScriptRoot
 $runDir = Join-Path $root '.run'
 $logDir = Join-Path $runDir 'logs'
@@ -55,21 +59,46 @@ function Show-LastLog([string]$LogFile) {
     }
 }
 
+function Stop-ProcessTree([System.Diagnostics.Process]$Proc) {
+    if (-not $Proc -or $Proc.HasExited) { return }
+
+    # Stop the complete uv/npm tree. Stopping only the wrapper leaves uvicorn's
+    # reloader or Vite alive with the redirected log file still open.
+    $taskkill = Join-Path $env:SystemRoot 'System32\taskkill.exe'
+    & $taskkill /PID $Proc.Id /T /F 2>$null | Out-Null
+    if (-not $Proc.HasExited) {
+        Stop-Process -Id $Proc.Id -Force -ErrorAction SilentlyContinue
+    }
+}
+
 function Wait-ForHttp([string]$Url, [System.Diagnostics.Process]$Proc, [string]$LogFile, [int]$Tries = 60) {
-    for ($i = 0; $i -lt $Tries; $i++) {
-        if ($Proc.HasExited) {
-            Write-Err "Process exited unexpectedly. Last log lines ($LogFile):"
-            Show-LastLog $LogFile
-            return $false
+    # Invoke-WebRequest can honor a machine/user proxy even for localhost, and
+    # localhost commonly resolves to ::1 before 127.0.0.1 while the servers bind
+    # only to IPv4. Use a proxy-free client and explicit IPv4 readiness URLs.
+    $handler = [System.Net.Http.HttpClientHandler]::new()
+    $handler.UseProxy = $false
+    $client = [System.Net.Http.HttpClient]::new($handler, $true)
+    $client.Timeout = [TimeSpan]::FromSeconds(2)
+    try {
+        for ($i = 0; $i -lt $Tries; $i++) {
+            if ($Proc.HasExited) {
+                Write-Err "Process exited unexpectedly. Last log lines ($LogFile):"
+                Show-LastLog $LogFile
+                return $false
+            }
+            try {
+                $resp = $client.GetAsync($Url).GetAwaiter().GetResult()
+                $statusCode = [int]$resp.StatusCode
+                $resp.Dispose()
+                if ($statusCode -ge 200 -and $statusCode -lt 300) { return $true }
+            } catch {
+                # Expected while the server is still starting up — just keep polling.
+                Write-Verbose "Not ready yet ($Url): $($_.Exception.Message)"
+            }
+            Start-Sleep -Milliseconds 500
         }
-        try {
-            $resp = Invoke-WebRequest -UseBasicParsing -Uri $Url -TimeoutSec 2 -ErrorAction Stop
-            if ($resp.StatusCode -eq 200) { return $true }
-        } catch {
-            # Expected while the server is still starting up — just keep polling.
-            Write-Verbose "Not ready yet ($Url): $($_.Exception.Message)"
-        }
-        Start-Sleep -Milliseconds 500
+    } finally {
+        $client.Dispose()
     }
     return $false
 }
@@ -200,9 +229,11 @@ if ($Mode -eq 'dev') { $backendArgs += '--reload' }
 $oldPhloxEnv = $env:PHLOX_ENV
 $oldCaptureMarkers = $env:PHLOX_STARTUP_CAPTURE_MARKERS
 $oldForceColor = $env:PHLOX_FORCE_COLOR
+$oldPythonIoEncoding = $env:PYTHONIOENCODING
 $env:PHLOX_ENV = if ($Mode -eq 'prod') { 'production' } else { 'development' }
 $env:PHLOX_STARTUP_CAPTURE_MARKERS = '1'
 $env:PHLOX_FORCE_COLOR = '1'
+$env:PYTHONIOENCODING = 'utf-8'
 try {
     $backend = Start-Process -PassThru -WorkingDirectory $backendDir -WindowStyle Hidden `
         -FilePath 'uv' -ArgumentList $backendArgs `
@@ -211,6 +242,7 @@ try {
     $env:PHLOX_ENV = $oldPhloxEnv
     $env:PHLOX_STARTUP_CAPTURE_MARKERS = $oldCaptureMarkers
     $env:PHLOX_FORCE_COLOR = $oldForceColor
+    $env:PYTHONIOENCODING = $oldPythonIoEncoding
 }
 # Wait a moment for the process to potentially fail immediately
 Start-Sleep -Seconds 1
@@ -221,13 +253,13 @@ if ($backend.HasExited) {
 }
 "$($backend.Id)" | Out-File -FilePath (Join-Path $runDir 'backend.pid') -Encoding ascii
 
-if (-not (Wait-ForHttp "http://localhost:$backendPort/api/health" $backend $backendLog 60)) {
+if (-not (Wait-ForHttp "http://127.0.0.1:$backendPort/api/health" $backend $backendLog 60)) {
     Write-Err "Backend didn't become ready in time. Check $backendLog and ${backendLog}.err"
     Show-LastLog $backendLog
-    Stop-Process -Id $backend.Id -Force -ErrorAction SilentlyContinue
+    Stop-ProcessTree $backend
     exit 1
 }
-Write-Ok "Backend ready on http://localhost:$backendPort"
+Write-Ok "Backend ready on http://127.0.0.1:$backendPort"
 
 # ── 7. start the frontend dev server (dev mode only) ─────────────────────────
 $frontend = $null
@@ -238,20 +270,21 @@ if ($Mode -eq 'dev') {
     Write-Step "Starting the frontend dev server on :$frontendPort..."
     $env:PORT = "$frontendPort"
     $frontend = Start-Process -PassThru -WorkingDirectory $frontendDir -WindowStyle Hidden `
-        -FilePath 'npm.cmd' -ArgumentList @('run', 'dev') `
+        -FilePath 'npm.cmd' -ArgumentList @('run', 'dev', '--', '--host', '127.0.0.1') `
         -RedirectStandardOutput $frontendLog -RedirectStandardError "${frontendLog}.err"
     "$($frontend.Id)" | Out-File -FilePath (Join-Path $runDir 'frontend.pid') -Encoding ascii
 
-    if (-not (Wait-ForHttp "http://localhost:$frontendPort/" $frontend $frontendLog 60)) {
+    if (-not (Wait-ForHttp "http://127.0.0.1:$frontendPort/" $frontend $frontendLog 60)) {
         Write-Err "Frontend didn't become ready in time. Check $frontendLog and ${frontendLog}.err"
-        Stop-Process -Id $backend.Id, $frontend.Id -Force -ErrorAction SilentlyContinue
+        Stop-ProcessTree $frontend
+        Stop-ProcessTree $backend
         exit 1
     }
-    Write-Ok "Frontend ready on http://localhost:$frontendPort"
+    Write-Ok "Frontend ready on http://127.0.0.1:$frontendPort"
 }
 
 # ── 8. open the browser ───────────────────────────────────────────────────────
-if ($Mode -eq 'dev') { $appUrl = "http://localhost:$frontendPort" } else { $appUrl = "http://localhost:$backendPort" }
+if ($Mode -eq 'dev') { $appUrl = "http://127.0.0.1:$frontendPort" } else { $appUrl = "http://127.0.0.1:$backendPort" }
 
 if (-not $NoBrowser) {
     Start-Process $appUrl | Out-Null
@@ -267,7 +300,7 @@ Get-Content $backendLog -ErrorAction SilentlyContinue | ForEach-Object {
 Write-Host "Phlox is running." -ForegroundColor Green
 Write-Host "  App:      $appUrl" -ForegroundColor Cyan
 if ($Mode -eq 'dev') {
-    Write-Host "  API:      http://localhost:$backendPort  (hot-reload dev server)"
+    Write-Host "  API:      http://127.0.0.1:$backendPort  (hot-reload dev server)"
 } else {
     Write-Host "  Mode:     production build (single process)"
 }

@@ -104,6 +104,7 @@ models).
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System map, request lifecycle, module guide — **start here** |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Active improvement plan: reliable runs, cited research, projects, artifacts, and controlled autonomy |
 | [docs/CODEBASE_REVIEW.md](docs/CODEBASE_REVIEW.md) | September 2026 review: implementation findings, verification, and roadmap rationale |
+| [docs/APPROVALS.md](docs/APPROVALS.md) | Approval recovery, atomic claims, expiry, and execution limits |
 | [docs/IMPLEMENTATION_WAVES.md](docs/IMPLEMENTATION_WAVES.md) | Completed implementation waves, verification, and next work |
 | [docs/ROADMAP_LEGACY.md](docs/ROADMAP_LEGACY.md) | Archived original roadmap and delivery history (Tiers 1–5) |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Production deployment on Linux (Ubuntu/RHEL) under **systemd** |
@@ -261,7 +262,8 @@ for serving real traffic.
 ## Testing
 
 The backend has a pytest suite (unit + FastAPI `TestClient` API tests + scripted-provider
-agent-loop/fallback tests); the frontend is verified by a production build. The same checks
+agent-loop/fallback tests); the frontend is verified by a production build and isolated
+Chromium regression tests. The same checks
 run in **GitHub Actions CI** (`.github/workflows/ci.yml`) on every push/PR.
 
 ```bash
@@ -271,7 +273,7 @@ uv sync --extra dev          # installs ruff + pytest
 uv run ruff check app tests
 uv run pytest                # or: uv run pytest -k usage   to run a subset
 
-# Frontend: the CI check is the build (from frontend/)
+# Frontend: production build (browser checks below)
 cd ../frontend && npm run build
 ```
 
@@ -279,6 +281,20 @@ The tests run against an in-memory/temp SQLite DB with `auth.enabled` off (a syn
 admin), so no provider credentials or network are needed — agent-loop tests use a built-in
 **scripted "test" provider**. The suite exercises the chargeback ledger surviving user
 deletion (`tests/test_api.py::test_usage_ledger_survives_user_deletion`), among many others.
+
+### Browser regression tests
+
+Browser regression tests run the real SPA in isolated Chromium contexts with synthetic
+API responses (no live backend or model credentials):
+
+```bash
+cd frontend
+npm ci
+npx playwright install chromium
+npm run test:browser
+```
+
+See [approval verification](docs/APPROVALS.md#verification) for scope and limitations.
 
 ### Code coverage
 

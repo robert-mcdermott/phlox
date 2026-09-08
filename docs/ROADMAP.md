@@ -3,8 +3,9 @@
 Reviewed **2026-09-07** against commit `e07ddc7d`. This is the active product and
 engineering plan. The [codebase review](CODEBASE_REVIEW.md) records evidence, limitations,
 and verification; the [original roadmap](ROADMAP_LEGACY.md) preserves the delivery history.
-**M1 is in progress:** [Wave 1](IMPLEMENTATION_WAVES.md) implements F01/F02 and permission
-defaults, verified with 215 passing tests. M2–M5 remain proposed. Existing features and
+**M1 is in progress:** [Waves 1–2](IMPLEMENTATION_WAVES.md) implement F01–F03, permission
+defaults, and the initial F05 browser harness. Verification: 246 backend tests and 4 browser
+scenarios pass. M2–M5 remain proposed. Existing features and
 completed work are identified explicitly; unchecked entries do not yet ship.
 
 ## 1. Product direction
@@ -102,10 +103,11 @@ cards alongside the persistence work. Avoid a long stretch of backend-only chang
   within the parent turn. See the original finding **R3** and Wave 1's remaining boundaries.
 - [ ] Extend inherited context with parent run IDs and project policy when those entities
   land; enforce deployment-wide concurrency and ownership of active conversation runs.
-- [ ] Persist consumed rounds, usage, effective settings, and terminal status across
+- [x] Persist consumed rounds, usage, effective settings, and terminal status across
   pauses. Consume approvals atomically; reject duplicate decisions; enforce expiry and
   current account/tool/budget policy at resume. Expose pending approvals after reload.
-  See **R1–R2**.
+  Implemented in Wave 2; see [approval semantics and limits](APPROVALS.md). Durable
+  worker/crash reconciliation and full model-call accounting remain below. See **R1–R2**.
 - [ ] Count every model invocation, including compaction, children, retries when usage is
   available, fallback, and paused work. Price each invocation using its actual model and
   a rate snapshot. Label unavailable usage/pricing explicitly; do not equate unknown with
@@ -394,7 +396,8 @@ the three core journeys. The rest are conditional bets; measure use before expan
 ## 10. Quality targets and measurement
 
 These are **proposed release targets**, not current measurements. The initial review
-baseline was 179 passing backend tests; Wave 1 raises that to 215 with a successful build.
+baseline was 179 passing backend tests; Wave 2 raises that to 246, plus 4 browser scenarios
+and a successful build.
 Live answer quality and browser performance have not been measured. Use synthetic fixtures and opt-in, locally
 stored pilot feedback; raw user content must not become default telemetry or eval data.
 
@@ -423,9 +426,9 @@ Start here; do not open every milestone simultaneously. Sizes are relative:
 |---|---|---|---|
 | 1 / F01 | MCP reconnect and cancellation cleanup | S–M | **Complete, Wave 1:** reconnect, failed init, cancellation, slow teardown, shutdown, and real stdio tests |
 | 2 / F02 | Parent execution-context inheritance and child concurrency limit | M | **Complete, Wave 1:** two-user/fallback models, scope inheritance, bounded read-only fan-out, sequential mutations |
-| 3 / F03 | Resume state/accounting, atomic approval claim, cumulative limits | M | Usage and round totals survive multiple pauses; duplicate/rescoped approvals handled |
+| 3 / F03 | Resume state/accounting, atomic approval claim, cumulative limits | M | **Complete, Wave 2:** cumulative counters, atomic claim, current policy, expiry, recovery, terminal outcomes |
 | 4 / F04 | Per-model-call usage records and context fit enforcement | L | Compaction/child/fallback fixtures reconcile; oversized turns handled visibly |
-| 5 / F05 | Browser test harness and state isolation | M | CI login→stream→approval→stop flow; no cross-chat event contamination |
+| 5 / F05 | Browser test harness and state isolation | M | **Started, Wave 2:** 4 isolated Chromium scenarios in CI; extend to full-stack and further user journeys |
 | 6 / F06 | Migration baseline plus backup/restore fixture | L | Populated SQLite and Postgres fixtures upgrade and restore |
 | 7 / F07 | Durable run/event service plus reconnect UI, behind a flag | L, then re-estimate | Disconnect and restart scenarios pass with stable run/event IDs |
 | 8 / F08 | Source registry and clickable citations prototype | M | Two retrieval calls and direct refs render unambiguous accessible sources |

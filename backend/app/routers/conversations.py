@@ -78,6 +78,9 @@ def truncate_from_message(
     from app.models import Message
 
     conv = _owned(db, conversation_id, user)
+    from app.approvals import require_no_approval
+
+    require_no_approval(db, conv.id)
     target = db.get(Message, message_id)
     if not target or target.conversation_id != conv.id:
         raise HTTPException(404, "Message not found")

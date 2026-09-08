@@ -26,6 +26,7 @@ export const useStore = create((set, get) => ({
   activeAssistantId: null,
   theme: initialTheme(),
 
+  streamVersion: 0,
   streaming: false,
   live: null, // emptyLive() while streaming
   abortFn: null,
@@ -156,8 +157,10 @@ export const useStore = create((set, get) => ({
   },
 
   logout() {
+    get().stopStreaming()
     setToken(null)
     set({
+      streamVersion: get().streamVersion + 1,
       user: null, conversations: [], messages: [], activeId: null, live: null, canvas: null,
       assistants: [], activeAssistantId: null,
     })
@@ -201,24 +204,59 @@ export const useStore = create((set, get) => ({
 
   // -- conversation selection ---------------------------------------------
   async selectConversation(id) {
-    if (get().streaming) get().stopStreaming()
-    if (!id) {
-      set({ activeId: null, messages: [], live: null, canvas: null, activeAssistantId: null })
-      return
+    get().stopStreaming()
+    const version = get().streamVersion + 1
+    set({ streamVersion: version, activeId: id || null, messages: [], live: null, canvas: null, error: null, activeAssistantId: null })
+    if (!id) return
+    try {
+      const conv = await api.getConversation(id)
+      if (get().streamVersion !== version || get().activeId !== id) return
+      set({ messages: conv.messages, activeAssistantId: conv.assistant_id || null })
+      await get().recoverApproval(id, version)
+    } catch (err) {
+      if (get().streamVersion === version) set({ error: String(err) })
     }
-    const conv = await api.getConversation(id)
-    set({
-      activeId: id,
-      messages: conv.messages,
-      live: null,
-      canvas: null,
-      activeAssistantId: conv.assistant_id || null,
-    })
   },
 
   newConversation() {
-    if (get().streaming) get().stopStreaming()
-    set({ activeId: null, messages: [], live: null, error: null, canvas: null, activeAssistantId: null })
+    get().stopStreaming()
+    set((s) => ({ streamVersion: s.streamVersion + 1, activeId: null, messages: [], live: null, error: null, canvas: null, activeAssistantId: null }))
+  },
+
+  async recoverApproval(id = get().activeId, version = get().streamVersion) {
+    if (!id) return
+    try {
+      const approvals = await api.listApprovals(id)
+      if (get().activeId !== id || get().streamVersion !== version || get().streaming) return
+      const p = approvals[0]
+      set({ live: p ? {
+        ...emptyLive(), content: p.content || '', toolCalls: p.tool_steps || [],
+        artifacts: p.artifacts || [], usage: p.usage,
+        pendingApproval: { pendingId: p.pending_id, calls: p.calls, status: p.status, expiresAt: p.expires_at },
+      } : null })
+    } catch (err) {
+      if (get().activeId === id && get().streamVersion === version) set({ error: String(err) })
+    }
+  },
+
+  async refreshApproval() {
+    if (get().streaming) return
+    set({ error: null })
+    await get()._finalize()
+  },
+
+  async dismissApproval() {
+    const p = get().live?.pendingApproval
+    if (!p || get().streaming) return
+    const version = get().streamVersion
+    try {
+      await api.dismissApproval(p.pendingId)
+      if (get().streamVersion !== version) return
+      set({ live: null, error: null })
+      await get()._finalize(version)
+    } catch (err) {
+      if (get().streamVersion === version) set({ error: String(err) })
+    }
   },
 
   async deleteConversation(id) {
@@ -282,6 +320,10 @@ export const useStore = create((set, get) => ({
       })
       return
     }
+    if (get().live?.pendingApproval) {
+      set({ error: 'Resolve or dismiss the pending approval before sending another message.' })
+      return
+    }
     const attachments = [
       ...images.map((url, idx) => ({ type: 'image', idx, url })),
       ...documentRefs.map((doc) => ({
@@ -323,45 +365,33 @@ export const useStore = create((set, get) => ({
       assistant_id: get().activeAssistantId,
     }
 
-    const abortFn = streamChat(
-      payload,
-      (ev) => get()._onEvent(ev),
-      () => get()._finalize(),
-      (err) => {
-        set({ error: String(err).replace(/^Error:\s*/, ''), streaming: false, live: null })
-        // A 402 budget rejection means spend/limit state may have changed — refresh banner.
-        if (err?.status === 402) get().loadBudget()
-      },
-    )
-    set({ abortFn })
+    get()._startStream(payload)
   },
 
   // Re-run the last assistant turn (delete it server-side, then regenerate).
   async regenerate() {
-    if (get().streaming) return
+    if (get().streaming || get().live?.pendingApproval) return
     const msgs = get().messages
     let idx = -1
     for (let i = msgs.length - 1; i >= 0; i--) {
       if (msgs[i].role === 'assistant') { idx = i; break }
     }
     if (idx === -1 || String(msgs[idx].id).startsWith('tmp-')) return
+    const version = get().streamVersion
     await api.truncateFrom(get().activeId, msgs[idx].id)
+    if (get().streamVersion !== version) return
     set((s) => ({ messages: s.messages.slice(0, idx), streaming: true, live: emptyLive(), error: null }))
-    const abortFn = streamChat(
-      { conversation_id: get().activeId, regenerate: true, auto_approve: false },
-      (ev) => get()._onEvent(ev),
-      () => get()._finalize(),
-      (err) => set({ error: String(err), streaming: false, live: null }),
-    )
-    set({ abortFn })
+    get()._startStream({ conversation_id: get().activeId, regenerate: true, auto_approve: false })
   },
 
   // Edit a prior user message: drop it + everything after, then re-send the new text.
   async editMessage(messageId, newText) {
-    if (get().streaming || !newText.trim()) return
+    if (get().streaming || get().live?.pendingApproval || !newText.trim()) return
     const idx = get().messages.findIndex((m) => m.id === messageId)
     if (idx === -1 || String(messageId).startsWith('tmp-')) return
+    const version = get().streamVersion
     await api.truncateFrom(get().activeId, messageId)
+    if (get().streamVersion !== version) return
     set((s) => ({ messages: s.messages.slice(0, idx) }))
     await get().sendMessage(newText)
   },
@@ -462,42 +492,50 @@ export const useStore = create((set, get) => ({
     set({ canvas: null })
   },
 
-  async _finalize() {
-    set({ streaming: false, abortFn: null })
-    // If the turn paused for approval, keep the live message + approval prompt visible.
-    if (get().live?.pendingApproval) return
+  // Every callback belongs to one stream generation. Old network events cannot change
+  // the selected conversation after Stop, navigation, or a newer stream starts.
+  _startStream(payload, path = '/api/chat') {
+    const version = get().streamVersion + 1
+    set({ streamVersion: version })
+    const abortFn = streamChat(
+      payload,
+      (ev) => { if (get().streamVersion === version) get()._onEvent(ev) },
+      () => get()._finalize(version),
+      async (err) => {
+        if (get().streamVersion !== version) return
+        set({ error: String(err).replace(/^Error:\s*/, ''), streaming: false, abortFn: null })
+        if (err?.status === 402) get().loadBudget()
+        await get()._finalize(version)
+      },
+      path,
+    )
+    set({ abortFn })
+  },
 
+  async _finalize(version = get().streamVersion) {
+    if (get().streamVersion !== version) return
+    set({ streaming: false, abortFn: null })
     const id = get().activeId
-    // Reconcile with the server's persisted state (canonical message + title).
     if (id) {
       try {
         const conv = await api.getConversation(id)
-        set({ messages: conv.messages, live: null })
-      } catch {
-        set({ live: null })
+        if (get().streamVersion !== version || get().activeId !== id) return
+        set({ messages: conv.messages })
+        await get().recoverApproval(id, version)
+      } catch (err) {
+        if (get().streamVersion === version) set({ error: String(err) })
       }
     } else {
       set({ live: null })
     }
+    if (get().streamVersion !== version) return
     get().loadConversations()
-    // Spend changed this turn — refresh the budget banner.
     get().loadBudget()
-
-    // Send any follow-up the user queued while this turn was streaming.
+    if (get().live?.pendingApproval || get().error) return
     const q = get().queued
     if (q) {
       set({ queued: null })
-      get().sendMessage(q.text, {
-        autoApprove: q.autoApprove,
-        webSearch: q.webSearch,
-        documentSearch: q.documentSearch,
-        images: q.images,
-        documentIds: q.documentIds || [],
-        documentRefs: q.documentRefs || [],
-        skills: q.skills || [],
-        skillRefs: q.skillRefs || [],
-        skillsEnabled: q.skillsEnabled !== false,
-      })
+      get().sendMessage(q.text, q)
     }
   },
 
@@ -508,24 +546,19 @@ export const useStore = create((set, get) => ({
   // Approve/deny the tools in the current pending approval and resume the turn.
   async resolveApproval(decisions) {
     const live = get().live
-    if (!live?.pendingApproval) return
+    if (get().streaming || !live?.pendingApproval || (live.pendingApproval.status || 'pending') !== 'pending') return
     const pendingId = live.pendingApproval.pendingId
-    // Clear the prompt and show running state again.
     set({ streaming: true, error: null, live: { ...live, pendingApproval: null, status: '' } })
-
-    const abortFn = streamChat(
-      { pending_id: pendingId, decisions },
-      (ev) => get()._onEvent(ev),
-      () => get()._finalize(),
-      (err) => set({ error: String(err), streaming: false }),
-      '/api/chat/approve',
-    )
-    set({ abortFn })
+    get()._startStream({ pending_id: pendingId, decisions }, '/api/chat/approve')
   },
 
   stopStreaming() {
-    const { abortFn } = get()
-    if (abortFn) abortFn()
-    set({ streaming: false, abortFn: null, live: null })
+    const { abortFn, streamVersion } = get()
+    // Invalidate callbacks before abort() can dispatch completion.
+    set({ streamVersion: streamVersion + 1, streaming: false, abortFn: null, live: null, queued: null })
+    if (abortFn) {
+      abortFn()
+      get()._finalize(streamVersion + 1)
+    }
   },
 }))

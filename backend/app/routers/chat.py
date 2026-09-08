@@ -17,7 +17,8 @@ from app.agent.context import compact_history
 from app.agent.harness import AgentSession
 from app.agent.permissions import PermissionGate
 from app.agent.registry import REGISTRY
-from app.auth.deps import get_current_user
+from app import approvals
+from app.auth.deps import get_current_user, require_owned_conversation
 from app.database import get_db
 from app.models import Assistant, Conversation, DocChunk, Document, Message, PendingApproval, User
 from app.providers.registry import build_provider
@@ -346,6 +347,9 @@ async def chat(
         if conversation is None or conversation.user_id != user.id:
             raise HTTPException(404, "Conversation not found")
 
+    if conversation is not None:
+        approvals.require_no_approval(db, conversation.id)
+
     # The pinned assistant wins on existing conversations; req.assistant_id only applies
     # when creating a new one (prevents retrieval-scope spoofing via the request body).
     assistant = _resolve_assistant(
@@ -550,47 +554,123 @@ async def chat(
     )
 
 
+@router.get("/chat/approvals/{conversation_id}")
+def list_approvals(
+    conversation_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)
+):
+    require_owned_conversation(db, conversation_id, user)
+    rows = db.query(PendingApproval).filter(
+        PendingApproval.conversation_id == conversation_id,
+        PendingApproval.status.in_(approvals.UNRESOLVED),
+    ).order_by(PendingApproval.created_at, PendingApproval.id).all()
+    return [approvals.public_snapshot(row) for row in rows]
+
+
+@router.delete("/chat/approvals/{pending_id}")
+def dismiss_approval(
+    pending_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)
+):
+    pending, _ = approvals.owned_approval(db, pending_id, user)
+    # An unobserved claim may still be executing, even on another server process.
+    # Never release it here or make its tool calls retryable.
+    if pending.status == "claimed":
+        raise HTTPException(409, "Execution was claimed; its outcome is unconfirmed. Check the result before starting a new conversation.")
+    if pending.status not in {"pending", "interrupted", "failed"}:
+        raise HTTPException(409, "Approval already claimed or closed. Refresh to see its status.")
+    from sqlalchemy import update
+
+    result = db.execute(update(PendingApproval).where(
+        PendingApproval.id == pending_id,
+        PendingApproval.status == pending.status,
+    ).values(status="dismissed").execution_options(synchronize_session=False))
+    if result.rowcount != 1:
+        db.rollback()
+        raise HTTPException(409, "Approval already claimed or closed. Refresh to see its status.")
+    # A dismissed pending turn still consumed model tokens. Save its known cumulative
+    # usage once, in the same transaction as dismissal. Failed finalized turns already
+    # have a message/ledger entry and must not be billed again here.
+    usage = pending.state.get("turn_usage") or {}
+    if pending.status == "pending" and usage.get("total"):
+        from app.observability import compute_cost
+        from app.usage_ledger import record_usage
+
+        record_usage(
+            db, message_id=f"approval-dismiss:{pending.id}",
+            conversation_id=pending.conversation_id, user_id=user.id,
+            model=pending.state.get("model"),
+            usage={**usage, "cost": compute_cost(pending.state.get("model"), usage)},
+        )
+    db.commit()
+    return {"status": "dismissed"}
+
+
 @router.post("/chat/approve")
 async def approve(
     req: ApproveRequest, request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user)
 ):
-    """Resume a paused turn. ``decisions`` maps tool-call id -> 'allow' | 'deny'."""
-    pending = db.get(PendingApproval, req.pending_id)
-    if pending is None:
-        raise HTTPException(404, "Approval request not found")
-    conversation = db.get(Conversation, pending.conversation_id)
-    if conversation is None or conversation.user_id != user.id:
-        raise HTTPException(404, "Approval request not found")
+    """Validate current policy, then claim once before any tool dispatch."""
+    pending, conversation = approvals.owned_approval(db, req.pending_id, user)
+    approvals.validate_resume(pending, req.decisions)
+    state = pending.state
+    assistant = _resolve_assistant(db, conversation.assistant_id, user)
+    # A hidden/deleted assistant's prompt and KB excerpts remain in the snapshot.
+    # Reject the entire resume, rather than merely removing future search access.
+    if state.get("assistant_id") and (
+        assistant is None or assistant.id != state["assistant_id"]
+    ):
+        raise HTTPException(409, "Assistant access changed. Dismiss this approval and start a new turn.")
+    from app.guardrails import get_rules, scrub_messages
+
+    if scrub_messages(state["messages"], get_rules("input"))[2]:
+        raise HTTPException(409, "Current guardrails policy blocks this approval's context. Dismiss it and start a new turn.")
+    try:
+        provider = build_provider(state["profile"], state.get("model"))
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(503, "Provider unavailable; the approval is still pending.") from e
+
+    from app.budgets import enforce_budget
+    from app.observability import compute_cost
+
+    # This paused turn is not in the finalized ledger yet. Include its known usage in
+    # this resume's cap check, without writing a second chargeback entry.
+    enforce_budget(db, user, provider.model,
+                   additional_spend=compute_cost(provider.model, state["turn_usage"]) or 0.0)
+    gate = PermissionGate(db, REGISTRY, auto_approve=False)
+    allowed_tools = set(state.get("allowed_tools") or []) & gate.enabled_names()
+    caps = (assistant.capabilities or {}) if assistant else {}
+    if not caps.get("web_search", True):
+        allowed_tools.discard("web_search")
+    if not caps.get("document_search", True):
+        allowed_tools.discard("search_documents")
+    if not caps.get("tools", True):
+        allowed_tools &= {"web_search", "search_documents"}
+    # A newly lowered per-user round limit can restrict a paused run, never extend it.
+    params = dict(state.get("params", {}))
+    params["max_tool_rounds"] = min(
+        int(params.get("max_tool_rounds", 12)), int(get_settings(db, user.id)["max_tool_rounds"])
+    )
     cancel_event = threading.Event()
+    session = AgentSession(
+        db, conversation, provider, REGISTRY, gate, params, state["profile"], state.get("model"),
+        allowed_tools=allowed_tools, cancel_event=cancel_event,
+        assistant_id=assistant.id if assistant else None,
+    )
+    approvals.claim(db, pending.id)
 
     def stream():
+        terminal = "interrupted"
         try:
-            state = pending.state
-
             yield events.sse("conversation", id=conversation.id, title=conversation.title)
-            try:
-                provider = build_provider(state["profile"], state.get("model"))
-            except Exception as e:  # noqa: BLE001
-                yield events.error(f"Provider error: {e}")
-                yield events.done("")
-                return
-
-            gate = PermissionGate(db, REGISTRY, auto_approve=False)
-            allowed_tools = state.get("allowed_tools")
-            assistant = _resolve_assistant(db, conversation.assistant_id, user)
-            session = AgentSession(
-                db, conversation, provider, REGISTRY, gate,
-                state.get("params", {}), state["profile"], state.get("model"),
-                allowed_tools=set(allowed_tools) if allowed_tools is not None else None,
-                cancel_event=cancel_event,
-                assistant_id=assistant.id if assistant else None,
-            )
-            # Consume the pending row before resuming (it's superseded once we continue).
-            db.delete(pending)
-            db.commit()
             yield from session.resume(state, req.decisions)
+            terminal = session.outcome
+        except Exception:  # noqa: BLE001
+            logger.exception("Approval execution failed")
+            terminal = "failed"
+            yield events.error("Execution failed. Check tool results before starting another turn.")
         finally:
             cancel_event.set()
+            db.rollback()
+            approvals.finish_claim(db, req.pending_id, terminal)
 
     watcher = asyncio.create_task(_watch_disconnect(request, cancel_event))
     return StreamingResponse(

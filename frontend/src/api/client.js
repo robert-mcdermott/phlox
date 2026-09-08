@@ -68,6 +68,8 @@ export const api = {
 
   // conversations
   listConversations: () => req('GET', '/api/conversations'),
+  listApprovals: (id) => req('GET', `/api/chat/approvals/${id}`),
+  dismissApproval: (id) => req('DELETE', `/api/chat/approvals/${id}`),
   getConversation: (id) => req('GET', `/api/conversations/${id}`),
   createConversation: (body) => req('POST', '/api/conversations', body || {}),
   updateConversation: (id, body) => req('PATCH', `/api/conversations/${id}`, body),

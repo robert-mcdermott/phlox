@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, field_validator
 
@@ -251,7 +251,7 @@ class ChatRequest(BaseModel):
 class ApproveRequest(BaseModel):
     pending_id: str
     # call_id -> "allow" | "deny"
-    decisions: dict[str, str]
+    decisions: dict[str, Literal["allow", "deny"]]
 
 
 # -- settings --------------------------------------------------------------

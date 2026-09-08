@@ -43,6 +43,10 @@ jobs:
         run: npm ci
       - name: Build
         run: npm run build
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Browser approval and isolation tests
+        run: npm run test:browser
 
   container-contract:
     runs-on: ubuntu-latest

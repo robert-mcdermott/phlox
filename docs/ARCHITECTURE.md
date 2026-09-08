@@ -58,7 +58,10 @@ A chat turn flows through these pieces:
    `ask` (and the turn isn't auto-approved), the loop **pauses**: it persists a
    `PendingApproval` with the full in-flight state and emits `approval_request` + `paused`.
    The user's decision hits `POST /api/chat/approve`, which re-hydrates the state and
-   **resumes** `AgentSession.resume` — stateless, so it survives disconnects.
+   **resumes** `AgentSession.resume` after an atomic claim and current-policy checks.
+   Cumulative rounds/usage survive pauses; the owner can rediscover approval cards through
+   `GET /api/chat/approvals/{conversation_id}`. Claims are never automatically replayed.
+   See [APPROVALS.md](APPROVALS.md) for expiry, terminal states, and crash boundaries.
 5. When the model answers with no tool calls, the loop ends. The assistant `Message`
    (final text + structured tool steps + artifacts) is **persisted**, and a `done`
    event with the message id is emitted.
@@ -294,7 +297,8 @@ drag handle on its left edge.
   per-thread pin; dangles harmlessly after deletion thanks to the config snapshot) and
   **`Document`** (KB docs, which are deployment-owned: `user_id=NULL`).
 - `Setting` (key/value), `McpServer`, `ToolPref` (enabled + permission per tool),
-  `Memory` (cross-conversation facts), `PendingApproval` (paused-run state for resume).
+  `Memory` (cross-conversation facts), `PendingApproval` (versioned paused-run state plus
+  claim/outcome status, ORM-cascaded with its conversation).
 - `Skill` — reusable instructions with slug, description, visibility, creator, and
   auto-activation flag. Resources/scripts are not bundled; see [SKILLS.md](SKILLS.md).
 - `UsageLedger` — append-only, **FK-free** per-turn token/cost rows with a snapshot of the

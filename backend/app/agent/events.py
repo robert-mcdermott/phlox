@@ -78,5 +78,5 @@ def paused(pending_id: str) -> str:
     return sse("paused", pending_id=pending_id)
 
 
-def done(message_id: str) -> str:
-    return sse("done", message_id=message_id)
+def done(message_id: str, outcome: str = "completed") -> str:
+    return sse("done", message_id=message_id, outcome=outcome)

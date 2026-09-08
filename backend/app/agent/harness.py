@@ -77,6 +77,8 @@ class AgentSession:
         # the turn keeps running server-side to completion.
         self.cancel_event = cancel_event
         # Accumulated token usage across this turn (for observability + cost).
+        self.rounds_used = 0
+        self.outcome = "running"
         self.turn_usage = {"input": 0, "output": 0, "total": 0}
         self.workspace = workspace_dir(conversation.id)
         self.ctx = ToolContext(
@@ -104,7 +106,10 @@ class AgentSession:
 
     def resume(self, state: dict, decisions: dict[str, str]) -> Iterator[str]:
         """Continue a paused turn with the user's approval decisions (call_id -> allow|deny)."""
-        messages = state["messages"]
+        state = deepcopy(state)
+        self.rounds_used = int(state["rounds_used"])
+        self.turn_usage = dict(state["turn_usage"])
+        messages = deepcopy(state["messages"])
         tool_steps = state.get("tool_steps", [])
         all_artifacts = state.get("all_artifacts", [])
         pending = [ToolCall(c["id"], c["name"], c["arguments"]) for c in state.get("pending_calls", [])]
@@ -135,6 +140,15 @@ class AgentSession:
         guardrails_in = get_rules("input")
         guardrails_out = get_rules("output")
 
+        # A lowered current limit cannot authorize pending actions from excess rounds.
+        if self.rounds_used > max_rounds:
+            self.outcome = "limit_reached"
+            yield from self._finalize(
+                "The current tool-call limit no longer permits this approval. Start a new turn.",
+                tool_steps, all_artifacts,
+            )
+            return
+
         # If resuming, finish the previously-pending calls first.
         if initial_calls:
             paused = yield from self._process_calls(
@@ -144,10 +158,11 @@ class AgentSession:
                 return
 
         used_fallback = False
-        for _round in range(max_rounds):
+        for _round in range(self.rounds_used, max_rounds):
             if self._cancelled():
                 yield from self._finalize("", tool_steps, all_artifacts)
                 return
+            self.rounds_used += 1
             round_text = ""
             pending_calls: list[ToolCall] = []
             stop_reason: str | None = None
@@ -220,6 +235,7 @@ class AgentSession:
                         round_text, pending_calls, stop_reason = "", [], None
                         continue  # retry the round with the fallback
                     logger.exception("Provider stream error")
+                    self.outcome = "failed"
                     yield events.error(f"Model error: {e}")
                     yield from self._finalize(round_text, tool_steps, all_artifacts)
                     return
@@ -239,6 +255,7 @@ class AgentSession:
                         round_text += tail
                         yield events.token(tail)
             if blocked:
+                self.outcome = "blocked"
                 matched = sorted(redactor.matched | thinking_redactor.matched)
                 note = (
                     "\n\n> 🛡️ **Response blocked by guardrails policy"
@@ -280,6 +297,7 @@ class AgentSession:
             if paused:
                 return
 
+        self.outcome = "limit_reached"
         yield from self._finalize(
             "I reached the tool-call limit before finishing. Please refine the request.",
             tool_steps,
@@ -316,6 +334,8 @@ class AgentSession:
                     continue
             if self.allowed_tools is not None and call.name not in self.allowed_tools:
                 decision = "not_enabled"
+            elif self.gate.decide(call.name) == "deny":
+                decision = "deny"
             elif decisions is not None and call.id in decisions:
                 decision = "allow" if decisions[call.id] == "allow" else "deny"
             else:
@@ -465,7 +485,12 @@ class AgentSession:
         tool_steps: list[dict],
         all_artifacts: list[dict],
     ) -> Iterator[str]:
+        self.outcome = "paused"
         state = {
+            "version": 2,
+            "rounds_used": self.rounds_used,
+            "turn_usage": dict(self.turn_usage),
+            "assistant_id": self.ctx.assistant_id,
             "messages": messages,
             "tool_steps": tool_steps,
             "all_artifacts": all_artifacts,
@@ -578,6 +603,10 @@ class AgentSession:
         return holder["result"]
 
     def _finalize(self, final_text: str, tool_steps: list[dict], all_artifacts: list[dict]) -> Iterator[str]:
+        if self._cancelled():
+            self.outcome = "cancelled"
+        elif self.outcome == "running":
+            self.outcome = "completed"
         if self.ephemeral:
             self.final_text = final_text
             yield events.done("")
@@ -620,7 +649,7 @@ class AgentSession:
             except Exception:  # noqa: BLE001
                 logger.exception("Usage ledger write failed (continuing)")
 
-        yield events.done(msg.id)
+        yield events.done(msg.id, outcome=self.outcome)
 
 
 # Note: ``_process_calls`` / ``_pause`` return a bool via the generator's StopIteration

@@ -54,14 +54,47 @@ conversation workspace. Child usage attribution, cumulative resume budgets, pare
 project context, general tool-argument schema validation, and durable recovery remain in
 later waves. F02 is complete for the current conversation-based execution model.
 
-## Wave 2 — Approval continuity (proposed next)
+## Wave 2 — Approval continuity
 
-F03: cumulative rounds/usage, atomic approval claim, current-policy/budget checks, and
-recoverable pending approvals. Start F05's browser harness around the approval journey.
-Define terminal run state without prematurely implementing the full durable worker service.
+**Status:** implemented and verified, 2026-09-07. **Scope:** F03 and the first F05 browser
+harness. Adds `pending_approvals.status` through the existing additive startup upgrade.
+See [APPROVALS.md](APPROVALS.md) for the user journey, API, status semantics, and limits.
 
-## Later waves (re-estimate after Wave 2)
+- [x] Preserve consumed rounds, effective context, and cumulative top-level token usage
+  across multiple pauses; honor a newly lowered current round limit.
+- [x] Atomically claim approvals once, validate exact decisions, enforce a 24-hour expiry,
+  and recheck current owner/account, assistant, tool, guardrail, and budget policy.
+- [x] Restore pending approvals after reload/reopening; keep rejected approvals visible;
+  refresh results finished in another tab; expose uncertain execution without replay.
+- [x] Record known usage on dismissal once; prevent stale dismissal from charging a turn
+  already claimed/finalized by another request. Delete private snapshots with their owner
+  or conversation, including on SQLite without FK enforcement.
+- [x] Block history changes while an approval is unresolved. Ignore stale SSE callbacks
+  and stale reconciliation responses after Stop, navigation, logout, or a new stream.
+- [x] Add isolated Chromium coverage to CI for login/setup → stream → reload → approval,
+  budget rejection/retry, expired/claimed states, and Stop/chat-switch isolation.
 
-F04 model-call accounting/context fit; F06 migration/restore baseline; then F07 durable
-runs and F08 source citations. Ship the first research improvement before expanding into
-the project's longer-term autonomy features.
+Verification: **246 backend tests** (31 new approval cases), lint, **4 Chromium browser
+scenarios**, and the production frontend build pass. Backend tests use scripted providers;
+browser tests use synthetic API fixtures and independent contexts. Existing backend
+deprecation warnings and the large diagram-chunk build warning remain.
+
+Remaining boundaries: a process crash after claim leaves an explicitly unconfirmed claim;
+it is never automatically replayed or released. Inspect results and continue in a new
+conversation. Fresh runs are still request-bound; this wave does not serialize concurrent
+initial sends or add worker leases/replay. Cost reservations, full model-call attribution,
+child/compaction usage, interrupted usage after the last snapshot, and Postgres integration
+verification remain later work. Pre-Wave-2 approvals must be dismissed and requested again.
+
+## Wave 3 — Model-call accounting and context fit (proposed next)
+
+F04: capture usage at each model-call seam, attribute it to the actual model and parent
+turn, preserve known partial usage, snapshot prices, distinguish unknown from free, and
+reconcile without double-counting. Include compaction and children. Add a final context-fit
+check that accounts for tool schemas, tool output, images, and reserved output tokens.
+Expand the browser harness only for affected user-visible flows.
+
+## Later waves (re-estimate after Wave 3)
+
+F06 migration/restore baseline; then F07 durable runs and F08 source citations. Ship the
+first research improvement before expanding into the project's longer-term autonomy features.

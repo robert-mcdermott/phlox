@@ -23,12 +23,14 @@ blocked.
 
 ## Enforcement points
 
-Spend can only be known *after* a turn completes (token cost isn't known until the model
-responds), so enforcement blocks the **next** turn once you are at/over budget — not
-mid-turn. Both model-call choke points are gated, so API-key (gateway) traffic is covered
-identically to interactive chat:
+Usage reaches the durable ledger when a turn finalizes or a pending approval is dismissed.
+Enforcement gates new turns and approval resumes; it does not reserve funds or cut off a
+model stream mid-call:
 
 - Interactive chat — `POST /api/chat` returns **HTTP 402** before the turn runs.
+- Approval resume — `POST /api/chat/approve` returns **HTTP 402** before tools run if
+  current ledger spend plus this paused turn's known cost reaches the cap. The approval
+  remains pending. See [APPROVALS.md](APPROVALS.md) for accounting boundaries.
 - Gateway — `POST /v1/chat/completions` returns an OpenAI-shaped 402 error; `GET /v1/models`
   annotates priced models with `phlox_blocked: true` when the caller is over budget.
 

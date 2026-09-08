@@ -6,7 +6,8 @@ security or benchmark Phlox against commercial assistants.
 
 > This is the **pre-implementation baseline**. [Wave 1](IMPLEMENTATION_WAVES.md) subsequently
 > fixes the MCP/delegation paths in R3–R4 and permission defaults from R14, with 215 passing
-> tests. Findings below retain the original evidence; consult the wave log for current
+> tests. Wave 2 addresses approval continuity in R1–R2 and begins browser isolation
+> coverage, reaching 246 backend tests and 4 browser scenarios. Findings below retain the original evidence; consult the wave log for current
 > implementation status and remaining limitations.
 
 ## Assessment

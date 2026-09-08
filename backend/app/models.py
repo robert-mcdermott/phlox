@@ -147,6 +147,8 @@ class Conversation(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
 
+    approvals: Mapped[list["PendingApproval"]] = relationship(cascade="all, delete-orphan")
+
     messages: Mapped[list["Message"]] = relationship(
         back_populates="conversation",
         cascade="all, delete-orphan",
@@ -395,6 +397,8 @@ class PendingApproval(Base):
         ForeignKey("conversations.id", ondelete="CASCADE"), index=True
     )
     state: Mapped[dict] = mapped_column(JSON)
+    # A claim is never automatically retried: the tool may have had side effects.
+    status: Mapped[str] = mapped_column(String(20), default="pending", server_default="pending")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
 

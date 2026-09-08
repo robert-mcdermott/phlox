@@ -1,5 +1,7 @@
 # Production deployment on Linux (no container)
 
+[User Guide](USER_GUIDE.md) · [Project overview](../README.md)
+
 This guide runs Phlox **directly on a Linux server** under **systemd** — no container for the
 app itself. It covers **Ubuntu 24.04+** and **RHEL 9.7** (and RHEL-family: Rocky/Alma 9).
 Steps are identical across both except where a **Ubuntu** / **RHEL** box calls out the
@@ -18,8 +20,8 @@ Already installed (this guide does **not** cover installing them):
 
 - **`uv`** (Python project/dependency manager) — available on `PATH`.
 - **`podman`** — only needed if you enable the container code-execution sandbox (see
-  [§8](#8-optional-container-code-execution-sandbox)). The app itself does not need it.
-- **Node.js 18+** — needed **once** to build the frontend (`npm run build`). If you don't want
+  [§8](#8-required-isolation-for-shared-production)). The app itself does not need it.
+- **Node.js/npm (CI uses Node 20)** — needed **once** to build the frontend (`npm run build`). If you don't want
   Node on the server, build `frontend/dist` on another machine and copy it over (see
   [§4](#4-build-the-frontend-spa)).
 - **A model provider** reachable from the server — e.g. **Ollama on `localhost:11434`**.
@@ -75,7 +77,7 @@ sudo -u phlox npm ci
 sudo -u phlox npm run build        # outputs frontend/dist
 ```
 
-> **No Node on the server?** Run the two commands above on any machine with Node 18+, then
+> **No Node on the server?** Run the two commands above on any machine with the matching Node/npm toolchain, then
 > copy the result:  `rsync -a frontend/dist/ phlox@server:/opt/phlox/app/frontend/dist/`.
 
 ## 5. Configure
@@ -103,17 +105,35 @@ profiles:
     supports_tools: true
 ```
 
-Leave `vector_store` at the embedded default (no Qdrant server) unless you're scaling out.
+Leave `vector_store` at the embedded default unless you need a separately managed Qdrant
+server. A remote vector store does not enable multiple Phlox processes.
 The database defaults to SQLite too — see [§5d](#5d-optional-postgres-instead-of-sqlite) to
 use Postgres instead. Review `auth` and the sandbox section (see §8).
 
 This guide sets `PHLOX_ENV=production`; with authentication enabled, startup therefore
 requires `sandbox.runner: container` or `agentcore`. Complete §8 before starting the service.
 
-> **Config precedence:** `config.yml` is only the **seed for a fresh database**. Once a
+> **Config precedence:** `config.yml` seeds UI-editable sections and supplies file-only
+> settings on every startup. Once a
 > provider profile is edited in the app's **Settings → (Admin) Configuration** panel, that
 > value is stored in the DB and **overrides `config.yml`**. After go-live, change provider
 > settings in the admin UI, not the file.
+
+### Reconnectable runs
+
+To continue chat work across browser refresh/navigation, merge into the same config:
+
+```yaml
+runs:
+  enabled: true
+```
+
+Default is false; restart the service after changing it. There is one in-process worker,
+so there is no extra service to provision. Closing a tab does not cancel enabled runs;
+users must press **Stop**. On server restart, interrupted actions require review and are
+not replayed automatically. See [RUNS.md](RUNS.md). [Document citations](SOURCES.md) require
+no flag and work in both modes. These settings are also covered in the
+[User Guide](USER_GUIDE.md#how-configuration-works).
 
 ### 5b. Secrets via an environment file
 
@@ -143,7 +163,7 @@ sudo chown -R phlox:phlox /opt/phlox/app
 
 SQLite (a single file under `backend/data/`) is the default and needs no setup. For a
 deployment that wants a separate, network-reachable database — easier off-box backups,
-multiple app instances, an existing Postgres you already run — point Phlox at it instead:
+an existing Postgres you already run — point Phlox at it instead:
 
 1. Install the driver into the backend venv (skip this if you already ran `uv sync` with
    the extra):
@@ -159,10 +179,11 @@ multiple app instances, an existing Postgres you already run — point Phlox at 
    (`localhost` works if Postgres runs on the same box.) `DATABASE_URL` takes precedence
    over any `database.url` set in `config.yml` — use whichever you find easier to manage;
    the env var is usually the better fit alongside the JWT secret above.
-3. Restart: `sudo systemctl restart phlox`. Tables are created automatically on first boot
-   against the new database — there's no separate migration step, but it starts **empty**;
-   this doesn't migrate existing SQLite data over (do that out-of-band, e.g.
-   `pgloader`, if you're moving an existing deployment rather than starting fresh).
+3. Restart: `sudo systemctl restart phlox`. Checked Alembic migrations run automatically
+   on first boot against the new database, which starts **empty**;
+   this does not migrate existing SQLite data. Cross-engine conversion is outside the
+   supported restore workflow; retain the original deployment until a separate migration
+   has been validated.
 
 ## 6. systemd service
 
@@ -296,24 +317,45 @@ resource-limited **podman** containers (recommended for untrusted/multi-user use
    ```
 5. Set `sandbox.runner: container` in `config.yml` and `sudo systemctl restart phlox`.
 
-If no engine is reachable, Phlox logs a warning and falls back to the `local` runner, so the
-app keeps working. For a single-user/trusted box, the default `local` runner is fine and needs
-none of the above.
+If no engine is reachable, the configured container runner fails readiness/startup; Phlox
+does not fall back to host-local execution. The `local` runner is for explicitly trusted
+development. This guide's auth-enabled production configuration requires isolation.
 
 ## 9. Updating
+
+Stop work and take a verified offline backup **before** updating/restarting the service.
+Use the service's environment file for maintenance too, especially when `DATABASE_URL`
+selects Postgres. Substitute a new release-specific backup directory each time:
+
+```bash
+sudo systemctl stop phlox
+sudo install -d -o phlox -g phlox /opt/phlox/backups
+sudo -u phlox sh -c 'set -a; . /etc/phlox/phlox.env; set +a; cd /opt/phlox/app/backend; uv run -m app.ops backup --output /opt/phlox/backups/before-RELEASE --stopped'
+sudo -u phlox sh -c 'cd /opt/phlox/app/backend; uv run -m app.ops verify /opt/phlox/backups/before-RELEASE'
+```
+
+After backup/verification succeed:
 
 ```bash
 cd /opt/phlox/app
 sudo -u phlox git pull
-sudo -u phlox sh -c 'cd backend  && uv sync --frozen --no-dev'   # backend deps
-sudo -u phlox sh -c 'cd frontend && npm ci && npm run build'     # rebuild SPA
-sudo systemctl restart phlox
+sudo -u phlox sh -c 'cd backend && uv sync --frozen --no-dev --inexact'
+sudo -u phlox sh -c 'cd frontend && npm ci && npm run build'
+sudo systemctl start phlox
+curl --fail http://127.0.0.1:8000/api/readiness
 ```
 
-The schema migrates on startup on either backend; `backend/data/` persists across upgrades.
-Back it up by copying `backend/config.yml` + `backend/data/` while the service is stopped (or
-snapshot the DB file) — or, on Postgres, back up the database itself (`pg_dump` et al.) instead
-of `backend/data/`.
+`--inexact` preserves installed optional extras, including the Postgres driver; alternatively
+include `--extra postgres` on each sync for that deployment. Preserve the existing config,
+data paths, DB overlays and secret values. Add any custom `PHLOX_DATA`/`PHLOX_CONFIG` settings
+to the maintenance environment as well as the service.
+
+Startup runs checked Alembic migrations before application bootstrap. The operator CLI
+covers the database, source files, images, workspaces/checkpoints, run/source evidence, and
+config overlays; environment secrets still require separate retention. Postgres needs native
+client tools. See [BACKUP_RESTORE.md](BACKUP_RESTORE.md) for compatibility checks, failures,
+and separate-instance restore drills. Stop timeouts can interrupt an unresponsive tool;
+review unresolved runs after restart. One application process remains the supported model.
 
 ---
 
@@ -328,13 +370,12 @@ of `backend/data/`.
 
 ## Production checklist
 
-- [ ] Changed the seeded `admin`/`admin` password
+- [ ] Replaced the random one-time administrator password through the required setup flow
 - [ ] Strong, stable `PHLOX_JWT_SECRET` in `/etc/phlox/phlox.env` (mode 640, `root:phlox`)
 - [ ] `auth.enabled: true` (default) — don't disable auth for shared/production use
 - [ ] TLS reverse proxy in front; app bound to `127.0.0.1`
 - [ ] Provider `endpoint` set to `localhost` and a real `model:` pulled
-- [ ] Decided sandbox mode (`local` for trusted single-user, `container` for untrusted)
+- [ ] Configured and verified an isolated runner (`container` or `agentcore`) for auth-enabled production
 - [ ] Decided database: SQLite (default) or Postgres (`DATABASE_URL`) — see §5d
-- [ ] `backend/data/` (or the Postgres database, if used) backed up on a schedule
+- [ ] Config/secret configuration and `backend/data/`, plus the Postgres database if used, backed up together; restore rehearsed
 - [ ] Single process only (no `--workers`, one instance per data dir)
-```

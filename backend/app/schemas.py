@@ -2,9 +2,9 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 
 # -- conversations / messages ---------------------------------------------
@@ -12,6 +12,7 @@ class MessageOut(BaseModel):
     id: str
     role: str
     content: str
+    citations: list[dict] | None = None
     tool_calls: list[dict] | None = None
     artifacts: list[dict] | None = None
     attachments: list[dict] | None = None
@@ -24,6 +25,7 @@ class MessageOut(BaseModel):
 
 
 class ConversationOut(BaseModel):
+    run_status: str | None = None
     id: str
     title: str
     profile: str | None = None
@@ -251,7 +253,7 @@ class ChatRequest(BaseModel):
 class ApproveRequest(BaseModel):
     pending_id: str
     # call_id -> "allow" | "deny"
-    decisions: dict[str, str]
+    decisions: dict[str, Literal["allow", "deny"]]
 
 
 # -- settings --------------------------------------------------------------
@@ -330,6 +332,7 @@ class ProfileIn(BaseModel):
     model: str | None = None
     models: list[str] | None = None
     supports_tools: bool = True
+    context_window: int | None = Field(default=None, gt=0)
     # openai
     endpoint: str | None = None
     api_key: str | None = None      # write-only; omitted/empty => keep existing
@@ -348,8 +351,10 @@ class ProfilesUpdate(BaseModel):
 
 
 class PriceRate(BaseModel):
-    input: float = 0.0             # USD per 1,000,000 input tokens
-    output: float = 0.0            # USD per 1,000,000 output tokens
+    input: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    output: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    cache_read: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    cache_write: float | None = Field(default=None, ge=0, allow_inf_nan=False)
 
 
 class PricingUpdate(BaseModel):

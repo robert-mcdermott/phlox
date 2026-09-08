@@ -92,6 +92,11 @@ def delete_user_data(db: Session, user_id: str) -> dict:
     from app.config import UPLOADS_DIR, WORKSPACES_DIR
     from app.models import ApiKey, Budget, Conversation, Document, Memory, Setting
 
+    from app import runs
+
+    for conv in db.query(Conversation).filter(Conversation.user_id == user_id).all():
+        runs.require_deletable(db, conv.id)
+
     counts = {"conversations": 0, "documents": 0, "memories": 0, "api_keys": 0}
 
     for conv in db.query(Conversation).filter(Conversation.user_id == user_id).all():

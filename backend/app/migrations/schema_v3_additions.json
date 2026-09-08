@@ -1,0 +1,247 @@
+{
+  "runs": {
+    "columns": [
+      {
+        "name": "id",
+        "type": "VARCHAR(32)",
+        "nullable": false,
+        "primary_key": true
+      },
+      {
+        "name": "user_id",
+        "type": "VARCHAR(32)",
+        "nullable": false,
+        "primary_key": false
+      },
+      {
+        "name": "conversation_id",
+        "type": "VARCHAR(32)",
+        "nullable": false,
+        "primary_key": false
+      },
+      {
+        "name": "active_conversation_id",
+        "type": "VARCHAR(32)",
+        "nullable": true,
+        "primary_key": false
+      },
+      {
+        "name": "request_key",
+        "type": "VARCHAR(100)",
+        "nullable": false,
+        "primary_key": false
+      },
+      {
+        "name": "request_hash",
+        "type": "VARCHAR(64)",
+        "nullable": false,
+        "primary_key": false
+      },
+      {
+        "name": "context_version",
+        "type": "INTEGER",
+        "nullable": false,
+        "primary_key": false
+      },
+      {
+        "name": "payload",
+        "type": "JSON",
+        "nullable": false,
+        "primary_key": false
+      },
+      {
+        "name": "status",
+        "type": "VARCHAR(24)",
+        "nullable": false,
+        "primary_key": false
+      },
+      {
+        "name": "reason",
+        "type": "TEXT",
+        "nullable": true,
+        "primary_key": false
+      },
+      {
+        "name": "pending_id",
+        "type": "VARCHAR(32)",
+        "nullable": true,
+        "primary_key": false
+      },
+      {
+        "name": "message_id",
+        "type": "VARCHAR(32)",
+        "nullable": true,
+        "primary_key": false
+      },
+      {
+        "name": "last_seq",
+        "type": "INTEGER",
+        "nullable": false,
+        "primary_key": false
+      },
+      {
+        "name": "event_bytes",
+        "type": "INTEGER",
+        "nullable": false,
+        "primary_key": false
+      },
+      {
+        "name": "events_expired",
+        "type": "BOOLEAN",
+        "nullable": false,
+        "primary_key": false
+      },
+      {
+        "name": "created_at",
+        "type": "DATETIME",
+        "nullable": false,
+        "primary_key": false
+      },
+      {
+        "name": "updated_at",
+        "type": "DATETIME",
+        "nullable": false,
+        "primary_key": false
+      }
+    ],
+    "unique": [
+      [
+        "active_conversation_id"
+      ],
+      [
+        "user_id",
+        "request_key"
+      ]
+    ],
+    "foreign_keys": [
+      {
+        "columns": [
+          "conversation_id"
+        ],
+        "target": [
+          "conversations.id"
+        ],
+        "ondelete": "CASCADE"
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_runs_conversation_id",
+        "columns": [
+          "conversation_id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_runs_user_id",
+        "columns": [
+          "user_id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_runs_status",
+        "columns": [
+          "status"
+        ],
+        "unique": false
+      }
+    ]
+  },
+  "run_events": {
+    "columns": [
+      {
+        "name": "run_id",
+        "type": "VARCHAR(32)",
+        "nullable": false,
+        "primary_key": true
+      },
+      {
+        "name": "seq",
+        "type": "INTEGER",
+        "nullable": false,
+        "primary_key": true
+      },
+      {
+        "name": "data",
+        "type": "JSON",
+        "nullable": false,
+        "primary_key": false
+      }
+    ],
+    "unique": [],
+    "foreign_keys": [
+      {
+        "columns": [
+          "run_id"
+        ],
+        "target": [
+          "runs.id"
+        ],
+        "ondelete": "CASCADE"
+      }
+    ],
+    "indexes": []
+  },
+  "tool_executions": {
+    "columns": [
+      {
+        "name": "id",
+        "type": "VARCHAR(32)",
+        "nullable": false,
+        "primary_key": true
+      },
+      {
+        "name": "run_id",
+        "type": "VARCHAR(32)",
+        "nullable": false,
+        "primary_key": false
+      },
+      {
+        "name": "call_id",
+        "type": "VARCHAR(200)",
+        "nullable": false,
+        "primary_key": false
+      },
+      {
+        "name": "name",
+        "type": "VARCHAR(200)",
+        "nullable": false,
+        "primary_key": false
+      },
+      {
+        "name": "status",
+        "type": "VARCHAR(24)",
+        "nullable": false,
+        "primary_key": false
+      },
+      {
+        "name": "created_at",
+        "type": "DATETIME",
+        "nullable": false,
+        "primary_key": false
+      }
+    ],
+    "unique": [],
+    "foreign_keys": [
+      {
+        "columns": [
+          "run_id"
+        ],
+        "target": [
+          "runs.id"
+        ],
+        "ondelete": "CASCADE"
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_tool_executions_run_id",
+        "columns": [
+          "run_id"
+        ],
+        "unique": false
+      }
+    ]
+  }
+}

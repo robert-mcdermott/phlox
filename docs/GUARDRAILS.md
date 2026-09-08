@@ -1,5 +1,7 @@
 # Guardrails (PII redaction & blocking)
 
+[User Guide](USER_GUIDE.md) · [Project overview](../README.md)
+
 Phlox can detect and **redact or block** PII and organization-specific patterns in the
 content that flows **into** model providers (user messages, replayed history, tool
 results) and **out of** them (streamed completions). One deployment-wide policy is
@@ -78,8 +80,8 @@ limit.
   local database: chat transcripts keep the user's original words, and tool output shown
   in the chat UI (the user's own files) is not masked — only what is sent to the model is.
 - Redaction is pattern-based, not semantic: it will not catch PII with no recognizable
-  shape ("my neighbor Jane at the blue house"). For regulated data see the Tier 5
-  data-governance items in [ROADMAP.md](ROADMAP.md).
+  shape ("my neighbor Jane at the blue house"). For regulated data see the separately
+  gated sensitive-data track in [ROADMAP.md](ROADMAP.md).
 - Detection quality is regex-grade: expect occasional false positives (e.g. a 16-digit
   order number reading as a credit card). Disable individual built-ins if they collide
   with your data.

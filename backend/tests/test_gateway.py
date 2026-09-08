@@ -93,7 +93,7 @@ def test_chat_completions_buffered_and_records_usage(client, monkeypatch, db):
     _patch_provider(monkeypatch)
     # Price the model so cost is computed and stored.
     monkeypatch.setattr(
-        "app.routers.gateway.compute_cost", lambda model, usage: 0.000123
+        "app.model_calls.snapshot_rate", lambda model: {"input": 8, "output": 5}
     )
     created = _make_key(client)
     r = client.post(

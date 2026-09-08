@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Copy, Check, Brain, Pencil, RefreshCw, FileText, Sparkles } from 'lucide-react'
 import Markdown from '../markdown/Markdown'
+import SourcePanel from './SourcePanel'
 import ToolCallGroup from './ToolCallGroup'
 import ArtifactViewer from './ArtifactViewer'
 import { useStore } from '../../store/useStore'
@@ -50,6 +51,8 @@ export default function Message({ message, conversationId, isLast }) {
   const streaming = useStore((s) => s.streaming)
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
+  const [source, setSource] = useState(null)
+  useEffect(() => { setSource(null) }, [conversationId, message.id])
 
   if (message.role === 'user') {
     const images = (message.attachments || []).filter((a) => a.type === 'image')
@@ -149,9 +152,10 @@ export default function Message({ message, conversationId, isLast }) {
         <ToolCallGroup calls={toolCalls} />
         {message.content && (
           <div className="rounded-2xl rounded-bl-sm border border-border bg-surface px-4 py-2 text-content">
-            <Markdown>{message.content}</Markdown>
+            <Markdown citations={message.citations || message.sources || []} onSource={setSource}>{message.content}</Markdown>
           </div>
         )}
+        {source && <SourcePanel key={`${conversationId}:${source.source_id}`} conversationId={conversationId} reference={source} onClose={() => setSource(null)} />}
         <ArtifactViewer artifacts={message.artifacts} conversationId={conversationId} />
         {message.content && (
           <div className="mt-1 flex items-center gap-2 pl-1">
@@ -169,6 +173,10 @@ export default function Message({ message, conversationId, isLast }) {
                   (message.usage.cost != null ? ` · $${message.usage.cost.toFixed(4)}` : '')}
               >
                 · {(message.usage.total || 0).toLocaleString()} tok
+                {message.usage.unknown_usage_calls > 0 ? ' (partial / unknown)' : ''}
+                {message.usage.accounting === 'model_calls' && message.usage.cost == null
+                  ? ` · ${message.usage.known_cost > 0 ? `$${message.usage.known_cost.toFixed(4)} + ` : ''}cost unknown`
+                  : ''}
                 {message.usage.cost != null && message.usage.cost > 0 ? ` · $${message.usage.cost.toFixed(4)}` : ''}
               </span>
             )}

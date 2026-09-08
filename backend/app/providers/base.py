@@ -54,6 +54,7 @@ class StreamDelta:
     tool_calls: list[ToolCall] = field(default_factory=list)
     stop_reason: str | None = None
     usage: dict[str, Any] | None = None
+    call_id: str | None = None
 
 
 class LLMProvider(ABC):
@@ -61,6 +62,8 @@ class LLMProvider(ABC):
 
     #: human-friendly model id currently selected
     model: str
+    #: Set by build_provider so delegation can follow a fallback's actual route.
+    profile_name: str | None = None
     #: whether the model/endpoint supports function/tool calling
     supports_tools: bool = True
 

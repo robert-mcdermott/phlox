@@ -25,9 +25,9 @@ class ToolContext:
     db: Session
     runner: SandboxRunner
     user_id: str | None = None
-    #: the conversation's pinned assistant, if any; widens search_documents to that
-    #: assistant's shared knowledge base. Trusted because it comes from the conversation
-    #: row, which is only ever set from a visibility-checked assistant (routers/chat.py).
+    #: Currently visibility-checked assistant, if any; widens search_documents to its
+    #: shared knowledge base. Supplied explicitly by the caller, never inferred from a
+    #: possibly stale pinned conversation reference.
     assistant_id: str | None = None
     #: whether the *current turn* is running with ask-tier tools auto-approved. Tools that
     #: delegate to a nested agent (e.g. spawn_subagent) must respect this rather than
@@ -42,6 +42,17 @@ class ToolContext:
     #: user's "Stop" click (or the turn otherwise being cancelled) actually kills an
     #: in-flight subprocess instead of leaving it running server-side to completion.
     cancel_event: threading.Event | None = None
+    #: Resolved parent execution settings for delegation. None means no inherited
+    #: context was supplied; a child must not fall back to unrelated global settings.
+    profile: str | None = None
+    model: str | None = None
+    params: dict[str, Any] = field(default_factory=dict)
+    allowed_tools: frozenset[str] | None = None
+    #: Immutable accounting scope shared with child calls; never a DB session.
+    accounting: Any = None
+    parent_call_id: str | None = None
+    # Optional thread-safe durable journal for child tool dispatch/results.
+    tool_observer: Any = None
 
 
 @dataclass

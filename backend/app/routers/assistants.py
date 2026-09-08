@@ -8,16 +8,15 @@ and never appear in personal document listings.
 """
 from __future__ import annotations
 
-import shutil
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from app.auth.deps import get_current_user, require_admin
 from app.config import UPLOADS_DIR
 from app.database import get_db
 from app.models import Assistant, Document, User
-from app.routers.documents import DocumentOut, _ingest_job
+from app.routers.documents import DocumentOut, save_upload
 from app.schemas import AssistantCreate, AssistantOut, AssistantUpdate
 
 router = APIRouter(prefix="/api/assistants", tags=["assistants"])
@@ -104,25 +103,28 @@ def update_assistant(
 def delete_assistant(
     assistant_id: str, db: Session = Depends(get_db), user: User = Depends(require_admin)
 ):
-    a = _manageable(db, assistant_id, user)
-    # Cascade the knowledge base: rows (chunks cascade via ORM), upload files, vectors.
-    docs = db.query(Document).filter(Document.assistant_id == assistant_id).all()
-    doc_ids = [d.id for d in docs]
-    for doc in docs:
-        db.delete(doc)
-    db.delete(a)
-    db.commit()
-    for doc_id in doc_ids:
-        for p in UPLOADS_DIR.glob(f"{doc_id}_*"):
-            p.unlink(missing_ok=True)
-        try:
-            from app.rag.store import get_vector_store
+    from app.runs import LOCK
 
-            get_vector_store().delete_by_document(doc_id)
-        except Exception:  # noqa: BLE001
-            pass
-    # Conversations keep their dangling assistant_id and degrade to the snapshot.
-    return {"deleted": assistant_id, "documents_deleted": len(doc_ids)}
+    with LOCK:
+        a = _manageable(db, assistant_id, user)
+        # Cascade the knowledge base: rows (chunks cascade via ORM), upload files, vectors.
+        docs = db.query(Document).filter(Document.assistant_id == assistant_id).all()
+        doc_ids = [d.id for d in docs]
+        for doc in docs:
+            db.delete(doc)
+        db.delete(a)
+        db.commit()
+        for doc_id in doc_ids:
+            for p in UPLOADS_DIR.glob(f"{doc_id}_*"):
+                p.unlink(missing_ok=True)
+            try:
+                from app.rag.store import get_vector_store
+
+                get_vector_store().delete_by_document(doc_id)
+            except Exception:  # noqa: BLE001
+                pass
+        # Conversations keep their dangling assistant_id and degrade to the snapshot.
+        return {"deleted": assistant_id, "documents_deleted": len(doc_ids)}
 
 
 # -- knowledge base ----------------------------------------------------------
@@ -142,32 +144,25 @@ def list_assistant_documents(
 @router.post("/{assistant_id}/documents", response_model=DocumentOut)
 async def upload_assistant_document(
     assistant_id: str,
-    background: BackgroundTasks,
     file: UploadFile,
     db: Session = Depends(get_db),
     user: User = Depends(require_admin),
 ):
     _manageable(db, assistant_id, user)
-    doc = Document(
-        filename=file.filename or "upload",
-        mime=file.content_type,
-        status="pending",
-        assistant_id=assistant_id,
-        user_id=None,  # deployment-owned; see module docstring
-    )
-    db.add(doc)
-    db.commit()
-    db.refresh(doc)
+    return await save_upload(db, file, assistant_id=assistant_id, user_id=None)
 
-    dest = UPLOADS_DIR / f"{doc.id}_{doc.filename}"
-    with open(dest, "wb") as f:
-        shutil.copyfileobj(file.file, f)
-    doc.size_bytes = dest.stat().st_size
-    db.commit()
-    db.refresh(doc)
 
-    background.add_task(_ingest_job, doc.id, str(dest))
-    return doc
+@router.post('/{assistant_id}/documents/{document_id}/retry', response_model=DocumentOut)
+def retry_assistant_document(assistant_id: str, document_id: str,
+                             db: Session = Depends(get_db), user: User = Depends(require_admin)):
+    from app.rag.jobs import enqueue
+    from app.runs import LOCK
+    with LOCK:
+        _manageable(db, assistant_id, user)
+        doc = db.get(Document, document_id)
+        if not doc or doc.assistant_id != assistant_id:
+            raise HTTPException(404, 'Document not found')
+        return enqueue(db, doc)
 
 
 @router.delete("/{assistant_id}/documents/{document_id}")
@@ -177,18 +172,21 @@ def delete_assistant_document(
     db: Session = Depends(get_db),
     user: User = Depends(require_admin),
 ):
-    _manageable(db, assistant_id, user)
-    doc = db.get(Document, document_id)
-    if not doc or doc.assistant_id != assistant_id:
-        raise HTTPException(404, "Document not found")
-    db.delete(doc)
-    db.commit()
-    for p in UPLOADS_DIR.glob(f"{document_id}_*"):
-        p.unlink(missing_ok=True)
-    try:
-        from app.rag.store import get_vector_store
+    from app.runs import LOCK
 
-        get_vector_store().delete_by_document(document_id)
-    except Exception:  # noqa: BLE001
-        pass
-    return {"deleted": document_id}
+    with LOCK:
+        _manageable(db, assistant_id, user)
+        doc = db.get(Document, document_id)
+        if not doc or doc.assistant_id != assistant_id:
+            raise HTTPException(404, "Document not found")
+        db.delete(doc)
+        db.commit()
+        for p in UPLOADS_DIR.glob(f"{document_id}_*"):
+            p.unlink(missing_ok=True)
+        try:
+            from app.rag.store import get_vector_store
+
+            get_vector_store().delete_by_document(document_id)
+        except Exception:  # noqa: BLE001
+            pass
+        return {"deleted": document_id}

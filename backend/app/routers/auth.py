@@ -79,8 +79,12 @@ class UpdateUserIn(BaseModel):
 @router.get("/config")
 def auth_config():
     """Public: what the login screen needs to render."""
+    from app.config import runs_enabled
+
     cfg = get_auth_config()
     return {
+        "runs_enabled": runs_enabled(),
+        "run_history_available": True,
         "enabled": cfg["enabled"],
         "allow_registration": cfg["allow_registration"],
         "entra_enabled": entra.is_enabled(),
@@ -223,14 +227,17 @@ def update_user(
 
 @router.delete("/users/{user_id}")
 def delete_user(user_id: str, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
-    if user_id == admin.id:
-        raise HTTPException(400, "You cannot delete your own account")
-    user = db.get(User, user_id)
-    if not user:
-        raise HTTPException(404, "User not found")
-    # Purge the user's private data (chats, workspaces, documents, memories, settings),
-    # then remove the account. The admin never reads the content — it's just deleted.
-    purged = service.delete_user_data(db, user_id)
-    db.delete(user)
-    db.commit()
-    return {"deleted": user_id, "purged": purged}
+    from app.runs import LOCK
+
+    with LOCK:
+        if user_id == admin.id:
+            raise HTTPException(400, "You cannot delete your own account")
+        user = db.get(User, user_id)
+        if not user:
+            raise HTTPException(404, "User not found")
+        # Purge the user's private data (chats, workspaces, documents, memories, settings),
+        # then remove the account. The admin never reads the content — it's just deleted.
+        purged = service.delete_user_data(db, user_id)
+        db.delete(user)
+        db.commit()
+        return {"deleted": user_id, "purged": purged}

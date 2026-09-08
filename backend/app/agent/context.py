@@ -47,7 +47,7 @@ def _transcript(messages: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
-def _summarize(provider: LLMProvider, old: list[dict[str, Any]]) -> str:
+def _summarize(provider: LLMProvider, old: list[dict[str, Any]], max_context: int) -> str:
     prompt = [
         {
             "role": "system",
@@ -57,12 +57,17 @@ def _summarize(provider: LLMProvider, old: list[dict[str, Any]]) -> str:
                 "results, and any open threads. Use terse bullet points."
             ),
         },
-        {"role": "user", "content": _transcript(old)},
+        {"role": "user", "content": _transcript(old).encode("utf-8")[:max(0, (max_context - SUMMARY_MAX_TOKENS - 512) * 3)].decode("utf-8", errors="ignore")},
     ]
     text = ""
-    for delta in provider.stream(prompt, [], {"temperature": 0.2, "max_tokens": SUMMARY_MAX_TOKENS}):
-        if delta.type == "text":
-            text += delta.text or ""
+    from contextlib import closing
+
+    params = {"temperature": 0.2, "max_tokens": SUMMARY_MAX_TOKENS, "max_context_tokens": max_context}
+    prompt, _ = fit_context(prompt, [], params)
+    with closing(provider.stream(prompt, [], params)) as stream:
+        for delta in stream:
+            if delta.type == "text":
+                text += delta.text or ""
     return text.strip()
 
 
@@ -90,7 +95,7 @@ def compact_history(
         return messages, False
 
     try:
-        summary = _summarize(provider, old)
+        summary = _summarize(provider, old, max_tokens)
     except Exception as e:  # noqa: BLE001
         logger.warning("Compaction summary failed: %s", e)
         return messages, False
@@ -102,3 +107,60 @@ def compact_history(
         "content": "Summary of earlier conversation (compacted to save context):\n" + summary,
     }
     return system + [summary_msg] + tail, True
+
+
+class ContextLimitError(ValueError):
+    """A provider-bound prompt cannot fit without dropping user/system instructions."""
+
+
+def request_tokens(messages, tools=()) -> int:
+    """Conservative heuristic, not a provider tokenizer: UTF-8 bytes/3 + framing.
+
+    Images reserve 4096 tokens each rather than treating base64 as natural-language text.
+    Operators should leave headroom for the selected model's tokenizer/vision encoding.
+    """
+    from dataclasses import asdict
+    from math import ceil
+
+    size = 0
+    for message in messages:
+        payload = {k: v for k, v in message.items() if k != "images"}
+        size += ceil(len(json.dumps(payload, ensure_ascii=False).encode("utf-8")) / 3) + 32
+        size += len(message.get("images") or []) * 4096
+    size += sum(ceil(len(json.dumps(asdict(t), ensure_ascii=False).encode("utf-8")) / 3) + 32
+                for t in tools)
+    return size
+
+
+def fit_context(messages, tools, params):
+    """Fit only a provider-bound copy; never truncate canonical user text or tool IDs.
+
+    Oversized tool results are shortened with a visible marker. If that is insufficient,
+    reject before dispatch rather than silently deleting instructions, images or schemas.
+    """
+    from copy import deepcopy
+
+    limit = int(params.get("max_context_tokens", 16000))
+    reserve = int(params.get("max_tokens", 4096))
+    if limit <= 0 or reserve <= 0 or reserve >= limit:
+        raise ContextLimitError("Output token reservation must be positive and smaller than the context limit. Reduce Max tokens or increase the context budget.")
+    budget = limit - reserve
+    fitted = deepcopy(messages)
+    original = request_tokens(fitted, tools)
+    changed = False
+    # Shrink the largest tool output first. Pairing/order and call arguments stay intact.
+    while request_tokens(fitted, tools) > budget:
+        candidates = [m for m in fitted if m.get("role") == "tool"
+                      and isinstance(m.get("content"), str) and len(m["content"]) > 256]
+        if not candidates:
+            raise ContextLimitError(
+                f"Context needs approximately {request_tokens(fitted, tools) + reserve:,} tokens "
+                f"including reserved output; the configured limit is {limit:,}. "
+                "Shorten the message, reduce attachments/tools or Max tokens, or increase the context budget."
+            )
+        largest = max(candidates, key=lambda m: len(m["content"]))
+        keep = max(128, len(largest["content"]) // 2)
+        largest["content"] = largest["content"][:keep] + "\n[Tool output truncated to fit context.]"
+        changed = True
+    return fitted, {"trimmed": changed, "original_input_tokens": original,
+                    "input_tokens": request_tokens(fitted, tools), "reserved_output_tokens": reserve}

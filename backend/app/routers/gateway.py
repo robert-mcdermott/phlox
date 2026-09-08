@@ -23,6 +23,7 @@ import logging
 import time
 import uuid
 from collections.abc import Iterator
+from contextlib import closing
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -32,7 +33,6 @@ from sqlalchemy.orm import Session
 from app.auth.deps import require_api_key
 from app.database import get_db
 from app.models import User
-from app.observability import compute_cost
 from app.providers.registry import build_provider, gateway_models, resolve_model
 
 logger = logging.getLogger(__name__)
@@ -64,22 +64,6 @@ def _err(status: int, message: str, etype: str = "invalid_request_error") -> JSO
 
 def _canonical(messages: list[ChatMessage]) -> list[dict]:
     return [{"role": m.role, "content": m.content or ""} for m in messages]
-
-
-def _record(db: Session, *, request_id: str, user_id: str, model: str, usage: dict) -> None:
-    """Best-effort per-call ledger write (never breaks the API response)."""
-    if not usage.get("total"):
-        return
-    usage = dict(usage)
-    usage["cost"] = compute_cost(model, usage)
-    try:
-        from app.usage_ledger import record_gateway_usage
-
-        record_gateway_usage(
-            db, request_id=request_id, user_id=user_id, model=model, usage=usage
-        )
-    except Exception:  # noqa: BLE001
-        logger.exception("Gateway usage ledger write failed (continuing)")
 
 
 @router.get("/models")
@@ -167,6 +151,20 @@ def chat_completions(
         "max_tokens": req.max_tokens or 4096,
     }
     request_id = f"chatcmpl-{uuid.uuid4().hex}"
+    from app.model_calls import CallScope, ScopedProvider
+    from app.runtime_settings import get_settings
+    from app.agent.context import ContextLimitError, fit_context
+
+    params["max_context_tokens"] = min(
+        get_settings(db, user.id)["max_context_tokens"],
+        int(getattr(provider, "context_window", None) or 2**31),
+    )
+    try:
+        fit_context(messages, [], params)
+    except ContextLimitError as e:
+        return _err(400, str(e), etype="context_length_exceeded")
+    provider = ScopedProvider(provider, CallScope(request_id, None, user.id, kind="gateway"),
+                              call_id=request_id)
     created = int(time.time())
     # The id clients see uses the model string they sent; ledger uses our resolved model.
     advertised_model = req.model
@@ -191,18 +189,18 @@ def _buffered(
     usage = {"input": 0, "output": 0, "total": 0}
     finish_reason = "stop"
     try:
-        for delta in provider.stream(messages, [], params):
-            if delta.type == "text":
-                text += delta.text or ""
-            elif delta.type == "usage":
-                usage = delta.usage or usage
-            elif delta.type == "done":
-                finish_reason = _finish(delta.stop_reason)
+        with closing(provider.stream(messages, [], params)) as stream:
+            for delta in stream:
+                if delta.type == "text":
+                    text += delta.text or ""
+                elif delta.type == "usage":
+                    usage = delta.usage or usage
+                elif delta.type == "done":
+                    finish_reason = _finish(delta.stop_reason)
     except Exception as e:  # noqa: BLE001
         logger.exception("Gateway model call failed")
         return _err(502, f"Upstream model error: {e}", etype="api_error")
 
-    _record(db, request_id=request_id, user_id=user_id, model=provider.model, usage=usage)
 
     if out_rules:
         res = apply_rules(text, out_rules)
@@ -268,23 +266,23 @@ def _stream(
     usage = {"input": 0, "output": 0, "total": 0}
     finish_reason = "stop"
     try:
-        for delta in provider.stream(messages, [], params):
-            if delta.type == "text" and delta.text:
-                text = delta.text
-                if redactor:
-                    text = redactor.feed(text)
-                    if redactor.blocked:
-                        yield blocked_frame(redactor)
-                        yield "data: [DONE]\n\n"
-                        _record(db, request_id=request_id, user_id=user_id,
-                                model=provider.model, usage=usage)
-                        return
-                if text:
-                    yield frame({"content": text})
-            elif delta.type == "usage":
-                usage = delta.usage or usage
-            elif delta.type == "done":
-                finish_reason = _finish(delta.stop_reason)
+        with closing(provider.stream(messages, [], params)) as stream:
+            for delta in stream:
+                if delta.type == "text" and delta.text:
+                    text = delta.text
+                    if redactor:
+                        text = redactor.feed(text)
+                        if redactor.blocked:
+                            yield blocked_frame(redactor)
+                            yield "data: [DONE]\n\n"
+
+                            return
+                    if text:
+                        yield frame({"content": text})
+                elif delta.type == "usage":
+                    usage = delta.usage or usage
+                elif delta.type == "done":
+                    finish_reason = _finish(delta.stop_reason)
     except Exception as e:  # noqa: BLE001
         logger.exception("Gateway streaming model call failed")
         # Surface a terminal error frame, then close the stream.
@@ -297,13 +295,13 @@ def _stream(
         if redactor.blocked:
             yield blocked_frame(redactor)
             yield "data: [DONE]\n\n"
-            _record(db, request_id=request_id, user_id=user_id, model=provider.model, usage=usage)
+
             return
         if tail:
             yield frame({"content": tail})
     yield frame({}, finish_reason=finish_reason)
     yield "data: [DONE]\n\n"
-    _record(db, request_id=request_id, user_id=user_id, model=provider.model, usage=usage)
+
 
 
 def _finish(stop_reason: str | None) -> str:

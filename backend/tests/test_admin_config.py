@@ -75,6 +75,24 @@ def test_sandbox_overlay_limits_only_never_runner(clean_config):
 
 
 # -- the HTTP surface ------------------------------------------------------
+def test_call_pricing_and_context_limits_roundtrip(client, clean_config):
+    rates = {"cached": {"input": 1, "output": 2, "cache_read": 0.1, "cache_write": 1.25},
+             "free": {"input": 0, "output": 0}, "unknown": {"input": None, "output": None}}
+    assert client.put("/api/admin/config/pricing", json={"pricing": rates}).status_code == 200
+    body = client.get("/api/admin/config").json()
+    assert body["pricing"]["cached"] == rates["cached"]
+    assert body["pricing"]["free"] == rates["free"]
+    assert body["pricing"]["unknown"] == {}
+    assert client.put("/api/admin/config/pricing", json={
+        "pricing": {"invalid": {"input": -1, "output": 0}},
+    }).status_code == 422
+    profile = {"name": "bounded", "type": "openai", "model": "m", "context_window": 32000}
+    assert client.put("/api/admin/config/profiles", json={"profiles": [profile]}).status_code == 200
+    assert client.get("/api/admin/config").json()["providers"][0]["context_window"] == 32000
+    profile["context_window"] = 0
+    assert client.put("/api/admin/config/profiles", json={"profiles": [profile]}).status_code == 422
+
+
 def test_get_config_masks_secrets(client, clean_config):
     from app import app_config
     app_config.set_section("profiles", {

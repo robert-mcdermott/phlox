@@ -38,12 +38,21 @@ class WordCount(Tool):
 - `ctx.conversation_id` — the conversation
 - `ctx.workspace` — `Path` to the per-conversation working dir (sandbox root)
 - `ctx.db` — a SQLAlchemy `Session`
-- `ctx.user_id` — the owning user, or `None` when auth is disabled
+- `ctx.user_id` — the owning user (including the synthetic local identity in no-auth mode)
+- `ctx.assistant_id` — the currently visibility-checked assistant scope; do not recover a
+  wider scope from the conversation's pinned ID. Pass it explicitly to a child session.
 - `ctx.runner` — the `SandboxRunner` (use for executing commands/code)
 - `ctx.auto_approve` — whether the current turn has "Agent mode" on. If your tool
   delegates to a nested `AgentSession` (like `spawn_subagent`), pass this through rather
   than hardcoding a policy — don't let a tool grant itself permissions the user didn't
   give the turn.
+- `ctx.accounting`, `ctx.parent_call_id` — inherited model-call attribution. Child sessions
+  receive `ctx.accounting.child(ctx.parent_call_id)` and an independent DB session; new
+  generation paths must use the shared accounting seam in [MODEL_CALLS.md](MODEL_CALLS.md).
+- `ctx.profile`, `ctx.model`, `ctx.params`, `ctx.allowed_tools` — the resolved parent
+  execution snapshot. Delegation must use this profile/model and a copy of the generation
+  parameters, and intersect its tool set with `allowed_tools` and the permission gate.
+  Missing inherited context is an error, not permission to use global settings.
 - `ctx.progress` — `Callable[[str], None] | None`. For a long-running tool, call it with
   each chunk of output as you produce it and it streams to the UI live as a
   `tool_progress` event instead of only appearing when `run` returns. `run_shell` /
@@ -87,12 +96,19 @@ That's it. On next startup the tool is registered, a `ToolPref` row is seeded wi
 ## 3. Permissions
 
 - `auto` tools run without prompting.
-- `ask` tools only run when the turn has `auto_approve` (the composer's **Agent mode**) or
-  the user sets them to `auto` in the Tool Manager; otherwise they're skipped with a note
-  back to the model.
+- `ask` tools pause an interactive run for approval. They run after approval, when the
+  turn has `auto_approve` (the composer's **Agent mode**), or when an admin sets their
+  policy to `auto` in the Tool Manager. Unattended sessions deny unresolved `ask` tools.
 - `deny` tools never run.
 
 Mutating or executing tools should default to `ask`. Read-only tools can be `auto`.
+The permission gate uses the registered default even before preferences have been seeded
+(for example, a newly connected MCP tool); unregistered tools are denied.
+
+`spawn_subagent` defaults to mutation-capable, sequential execution. Set `read_only: true`
+for children that only inspect sources/files; they can run in a pool of up to 3 workers,
+with at most 8 child requests per round. The read-only tool set deliberately excludes
+shell/code execution and plan updates, since those can write to the shared workspace.
 
 If your tool is only ever driven by an unattended nested session (there's no human to
 answer an approval pause — `spawn_subagent` is the only current example), build its
@@ -114,3 +130,22 @@ curl -N -X POST localhost:8000/api/chat -H 'content-type: application/json' \
   -d '{"message":"use word_count on notes.txt","auto_approve":true}'
 ```
 Watch for a `tool_call` / `tool_result` for your tool in the SSE stream.
+
+## Document evidence
+
+Tools that supply document passages should use `app.sources.capture` with the conversation,
+owner, `ctx.accounting.turn_id`, document/chunk identity, and pinned assistant ID. Supply
+only the returned block to the model; an unavailable/over-limit result must not fall back
+to vector payload text. The harness automatically emits the shared turn catalog after tool
+results, including evidence registered by children. Do not generate local source numbers
+or accept model-authored source IDs as authority. See [SOURCES.md](SOURCES.md) for the
+snapshot, access, retention and export contract. For fetched HTML/text evidence, use
+`app.web_fetch.fetch` and `app.sources.capture_web`, as the built-in `web_fetch` tool does.
+Pass the cancellation signal and current accounting turn. Never register discovery snippets
+or failed response bodies as successful page evidence; only supply registered passages to
+the model. See [WEB_SOURCES.md](WEB_SOURCES.md) for the transport and privacy contract.
+
+`search_chunks` returns a list-compatible `SearchResults` with an optional `notice`.
+Preserve that notice in tool output even when there are no hits: keyword degradation after
+an embedding/index failure is different from a successful search with no matching passages.
+Never bypass its current SQL ownership/readiness/assistant checks. See [INGESTION.md](INGESTION.md).

@@ -128,7 +128,7 @@ def update_profiles(body: ProfilesUpdate, user: User = Depends(require_admin)):
 
 @router.put("/pricing")
 def update_pricing(body: PricingUpdate, user: User = Depends(require_admin)):
-    pricing = {model: rate.model_dump() for model, rate in body.pricing.items()}
+    pricing = {model: rate.model_dump(exclude_none=True) for model, rate in body.pricing.items()}
     app_config.set_section("pricing", pricing, user.id)
     return _effective_config()
 

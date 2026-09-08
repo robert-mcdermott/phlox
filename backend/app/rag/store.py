@@ -31,11 +31,23 @@ class VectorStore(ABC):
 
     @abstractmethod
     def recreate_collection(self, dim: int) -> None:
-        """Drop and recreate the collection at ``dim`` (atomic clean rebuild)."""
+        """Legacy destructive rebuild; application rebuilds use staged publication instead."""
 
     @abstractmethod
     def upsert(self, items: list[dict[str, Any]]) -> None:
         """items: [{id, dense, sparse, payload}]. ``sparse`` is {indices, values}."""
+
+    @abstractmethod
+    def stage(self, items: list[dict[str, Any]], check=lambda: None) -> str:
+        """Build an unpublished collection; clean it up on failure and return its name."""
+
+    @abstractmethod
+    def activate(self, collection: str) -> None:
+        """Swap the process pointer after SQL commit; old collection cleanup is best effort."""
+
+    @abstractmethod
+    def discard(self, collection: str) -> None:
+        """Best-effort cleanup of an inactive staged collection."""
 
     @abstractmethod
     def search(
@@ -102,9 +114,7 @@ class QdrantVectorStore(VectorStore):
                 # Recreate if missing the named dense vector or dim changed.
                 current = vectors.get(DENSE).size if isinstance(vectors, dict) and DENSE in vectors else None
                 if current != dim:
-                    logger.warning("Collection schema/dim mismatch; recreating")
-                    self._client.delete_collection(self.collection)
-                    recreate = True
+                    raise ValueError("Index dimensions differ; use the document index rebuild action")
             else:
                 recreate = True
             if recreate:
@@ -150,6 +160,40 @@ class QdrantVectorStore(VectorStore):
             )
         with self._lock:
             self._client.upsert(collection_name=self.collection, points=points)
+
+    def stage(self, items, check=lambda: None):
+        """Build a separate collection. Failure never changes the active index."""
+        if not items:
+            raise ValueError('Cannot stage an empty index')
+        staged = object.__new__(QdrantVectorStore)
+        staged._client, staged._lock, staged._dim = self._client, self._lock, None
+        staged.collection = 'phlox_stage_' + uuid.uuid4().hex
+        try:
+            staged.ensure_collection(len(items[0]['dense']))
+            for offset in range(0, len(items), 128):
+                check()
+                staged.upsert(items[offset:offset + 128])
+            return staged.collection
+        except BaseException:
+            self.discard(staged.collection)
+            raise
+
+    def discard(self, collection):
+        if collection == self.collection:
+            return
+        try:
+            with self._lock:
+                if self._client.collection_exists(collection):
+                    self._client.delete_collection(collection)
+        except Exception:
+            logger.warning('Could not remove unused staging collection')
+
+    def activate(self, collection):
+        with self._lock:
+            old = self.collection
+            self.collection = collection
+            self._dim = None
+        self.discard(old)
 
     def _scope_filter(
         self,
@@ -213,7 +257,7 @@ class QdrantVectorStore(VectorStore):
         qfilter = self._scope_filter(user_id, conversation_id, document_ids, assistant_id)
         with self._lock:
             if not self._client.collection_exists(self.collection):
-                return []
+                raise RuntimeError("Document index unavailable; rebuild it from Documents settings")
             dense_hits = self._client.query_points(
                 collection_name=self.collection, query=dense, using=DENSE,
                 limit=limit, with_payload=True, query_filter=qfilter,
@@ -262,4 +306,12 @@ def get_vector_store() -> VectorStore:
         if cfg.get("provider", "qdrant") != "qdrant":
             raise ValueError(f"Unsupported vector_store provider: {cfg.get('provider')}")
         _store = QdrantVectorStore(cfg)
+        # SQL publication is authoritative across restart/restore. Missing external index
+        # data is reported by retrieval, and can be rebuilt from the saved SQL chunks.
+        from app.database import SessionLocal
+        from app.models import Setting
+        with SessionLocal() as db:
+            state = db.get(Setting, 'rag:index')
+            if state and (state.value or {}).get('collection'):
+                _store.collection = state.value['collection']
     return _store

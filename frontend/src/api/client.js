@@ -46,6 +46,7 @@ async function openBlob(path, filename, newTab = false) {
 }
 
 export const api = {
+  exportConversation: (id) => req('GET', `/api/conversations/${id}/export`),
   getBlob,
   downloadFile: (path, filename) => openBlob(path, filename, false),
   openFile: (path) => openBlob(path, null, true),
@@ -68,6 +69,8 @@ export const api = {
 
   // conversations
   listConversations: () => req('GET', '/api/conversations'),
+  listApprovals: (id) => req('GET', `/api/chat/approvals/${id}`),
+  dismissApproval: (id) => req('DELETE', `/api/chat/approvals/${id}`),
   getConversation: (id) => req('GET', `/api/conversations/${id}`),
   createConversation: (body) => req('POST', '/api/conversations', body || {}),
   updateConversation: (id, body) => req('PATCH', `/api/conversations/${id}`, body),
@@ -85,6 +88,10 @@ export const api = {
   getSuggestions: () => req('GET', '/api/settings/suggestions'),
 
   // documents
+  documentIndexStatus: () => req('GET', '/api/documents/index-status'),
+  rebuildDocumentIndex: () => req('POST', '/api/documents/reindex'),
+  retryDocument: (id) => req('POST', `/api/documents/${id}/retry`),
+  retryAssistantDocument: (id, docId) => req('POST', `/api/assistants/${id}/documents/${docId}/retry`),
   listDocuments: (conversationId) =>
     req('GET', conversationId ? `/api/documents?conversation_id=${conversationId}` : '/api/documents'),
   deleteDocument: (id) => req('DELETE', `/api/documents/${id}`),

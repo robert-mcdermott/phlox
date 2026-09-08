@@ -17,12 +17,16 @@ import json
 import logging
 import queue
 import threading
+import uuid
 from collections.abc import Iterator
+from copy import deepcopy
+from contextlib import closing
 from dataclasses import replace
 from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app import sources
 from app.agent import events
 from app.agent.permissions import PermissionGate
 from app.agent.registry import ToolRegistry
@@ -33,6 +37,45 @@ from app.sandbox.runner import get_runner
 from app.workspace.manager import workspace_dir
 
 logger = logging.getLogger(__name__)
+
+MAX_CONCURRENT_SUBAGENTS = 3
+MAX_SUBAGENTS_PER_ROUND = 8
+
+
+class ProgressBuffer:
+    """Bound live previews without blocking tools during cancellation/slow persistence.
+
+    Completion notices bypass the 128 preview slots (at most eight per child batch),
+    so overflow can never discard a completion or deadlock a generator's final join.
+    ToolResult remains the authoritative output; omission is surfaced in the preview.
+    """
+
+    def __init__(self):
+        self.queue = queue.Queue()
+        self.slots = threading.BoundedSemaphore(128)
+        self.omitted = threading.Event()
+
+    def progress(self, value):
+        if not self.slots.acquire(blocking=False):
+            self.omitted.set()
+            return
+        if isinstance(value, tuple):
+            call_id, content = value
+        else:
+            call_id, content = None, value
+        if len(content) > 8192:
+            content = content[:8192]
+            self.omitted.set()
+        self.queue.put((True, (call_id, content) if call_id is not None else content))
+
+    def finish(self, value):
+        self.queue.put((False, value))
+
+    def get(self):
+        preview, value = self.queue.get()
+        if preview:
+            self.slots.release()
+        return value
 
 
 class AgentSession:
@@ -50,19 +93,29 @@ class AgentSession:
         allowed_tools: set[str] | None = None,
         fallback_provider: LLMProvider | None = None,
         cancel_event: threading.Event | None = None,
+        assistant_id: str | None = None,
+        accounting=None,
+        tool_observer=None,
     ):
+        from app.model_calls import CallScope
+
+        self.accounting = accounting or CallScope.new(conversation.id, conversation.user_id)
+        self.tool_observer = tool_observer
+        self.journal_prefix = uuid.uuid4().hex
         self.db = db
         self.conversation = conversation
         self.provider = provider
         self.fallback_provider = fallback_provider
         self.registry = registry
         self.gate = gate
-        self.params = params
-        self.profile = profile
-        self.model = model
+        self.params = deepcopy(params)
+        self.profile = getattr(provider, "profile_name", None) or profile
+        self.model = getattr(provider, "model", model)
         # ephemeral sessions (sub-agents) don't persist messages; they expose final_text.
         self.ephemeral = ephemeral
-        self.allowed_tools = allowed_tools
+        self.allowed_tools = set(gate.enabled_names())
+        if allowed_tools is not None:
+            self.allowed_tools &= allowed_tools
         self.final_text = ""
         # Set by the caller (e.g. the chat router, watching for a client disconnect) so a
         # user's "Stop" click can actually halt an in-flight turn — kill any running
@@ -70,6 +123,8 @@ class AgentSession:
         # the turn keeps running server-side to completion.
         self.cancel_event = cancel_event
         # Accumulated token usage across this turn (for observability + cost).
+        self.rounds_used = 0
+        self.outcome = "running"
         self.turn_usage = {"input": 0, "output": 0, "total": 0}
         self.workspace = workspace_dir(conversation.id)
         self.ctx = ToolContext(
@@ -78,10 +133,29 @@ class AgentSession:
             db=db,
             runner=get_runner(),
             user_id=getattr(conversation, "user_id", None),
-            assistant_id=getattr(conversation, "assistant_id", None),
+            assistant_id=assistant_id,
             auto_approve=gate.auto_approve,
             cancel_event=cancel_event,
+            profile=self.profile,
+            model=self.model,
+            params=deepcopy(self.params),
+            allowed_tools=frozenset(self.allowed_tools),
+            accounting=self.accounting,
+            tool_observer=tool_observer,
         )
+
+    def _observe_child_tool(self, kind, call, **data):
+        if self.ephemeral and self.tool_observer:
+            self.tool_observer({"type": kind, "id": f"{self.journal_prefix}:{call.id}",
+                                "name": call.name, **data})
+
+    def _source_refs(self):
+        return sources.catalog(self.db, self.accounting.turn_id, self.conversation.id)
+
+    def _source_events(self):
+        refs = self._source_refs()
+        if refs and not self.ephemeral:
+            yield events.sse("sources", sources=refs)
 
     def _cancelled(self) -> bool:
         return self.cancel_event is not None and self.cancel_event.is_set()
@@ -89,14 +163,19 @@ class AgentSession:
     # -- public entry points ------------------------------------------------
     def run(self, messages: list[dict]) -> Iterator[str]:
         """Start a fresh turn. ``messages`` is the canonical history incl. the new user msg."""
+        yield from self._source_events()
         yield from self._loop(messages, tool_steps=[], all_artifacts=[])
 
     def resume(self, state: dict, decisions: dict[str, str]) -> Iterator[str]:
         """Continue a paused turn with the user's approval decisions (call_id -> allow|deny)."""
-        messages = state["messages"]
+        state = deepcopy(state)
+        self.rounds_used = int(state["rounds_used"])
+        self.turn_usage = dict(state["turn_usage"])
+        messages = deepcopy(state["messages"])
         tool_steps = state.get("tool_steps", [])
         all_artifacts = state.get("all_artifacts", [])
         pending = [ToolCall(c["id"], c["name"], c["arguments"]) for c in state.get("pending_calls", [])]
+        yield from self._source_events()
         yield from self._loop(
             messages, tool_steps, all_artifacts, initial_calls=pending, initial_decisions=decisions
         )
@@ -124,6 +203,15 @@ class AgentSession:
         guardrails_in = get_rules("input")
         guardrails_out = get_rules("output")
 
+        # A lowered current limit cannot authorize pending actions from excess rounds.
+        if self.rounds_used > max_rounds:
+            self.outcome = "limit_reached"
+            yield from self._finalize(
+                "The current tool-call limit no longer permits this approval. Start a new turn.",
+                tool_steps, all_artifacts,
+            )
+            return
+
         # If resuming, finish the previously-pending calls first.
         if initial_calls:
             paused = yield from self._process_calls(
@@ -133,10 +221,11 @@ class AgentSession:
                 return
 
         used_fallback = False
-        for _round in range(max_rounds):
+        for _round in range(self.rounds_used, max_rounds):
             if self._cancelled():
                 yield from self._finalize("", tool_steps, all_artifacts)
                 return
+            self.rounds_used += 1
             round_text = ""
             pending_calls: list[ToolCall] = []
             stop_reason: str | None = None
@@ -153,58 +242,79 @@ class AgentSession:
                     scrub_messages(messages, guardrails_in)[0] if guardrails_in else messages
                 )
                 try:
-                    for delta in self.provider.stream(provider_messages, tools, self.params):
-                        if self._cancelled():
-                            # Best-effort: stop consuming further streamed tokens/tool
-                            # calls as soon as we notice — the provider call itself may
-                            # not be interruptible mid-flight, but we stop paying
-                            # attention (and stop acting on it) immediately.
-                            break
-                        if delta.type == "text":
-                            streamed_any = True
-                            chunk = delta.text or ""
-                            if redactor is not None:
-                                chunk = redactor.feed(chunk)
-                                if redactor.blocked:
-                                    blocked = True
-                                    break
-                            if chunk:
-                                round_text += chunk
-                                yield events.token(chunk)
-                        elif delta.type == "reasoning":
-                            streamed_any = True
-                            chunk = delta.text or ""
-                            if thinking_redactor is not None:
-                                chunk = thinking_redactor.feed(chunk)
-                                if thinking_redactor.blocked:
-                                    blocked = True
-                                    break
-                            if chunk:
-                                yield events.thinking(chunk)
-                        elif delta.type == "usage":
-                            u = delta.usage or {}
-                            for k in ("input", "output", "total"):
-                                self.turn_usage[k] += int(u.get(k, 0) or 0)
-                            yield events.usage(u)
-                        elif delta.type == "tool_calls":
-                            pending_calls = delta.tool_calls
-                        elif delta.type == "done":
-                            stop_reason = delta.stop_reason
+                    from app.model_calls import stream_model
+
+                    model_stream = stream_model(
+                        self.provider, provider_messages, tools, self.params,
+                        replace(self.accounting, kind="fallback") if used_fallback else self.accounting,
+                        cancel_event=self.cancel_event,
+                    )
+                    with closing(model_stream):
+                        for delta in model_stream:
+                            self.ctx.parent_call_id = delta.call_id
+                            if self._cancelled():
+                                # Best-effort: stop consuming further streamed tokens/tool
+                                # calls as soon as we notice — the provider call itself may
+                                # not be interruptible mid-flight, but we stop paying
+                                # attention (and stop acting on it) immediately.
+                                break
+                            if delta.type == "status":
+                                yield events.status(delta.text or "")
+                            elif delta.type == "text":
+                                streamed_any = True
+                                chunk = delta.text or ""
+                                if redactor is not None:
+                                    chunk = redactor.feed(chunk)
+                                    if redactor.blocked:
+                                        blocked = True
+                                        break
+                                if chunk:
+                                    round_text += chunk
+                                    yield events.token(chunk)
+                            elif delta.type == "reasoning":
+                                streamed_any = True
+                                chunk = delta.text or ""
+                                if thinking_redactor is not None:
+                                    chunk = thinking_redactor.feed(chunk)
+                                    if thinking_redactor.blocked:
+                                        blocked = True
+                                        break
+                                if chunk:
+                                    yield events.thinking(chunk)
+                            elif delta.type == "usage":
+                                u = delta.usage or {}
+                                from app.model_calls import turn_usage
+
+                                totals = turn_usage(self.accounting)
+                                self.turn_usage = {k: totals[k] for k in ("input", "output", "total")}
+                                yield events.usage(u)
+                            elif delta.type == "tool_calls":
+                                pending_calls = delta.tool_calls
+                            elif delta.type == "done":
+                                stop_reason = delta.stop_reason
                     break  # round streamed successfully
                 except Exception as e:  # noqa: BLE001
                     # Fall back to a secondary provider if one is configured and we failed
                     # before producing any output this round (so we don't duplicate tokens).
-                    if self.fallback_provider and not used_fallback and not streamed_any and not round_text:
+                    from app.agent.context import ContextLimitError
+
+                    if (self.fallback_provider and not used_fallback and not streamed_any
+                            and not round_text and not isinstance(e, ContextLimitError)):
                         logger.warning("Provider failed (%s); switching to fallback %s",
                                        e, self.fallback_provider.model)
                         yield events.status(
                             f"Primary model unavailable — switching to fallback ({self.fallback_provider.model})…"
                         )
                         self.provider = self.fallback_provider
+                        self.profile = getattr(self.provider, "profile_name", None)
+                        self.model = self.provider.model
+                        self.ctx.profile = self.profile
+                        self.ctx.model = self.model
                         used_fallback = True
                         round_text, pending_calls, stop_reason = "", [], None
                         continue  # retry the round with the fallback
                     logger.exception("Provider stream error")
+                    self.outcome = "failed"
                     yield events.error(f"Model error: {e}")
                     yield from self._finalize(round_text, tool_steps, all_artifacts)
                     return
@@ -224,6 +334,7 @@ class AgentSession:
                         round_text += tail
                         yield events.token(tail)
             if blocked:
+                self.outcome = "blocked"
                 matched = sorted(redactor.matched | thinking_redactor.matched)
                 note = (
                     "\n\n> 🛡️ **Response blocked by guardrails policy"
@@ -265,6 +376,7 @@ class AgentSession:
             if paused:
                 return
 
+        self.outcome = "limit_reached"
         yield from self._finalize(
             "I reached the tool-call limit before finishing. Please refine the request.",
             tool_steps,
@@ -283,12 +395,26 @@ class AgentSession:
         value) if the turn paused awaiting approval."""
         ask_batch: list[ToolCall] = []
         to_run: list[ToolCall] = []
+        child_count = 0
 
         for call in calls:
             if self._cancelled():
                 break
+            if call.name == "spawn_subagent":
+                child_count += 1
+                if child_count > MAX_SUBAGENTS_PER_ROUND:
+                    yield events.tool_call(call.id, call.name, call.arguments)
+                    yield from self._emit_result(
+                        call, ToolResult(
+                            content=f"Sub-agent limit ({MAX_SUBAGENTS_PER_ROUND} per round) "
+                            "reached. Not executed.", is_error=True,
+                        ), tool_steps, all_artifacts, messages,
+                    )
+                    continue
             if self.allowed_tools is not None and call.name not in self.allowed_tools:
                 decision = "not_enabled"
+            elif self.gate.decide(call.name) == "deny":
+                decision = "deny"
             elif decisions is not None and call.id in decisions:
                 decision = "allow" if decisions[call.id] == "allow" else "deny"
             else:
@@ -311,24 +437,28 @@ class AgentSession:
             else:
                 to_run.append(call)
 
-        # spawn_subagent calls requested together in the same round are the model
-        # explicitly decomposing a task into independent chunks — run those in parallel.
-        # Everything else runs sequentially, as before (most tools mutate the same
-        # workspace files directly and aren't safe to run concurrently).
+        # Only explicitly read-only children can run concurrently. Mutation-capable
+        # children run one at a time so they cannot race on this turn's shared files.
         subagent_calls = [c for c in to_run if c.name == "spawn_subagent"]
         other_calls = [c for c in to_run if c.name != "spawn_subagent"]
+        readonly = [c for c in subagent_calls if c.arguments.get("read_only") is True]
+        mutating = [c for c in subagent_calls if c.arguments.get("read_only") is not True]
 
         yield from self._run_sequential(other_calls, tool_steps, all_artifacts, messages)
+        yield from self._run_sequential(mutating, tool_steps, all_artifacts, messages)
 
-        if len(subagent_calls) >= 2:
-            yield events.status(f"Running {len(subagent_calls)} sub-agents…")
-            results = yield from self._run_calls_concurrently(subagent_calls)
-            for call, result in zip(subagent_calls, results, strict=True):
+        if len(readonly) >= 2:
+            yield events.status(
+                f"Running {len(readonly)} read-only sub-agents "
+                f"(up to {MAX_CONCURRENT_SUBAGENTS} at once)…"
+            )
+            results = yield from self._run_calls_concurrently(readonly)
+            for call, result in zip(readonly, results, strict=True):
                 if not result.is_error:
                     self._maybe_checkpoint(call.name)
                 yield from self._emit_result(call, result, tool_steps, all_artifacts, messages)
         else:
-            yield from self._run_sequential(subagent_calls, tool_steps, all_artifacts, messages)
+            yield from self._run_sequential(readonly, tool_steps, all_artifacts, messages)
 
         if ask_batch:
             return (yield from self._pause(messages, ask_batch, tool_steps, all_artifacts))
@@ -344,6 +474,8 @@ class AgentSession:
         for call in calls:
             if self._cancelled():
                 break
+            self._observe_child_tool("child_tool_start", call, arguments=call.arguments)
+            yield events.sse("tool_start", id=call.id, name=call.name)
             yield events.status(f"Running {call.name}…")
             result = yield from self._execute_tool_streaming(call.id, call.name, call.arguments)
             # Snapshot the workspace after a successful mutating tool, so the change is
@@ -365,39 +497,70 @@ class AgentSession:
         not route a tool that *does* use ``ctx.db`` through this path without giving it
         the same treatment.
         """
-        progress_q: queue.Queue[tuple[str, str | None]] = queue.Queue()
+        progress_q = ProgressBuffer()
         holders: dict[str, dict[str, Any]] = {c.id: {} for c in calls}
         names_by_id = {c.id: c.name for c in calls}
 
-        def worker(call: ToolCall) -> None:
+        def execute(call: ToolCall) -> None:
+            if self._cancelled():
+                holders[call.id]["result"] = ToolResult(
+                    content="Sub-agent cancelled before dispatch. Not executed.", is_error=True
+                )
+                progress_q.finish((call.id, None))
+                return
             tool = self.registry.get(call.name)
             if tool is None:
                 holders[call.id]["result"] = ToolResult(content=f"Unknown tool: {call.name}", is_error=True)
-                progress_q.put((call.id, None))
+                progress_q.finish((call.id, None))
                 return
-            call_ctx = replace(self.ctx, progress=lambda chunk, cid=call.id: progress_q.put((cid, chunk)))
+            call_ctx = replace(
+                self.ctx, params=deepcopy(self.ctx.params),
+                progress=lambda chunk, cid=call.id: progress_q.progress((cid, chunk)),
+            )
             try:
                 holders[call.id]["result"] = tool.run(call_ctx, **call.arguments)
             except Exception as e:  # noqa: BLE001
                 logger.exception("Tool %s failed", call.name)
                 holders[call.id]["error"] = e
             finally:
-                progress_q.put((call.id, None))
+                progress_q.finish((call.id, None))
 
-        threads = [threading.Thread(target=worker, args=(c,), daemon=True) for c in calls]
+        work: queue.Queue[ToolCall] = queue.Queue()
+        for call in calls:
+            work.put(call)
+
+        def worker() -> None:
+            while True:
+                try:
+                    call = work.get_nowait()
+                except queue.Empty:
+                    return
+                execute(call)
+
+        threads = [threading.Thread(target=worker, daemon=True)
+                   for _ in range(min(MAX_CONCURRENT_SUBAGENTS, len(calls)))]
+        for call in calls:
+            self._observe_child_tool("child_tool_start", call, arguments=call.arguments)
+            yield events.sse("tool_start", id=call.id, name=call.name)
         for t in threads:
             t.start()
 
         remaining = {c.id for c in calls}
-        while remaining:
-            call_id, chunk = progress_q.get()
-            if chunk is None:
-                remaining.discard(call_id)
-                continue
-            yield events.tool_progress(call_id, names_by_id[call_id], chunk)
-        for t in threads:
-            t.join()
+        try:
+            while remaining:
+                call_id, chunk = progress_q.get()
+                if chunk is None:
+                    remaining.discard(call_id)
+                    continue
+                yield events.tool_progress(call_id, names_by_id[call_id], chunk)
+        finally:
+            if remaining and self.cancel_event is not None:
+                self.cancel_event.set()
+            for t in threads:
+                t.join()
 
+        if progress_q.omitted.is_set():
+            yield events.status("Some live child progress was omitted; saved tool results follow.")
         return [
             ToolResult(content=f"Tool error: {holders[c.id]['error']}", is_error=True)
             if "error" in holders[c.id]
@@ -412,7 +575,19 @@ class AgentSession:
         tool_steps: list[dict],
         all_artifacts: list[dict],
     ) -> Iterator[str]:
+        self.outcome = "paused"
+        from app.model_calls import turn_usage
+
+        totals = turn_usage(self.accounting)
+        self.turn_usage = {k: totals[k] for k in ("input", "output", "total")}
         state = {
+            "sources": self._source_refs(),
+            "version": 3,
+            "turn_id": self.accounting.turn_id,
+            "usage_summary": turn_usage(self.accounting),
+            "rounds_used": self.rounds_used,
+            "turn_usage": dict(self.turn_usage),
+            "assistant_id": self.ctx.assistant_id,
             "messages": messages,
             "tool_steps": tool_steps,
             "all_artifacts": all_artifacts,
@@ -424,6 +599,12 @@ class AgentSession:
         }
         pending = PendingApproval(conversation_id=self.conversation.id, state=state)
         self.db.add(pending)
+        self.db.flush()
+        from app.models import Run
+
+        linked_run = self.db.get(Run, self.accounting.turn_id)
+        if linked_run and not self.ephemeral:
+            linked_run.pending_id = pending.id
         self.db.commit()
         self.db.refresh(pending)
 
@@ -444,12 +625,14 @@ class AgentSession:
         all_artifacts: list[dict],
         messages: list[dict],
     ) -> Iterator[str]:
+        self._observe_child_tool("child_tool_result", call, content=result.content, is_error=result.is_error)
         for art in result.artifacts:
             url = f"/api/files/{self.conversation.id}?path={art['path']}"
             all_artifacts.append({**art, "url": url})
             yield events.artifact(art["name"], art["path"], art.get("ext", ""), url)
 
         yield events.tool_result(call.id, call.name, result.content, result.is_error, result.artifacts)
+        yield from self._source_events()
 
         tool_steps.append(
             {
@@ -497,7 +680,7 @@ class AgentSession:
         if tool is None:
             return ToolResult(content=f"Unknown tool: {name}", is_error=True)
 
-        progress_queue: queue.Queue[str | None] = queue.Queue()
+        progress_queue = ProgressBuffer()
         holder: dict[str, Any] = {}
 
         def worker() -> None:
@@ -507,35 +690,44 @@ class AgentSession:
                 logger.exception("Tool %s failed", name)
                 holder["error"] = e
             finally:
-                progress_queue.put(None)  # sentinel: no more progress coming
+                progress_queue.finish(None)  # sentinel: no more progress coming
 
-        self.ctx.progress = progress_queue.put
+        self.ctx.progress = progress_queue.progress
         t = threading.Thread(target=worker, daemon=True)
         t.start()
-        while True:
-            chunk = progress_queue.get()
-            if chunk is None:
-                break
-            yield events.tool_progress(call_id, name, chunk)
-        t.join()
-        self.ctx.progress = None
+        completed = False
+        try:
+            while True:
+                chunk = progress_queue.get()
+                if chunk is None:
+                    completed = True
+                    break
+                yield events.tool_progress(call_id, name, chunk)
+        finally:
+            if not completed and self.cancel_event is not None:
+                self.cancel_event.set()
+            t.join()
+            self.ctx.progress = None
 
+        if progress_queue.omitted.is_set():
+            yield events.tool_progress(call_id, name, "\n[Some live progress omitted; saved tool result follows.]\n")
         if "error" in holder:
             return ToolResult(content=f"Tool error: {holder['error']}", is_error=True)
         return holder["result"]
 
     def _finalize(self, final_text: str, tool_steps: list[dict], all_artifacts: list[dict]) -> Iterator[str]:
+        if self._cancelled():
+            self.outcome = "cancelled"
+        elif self.outcome == "running":
+            self.outcome = "completed"
         if self.ephemeral:
             self.final_text = final_text
             yield events.done("")
             return
 
-        usage = None
-        if self.turn_usage.get("total"):
-            from app.observability import compute_cost
+        from app.model_calls import turn_usage
 
-            usage = dict(self.turn_usage)
-            usage["cost"] = compute_cost(self.provider.model, usage)
+        usage = turn_usage(self.accounting)
 
         msg = Message(
             conversation_id=self.conversation.id,
@@ -545,29 +737,13 @@ class AgentSession:
             artifacts=all_artifacts or None,
             usage=usage,
             model=self.provider.model,
+            citations=sources.bind(final_text, self._source_refs()),
         )
         self.db.add(msg)
         self.db.commit()
         self.db.refresh(msg)
 
-        # Append to the durable usage ledger (chargeback accounting that survives user
-        # deletion). Best-effort: never let a ledger failure break the turn.
-        if usage:
-            try:
-                from app.usage_ledger import record_usage
-
-                record_usage(
-                    self.db,
-                    message_id=msg.id,
-                    conversation_id=self.conversation.id,
-                    user_id=self.conversation.user_id,
-                    model=self.provider.model,
-                    usage=usage,
-                )
-            except Exception:  # noqa: BLE001
-                logger.exception("Usage ledger write failed (continuing)")
-
-        yield events.done(msg.id)
+        yield events.done(msg.id, outcome=self.outcome)
 
 
 # Note: ``_process_calls`` / ``_pause`` return a bool via the generator's StopIteration

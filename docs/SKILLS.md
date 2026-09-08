@@ -1,5 +1,7 @@
 # Agent Skills
 
+[User Guide](USER_GUIDE.md) · [Project overview](../README.md)
+
 Skills are named, reusable markdown instructions that teach the agent a specialized
 workflow — "how we do data analysis here", "how to write a research report", "how to build
 a single-file web app". They follow the [Anthropic Agent Skills](https://github.com/anthropics/skills)

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Plus, MessageSquare, Trash2, Pencil, FileText, Server, Wrench, Palette, Search, Download } from 'lucide-react'
 import { useStore } from '../../store/useStore'
 
@@ -24,6 +24,13 @@ export default function Sidebar({ onOpenSettings }) {
   const rename = useStore((s) => s.renameConversation)
   const exportConv = useStore((s) => s.exportConversation)
   const isAdmin = useStore((s) => s.user?.role === 'admin')
+  const runsEnabled = useStore((s) => s.authConfig?.runs_enabled)
+  const loadConversations = useStore((s) => s.loadConversations)
+  useEffect(() => {
+    if (!runsEnabled) return
+    const timer = setInterval(() => loadConversations().catch(() => {}), 5000)
+    return () => clearInterval(timer)
+  }, [runsEnabled, loadConversations])
   const [editing, setEditing] = useState(null)
   const [draft, setDraft] = useState('')
   const [query, setQuery] = useState('')
@@ -87,6 +94,9 @@ export default function Sidebar({ onOpenSettings }) {
             ) : (
               <span className="flex-1 truncate">{c.title}</span>
             )}
+            {c.run_status && <span className="text-xs opacity-70" title={`Run: ${c.run_status.replaceAll('_', ' ')}`}>
+              {{ queued: 'Queued', running: 'Running', awaiting_approval: 'Approval', cancel_requested: 'Stopping', interrupted: 'Review' }[c.run_status] || c.run_status}
+            </span>}
             <div className="hidden shrink-0 gap-0.5 group-hover:flex">
               <IconBtn
                 title="Rename"

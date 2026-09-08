@@ -2,8 +2,7 @@
 
 Policies (persisted in ``ToolPref``):
   - ``auto`` : run without asking
-  - ``ask``  : require confirmation (foundation: surfaced to the UI; resolved by the
-               conversation's ``auto_approve`` flag or treated as allowed in trusted mode)
+  - ``ask``  : require confirmation, or the current turn's explicit auto-approval
   - ``deny`` : never run
 
 This is the security seam. The default policy for a tool comes from
@@ -62,17 +61,21 @@ class PermissionGate:
         names = set()
         for tool in self.registry.all():
             pref = self.prefs.get(tool.name)
-            if pref is None or (pref.enabled and pref.permission != "deny"):
+            policy = pref.permission if pref else tool.default_permission
+            if (pref is None or pref.enabled) and policy in {"auto", "ask"}:
                 names.add(tool.name)
         return names
 
     def decide(self, tool_name: str) -> str:
         """Return one of: allow | deny | ask."""
         pref = self.prefs.get(tool_name)
-        policy = pref.permission if pref else "auto"
+        tool = self.registry.get(tool_name)
+        if tool is None:
+            return "deny"
+        policy = pref.permission if pref else tool.default_permission
         if pref and not pref.enabled:
             return "deny"
-        if policy == "deny":
+        if policy not in {"auto", "ask"}:
             return "deny"
         if policy == "ask":
             if self.auto_approve:

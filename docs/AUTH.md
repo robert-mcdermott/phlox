@@ -1,5 +1,7 @@
 # Authentication & Multi-User
 
+[User Guide](USER_GUIDE.md) · [Project overview](../README.md)
+
 Phlox supports **local username/password** accounts and a hardened **Microsoft Entra ID
 (Azure AD) OIDC** authorization-code browser flow. Sessions are Phlox-issued JWTs
 regardless of provider, so the rest of the app is auth-method-agnostic.
@@ -62,7 +64,7 @@ regardless of provider, so the rest of the app is auth-method-agnostic.
   downgraded at runtime. Bootstrap/security-sensitive settings — `auth.*` (incl. `jwt_secret`
   and `enabled`), `vector_store`, and OTel/request-logging — stay **file-only**.
 - **One deliberate exception — the usage ledger.** For departmental **chargeback**, an
-  append-only `UsageLedger` records per-turn token usage + cost with the user's identity
+  `UsageLedger` records per-call token usage + cost (plus historical turn entries) with the user's identity
   (username/email/department) **snapshotted at write time**, and is **not** purged on
   deletion. This lets a departing user's department still be billed for the month. The
   ledger holds usage **metadata only — never message content** — so it does not expose
@@ -106,8 +108,8 @@ there is currently no overlapping old/new verification window.
 
 Self-service registration is disabled by default. If explicitly enabled, every registered
 account receives the `user` role (never first-user/admin promotion) and registration is
-process-limited by source IP. Multi-process deployments should add a shared limit at the
-reverse proxy as well.
+process-limited by source IP. Network-exposed deployments can add rate limiting at the reverse proxy as well; Phlox
+itself supports a single application process.
 
 ### Entra ID setup (production)
 1. Register a single-tenant app in Entra ID; add a Web redirect URI of
@@ -126,5 +128,6 @@ reverse proxy as well.
 ## Notes / next
 - Treat first-run console output as sensitive because it contains the one-time admin
   password. Delete or restrict captured startup logs after the password is changed.
-- Audit logging + secrets management are **Tier 5** (sensitive-data deployment). Postgres
-  is available now (`DATABASE_URL`, see [DOCKER.md](DOCKER.md)) if you want it sooner.
+- Audit logging, secrets management, and regulated-data requirements remain part of the
+  separately gated sensitive-data track in [ROADMAP.md](ROADMAP.md). Postgres is already
+  available (`DATABASE_URL`, see [DOCKER.md](DOCKER.md)); it does not establish data-governance readiness.

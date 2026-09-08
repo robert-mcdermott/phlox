@@ -28,10 +28,14 @@ def build_provider(profile_name: str, model: str | None = None) -> LLMProvider:
 
     ptype = cfg.get("type", "openai")
     if ptype == "bedrock":
-        return BedrockProvider(cfg)
-    if ptype == "openai":
-        return OpenAIProvider(cfg)
-    raise ValueError(f"Unknown provider type: {ptype!r}")
+        provider = BedrockProvider(cfg)
+    elif ptype == "openai":
+        provider = OpenAIProvider(cfg)
+    else:
+        raise ValueError(f"Unknown provider type: {ptype!r}")
+    provider.profile_name = profile_name
+    provider.context_window = cfg.get("context_window")
+    return provider
 
 
 def list_profiles() -> list[dict[str, Any]]:

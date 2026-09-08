@@ -210,7 +210,9 @@ def test_chat_resolves_assistant_model_before_budget(client, capture, monkeypatc
     a = _make_assistant(client, name="Priced", profile="test", model="expensive-model")
     r = client.post("/api/chat", json={"message": "hi", "assistant_id": a["id"]})
     assert r.status_code == 200
-    assert seen_models[-1] == "expensive-model"
+    assert seen_models[0] == "expensive-model"
+    # The common call seam also gates the actual constructed provider.
+    assert seen_models[-1] == "capture"
     client.delete(f"/api/assistants/{a['id']}")
 
 
@@ -247,11 +249,20 @@ def test_search_chunks_passes_assistant_scope(db, monkeypatch):
             return []
 
     monkeypatch.setattr(retrieve, "get_vector_store", lambda: FakeStore())
-    monkeypatch.setattr(retrieve, "embed_query", lambda q: [0.0])
+    from app.models import Document, DocChunk
+    from app.rag.identity import identity
+    doc = Document(user_id='u1', filename='scope.txt', status='ready')
+    db.add(doc)
+    db.flush()
+    db.add(DocChunk(document_id=doc.id, text='q', ordinal=0,
+                    embedding_identity={**identity(), 'dimensions': 512}))
+    db.commit()
     monkeypatch.setattr(retrieve, "sparse_embed", lambda q: {"indices": [], "values": []})
 
     retrieve.search_chunks(db, "q", user_id="u1", assistant_id="a1")
     assert seen == {"user_id": "u1", "assistant_id": "a1"}
+    db.delete(doc)
+    db.commit()
 
 
 def test_chunk_payload_includes_assistant_scope(db):
@@ -295,9 +306,13 @@ def test_tool_context_carries_assistant_id(db):
 
     gate = PermissionGate(db, REGISTRY, auto_approve=True)
     session = AgentSession(db, conv, provider=None, registry=REGISTRY, gate=gate,
-                           params={}, profile="test", model=None)
+                           params={}, profile="test", model=None, assistant_id="a1")
     assert session.ctx.assistant_id == "a1"
     assert session.ctx.user_id == "u1"
+    # A pinned reference alone cannot widen retrieval; the caller must resolve visibility.
+    without_scope = AgentSession(db, conv, provider=None, registry=REGISTRY, gate=gate,
+                                params={}, profile="test", model=None)
+    assert without_scope.ctx.assistant_id is None
 
     db.delete(conv)
     db.commit()

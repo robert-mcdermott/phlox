@@ -9,9 +9,9 @@ budget and their department budget; a turn is blocked if *either* is at/over its
 **priced** models (those with an ``observability.pricing`` entry) count toward spend and only
 priced models are blocked — free/local models stay usable.
 
-Because token cost is only known after a turn completes, enforcement blocks the *next* turn
-once you are at/over budget rather than cutting off mid-turn (the turn that crosses the line
-is allowed to finish). See docs/BUDGETS.md.
+Usage snapshots persist during each call. Enforcement gates later calls, without
+reservations or cutting off an in-flight stream. Unknown cost is not proof of free
+execution, and concurrent calls can overshoot. See docs/BUDGETS.md.
 """
 from __future__ import annotations
 
@@ -131,7 +131,9 @@ def budget_status(db: Session, user: User, now: datetime | None = None) -> dict:
     }
 
 
-def enforce_budget(db: Session, user: User, model: str | None) -> None:
+def enforce_budget(
+    db: Session, user: User, model: str | None, *, additional_spend: float = 0.0
+) -> None:
     """Raise HTTP 402 if ``user`` is over budget and ``model`` is priced. No-op otherwise.
 
     Called at both model-call choke points (interactive chat + the gateway) so API-key
@@ -140,9 +142,13 @@ def enforce_budget(db: Session, user: User, model: str | None) -> None:
     if not model_is_priced(model):
         return
     status = budget_status(db, user)
-    if not status["blocked"]:
+    cells = status["budgets"]
+    exceeded = [b for b in cells if b["limit_usd"] > 0
+                and b["spent_usd"] + max(additional_spend, 0.0) >= b["limit_usd"]]
+    if not exceeded:
         return
-    worst = status["worst"] or {}
+    worst = max(exceeded, key=lambda b: b["pct"])
+    worst = {**worst, "spent_usd": worst["spent_usd"] + max(additional_spend, 0.0)}
     scope = "department" if worst.get("scope_type") == "department" else "your"
     raise HTTPException(
         402,

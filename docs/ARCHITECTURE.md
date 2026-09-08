@@ -1,7 +1,14 @@
 # Phlox Architecture
 
 > Read this first. It explains how the whole system fits together and where to add things.
+> User setup and configuration: [USER_GUIDE.md](USER_GUIDE.md).
 > Companion guides: [ADDING_A_TOOL.md](ADDING_A_TOOL.md) · [ADDING_A_PROVIDER.md](ADDING_A_PROVIDER.md) · [THEMING.md](THEMING.md) · [MCP.md](MCP.md)
+
+> This page describes the current implementation. The September 2026
+> [codebase review](CODEBASE_REVIEW.md) records its recovery, accounting, retrieval, and
+> operational limitations. The [active roadmap](ROADMAP.md) describes proposed changes;
+> opt-in [reconnectable runs](RUNS.md), [document citations](SOURCES.md), and
+> [captured web sources](WEB_SOURCES.md) now ship. Projects and artifact versioning remain proposed.
 
 Phlox is a feature-rich, ChatGPT-style web app. It does
 chat, an agentic tool-using harness (code execution, filesystem, shell, web), document
@@ -34,6 +41,14 @@ FastAPI serves the built SPA from `frontend/dist` (see `backend/app/main.py`).
 
 ## 2. The request lifecycle (most important thing to understand)
 
+With `runs.enabled: true`, `routers/runs.py` admits a private `Run` into a bounded DB queue.
+One worker in `runs.py` owns execution and calls the shared chat preparation functions.
+`RunEvent` replay is independent of HTTP subscriptions; explicit Stop signals cancellation.
+The lifespan maintenance lock covers the worker through shutdown. Run/account/tool policy
+is rechecked before execution; restart exposes interruptions without automatic replay.
+See [RUNS.md](RUNS.md) for the state machine and limits. The following preparation/harness
+flow is shared with the default request-bound mode:
+
 A chat turn flows through these pieces:
 
 1. **`routers/chat.py`** receives `POST /api/chat`. It resolves/creates the
@@ -53,9 +68,12 @@ A chat turn flows through these pieces:
    `ask` (and the turn isn't auto-approved), the loop **pauses**: it persists a
    `PendingApproval` with the full in-flight state and emits `approval_request` + `paused`.
    The user's decision hits `POST /api/chat/approve`, which re-hydrates the state and
-   **resumes** `AgentSession.resume` — stateless, so it survives disconnects.
+   **resumes** `AgentSession.resume` after an atomic claim and current-policy checks.
+   Cumulative rounds/usage survive pauses; the owner can rediscover approval cards through
+   `GET /api/chat/approvals/{conversation_id}`. Claims are never automatically replayed.
+   See [APPROVALS.md](APPROVALS.md) for expiry, terminal states, and crash boundaries.
 5. When the model answers with no tool calls, the loop ends. The assistant `Message`
-   (final text + structured tool steps + artifacts) is **persisted**, and a `done`
+   (final text + structured tool steps + artifacts + typed citation bindings) is **persisted**, and a `done`
    event with the message id is emitted.
 6. The frontend store (`useStore._onEvent`) assembles a **live** assistant message from
    the event stream; on `done` it re-fetches the conversation to reconcile with the
@@ -65,28 +83,51 @@ The **canonical message format** (provider-neutral) is documented at the top of
 `providers/base.py`. Providers translate it to/from their wire formats; the harness never
 deals with provider-specific shapes.
 
+### Evidence seam
+
+`app/sources.py` captures authorized SQL passages for direct document references and
+`search_documents`, using conversation-stable `Source` records and accounting-turn
+`SourceUse` links. Registration commits before the model sees its S-label. The harness
+emits `sources` catalogs and binds final citations into `Message.citations`; approvals
+and run-event replay carry the same catalog. `routers/sources.py` rechecks ownership and
+current document/assistant access for the source panel and Markdown export. A Document
+ORM deletion hook purges retained source content in the deletion transaction. Startup
+and worker maintenance expire snapshots. See [SOURCES.md](SOURCES.md) for limits and the
+important distinction between snapshot removal and historical transcript retention.
+
+`web_fetch.py` resolves and validates each redirect target, pins its numeric socket address,
+preserves HTTPS hostname verification, and bounds reading/extraction with cancellation.
+`agent/tools/web.py::WebFetch` registers page passages/failures through `sources.capture_web`.
+Discovery snippets are never page evidence. Web sources use the same private catalog,
+replay, retention, and exports; the owner can remove a retained web snapshot through the
+source router. Wave 8 reuses existing schema fields. See [WEB_SOURCES.md](WEB_SOURCES.md).
+
 ## 3. Backend module map (`backend/app/`)
 
 | Area | Files | Responsibility |
 |---|---|---|
 | **Entry** | `main.py` | App, router mounting, startup wiring (DB, tools, MCP), SPA serving |
 | **Config** | `config.py`, `runtime_settings.py`, `app_config.py` | `config.yml` seed (profiles/defaults) + DB-backed per-user settings + admin deployment overrides (live overlay) |
-| **Persistence** | `database.py`, `models.py`, `schemas.py` | SQLite engine, ORM tables, Pydantic I/O |
+| **Runs** | `runs.py`, `routers/runs.py` | Opt-in queue/worker, event replay, explicit cancellation, approval links and interruption review |
+| **Persistence** | `database.py`, `models.py`, `schemas.py`, `migrations/` | SQLite / Postgres, checked Alembic migrations, ORM tables, Pydantic I/O |
+| **Operations** | `ops.py`, `backup.py`, `maintenance.py` | Offline verified bundles, restore into new destinations, server/maintenance exclusion. See [BACKUP_RESTORE.md](BACKUP_RESTORE.md) |
 | **Providers** | `providers/base.py`, `openai_provider.py`, `bedrock_provider.py`, `registry.py` | Provider abstraction + streaming + embeddings |
 | **Agent** | `agent/harness.py`, `registry.py`, `permissions.py`, `events.py`, `context.py` | The resumable loop, tool registry, permission gate, SSE events, context compaction |
 | **Tools** | `agent/tools/{base,fs,shell,code,docs,web,memory,planning,subagent,checkpoint}.py` | Built-in tools (file/exec/web/RAG + memory, todo planning, sub-agents, checkpoints) |
+| **Web evidence** | `web_fetch.py`, `sources.py`, `routers/sources.py` | DNS-pinned bounded fetch/extraction; private snapshots, failures, inspection, deletion and exports |
 | **Assistants** | `routers/assistants.py` | Admin-curated personas (base model + system prompt + shared knowledge base + capability limits); reads for all users, writes admin-gated |
+| **Skills** | `skills.py`, `routers/skills.py`, `agent/tools/skills.py` | Reusable instructions, SKILL.md import/export, explicit invocation and progressive disclosure; see [SKILLS.md](SKILLS.md) |
 | **Memory** | `memory.py`, `routers/memories.py` | Cross-conversation memory: save + semantic retrieval into the system prompt |
 | **Checkpoints** | `workspace/checkpoints.py`, `routers/checkpoints.py` | Git-backed workspace snapshots + restore (auto-snapshot after mutating tools) |
 | **Rerank** | `rag/rerank.py` | Reranker seam (`LexicalReranker` default; cross-encoder-ready) |
 | **Auth** | `auth/{security,service,deps,entra}.py`, `routers/auth.py` | Local login (bcrypt+JWT), admin gate, Entra ID SSO seam, user mgmt. See [AUTH.md](AUTH.md) |
 | **Sandbox** | `sandbox/runner.py` | Execution isolation seam: `LocalSubprocessRunner` + `ContainerRunner` (Podman/Docker-compatible) |
 | **Workspace** | `workspace/manager.py` | Per-conversation working dir + path-traversal guard |
-| **RAG** | `rag/ingest.py`, `embed.py`, `retrieve.py`, `store.py` | Parse → chunk → embed → **Qdrant** vector search (`VectorStore` seam) |
+| **RAG** | `rag/jobs.py`, `parsing.py`, `ingest.py`, `identity.py`, `maintenance.py`, `retrieve.py`, `store.py` | Durable processing queue; versioned parsing/embeddings; staged **Qdrant** publication and authorized keyword degradation |
 | **MCP** | `mcp/manager.py` | Connect MCP servers, proxy their tools into the registry |
-| **Observability** | `observability.py`, `usage_ledger.py`, `routers/usage.py` | Per-request logging, OTel seam, per-turn token/cost capture + durable chargeback ledger. See [OBSERVABILITY.md](OBSERVABILITY.md) |
+| **Observability** | `observability.py`, `model_calls.py`, `usage_ledger.py`, `routers/usage.py` | Per-request logging, OTel seam, per-call token/cost capture + durable chargeback ledger. See [OBSERVABILITY.md](OBSERVABILITY.md) |
 | **Budgets** | `budgets.py`, `routers/budgets.py` | Monthly USD spend caps per user/department: current-month spend (from the ledger), warn/block status, and `enforce_budget` applied at the chat + gateway choke points. See [BUDGETS.md](BUDGETS.md) |
-| **API gateway** | `api_keys.py`, `routers/api_keys.py`, `routers/gateway.py` | Per-user API keys (SHA-256 hashed) + OpenAI-compatible `/v1/chat/completions` & `/v1/models`; usage flows through `usage_ledger`. See [API_GATEWAY.md](API_GATEWAY.md) |
+| **API gateway** | `api_keys.py`, `routers/api_keys.py`, `routers/gateway.py` | Per-user API keys (SHA-256 hashed) + OpenAI-compatible `/v1/chat/completions` & `/v1/models`; usage flows through `model_calls`. See [API_GATEWAY.md](API_GATEWAY.md) |
 | **Guardrails** | `guardrails.py` | PII/custom-pattern **redaction & blocking** (input + output, streaming-safe `StreamRedactor`), enforced in `routers/{chat,gateway}.py` + `agent/harness.py`. See [GUARDRAILS.md](GUARDRAILS.md) |
 | **Routers** | `routers/*.py` | `auth, chat, conversations, providers, settings, documents, assistants, mcp, tools, files, memories, checkpoints, attachments, usage, admin_config, api_keys, gateway, budgets` |
 
@@ -111,9 +152,11 @@ deals with provider-specific shapes.
   in (`web_search: true`, `document_search: true`) or the user directly references a
   document on the message. Web search uses ddgs by default and can use SearXNG via
   `web_search.searxng_url` / `SEARXNG_URL`. `web_fetch` has an **SSRF guard**
-  (`agent/tools/web.py::_ssrf_guard`): by default it refuses to reach private/loopback/
-  link-local addresses (incl. the cloud metadata IP), re-checked on every redirect hop so a
-  public host can't 302 its way to an internal one. File-only via `web_fetch` in
+  (`web_fetch.py`): by default all resolved addresses must be public, including each redirect
+  hop. Connections use a checked numeric address, verified peer, original Host/SNI, and
+  HTTPS certificate verification; automatic hostname reconnect and environment proxies
+  are disabled. Reading and extraction are bounded; Stop interrupts network waiting.
+  File-only via `web_fetch` in
   `config.yml` (`allow_private_networks`, `allowlist_hosts`) — not admin-UI-editable, same
   reasoning as the sandbox runner type.
 - **Sandbox is a swappable interface** (`sandbox/runner.py`). `LocalSubprocessRunner`
@@ -123,10 +166,9 @@ deals with provider-specific shapes.
   container runner targets the Docker-compatible CLI, so Podman (incl. Docker-compat mode)
   and Docker both work across Windows/macOS/Linux. All three stream live stdout/stderr back
   as `tool_progress` SSE events while a command runs (instead of only at the end), and all
-  three honor a per-turn `cancel_event`: a timeout or a user's "Stop" click kills the whole
-  process **tree**, not just the immediate child — a shell that forked a build/test process
-  no longer keeps running as an orphan after the tool call is reported as timed
-  out/cancelled. See [SANDBOX.md](SANDBOX.md) §"Live output & cancellation".
+  three accept a per-turn cancellation signal. Local/container execution terminates the
+  process tree; AgentCore cannot guarantee termination of a remote invocation. With runs
+  enabled, browser disconnection only detaches the viewer; explicit Stop requests cancellation. See [SANDBOX.md](SANDBOX.md) §"Live output & cancellation".
   Configured isolation is fail-closed: an unavailable container engine or AgentCore failure
   is an execution/startup error, never a switch to host-local execution. Auth-enabled
   production refuses the local runner. `/api/readiness` and the admin Configuration panel
@@ -148,11 +190,21 @@ deals with provider-specific shapes.
   to one process — don't open a second client against the same path.)
 - **Long conversations are compacted** (`agent/context.py`): once the replayed transcript
   exceeds `max_context_tokens` (config default), older turns are summarized into a system
-  message; recent turns stay verbatim.
+  message; recent turns stay verbatim. The shared call seam also applies a final bounded
+  request check with schemas, image estimates, tool results, and output reservation; see
+  [MODEL_CALLS.md](MODEL_CALLS.md) for the heuristic and profile context caps.
 - **RAG is hybrid + reranked** (`rag/`): each chunk has a named **dense** (semantic) and
   **sparse** (lexical) vector in Qdrant; retrieval queries both, fuses with RRF in Python
   (robust on embedded mode), then reranks. Sparse vectors + the default reranker are
   dependency-free/offline.
+- **Document ingestion is queued** (`rag/jobs.py`), independently of `runs.enabled`.
+  `Document.ingestion` persists attempt/progress; restart marks unfinished jobs interrupted.
+  `parsing.py` preserves pages/sections/tables and enforces limits; `identity.py` validates
+  provider/model/version/dimensions without automatic hash substitution. SQL ready chunks
+  and current assistant visibility authorize all retrieval, including keyword degradation.
+  Explicit admin rebuilds stage vectors before publishing the SQL `rag:index` collection
+  pointer; startup never automatically re-embeds. `VectorStore.stage/activate/discard` are
+  the publication seam. See [INGESTION.md](INGESTION.md) for limits and recovery.
 - **Cross-conversation memory** (`memory.py`): durable facts (saved by the `save_memory`
   tool or the Memory tab) are semantically retrieved each turn and appended to the system
   prompt, so the assistant "remembers" the user across chats.
@@ -160,19 +212,23 @@ deals with provider-specific shapes.
   `AgentSession` (doesn't persist to the parent conversation) with a scoped toolset in the
   **same workspace**, and returns its report. `AgentSession` gained `ephemeral` +
   `allowed_tools` for this. Recursion is prevented by excluding `spawn_subagent` from the
-  child's tools. It **inherits the parent turn's real approval state** rather than granting
-  itself a bypass (`auto_approve=ctx.auto_approve`, `interactive=False` — see the
-  permission-gate bullet above), and it opens its **own DB session** rather than sharing
-  `ctx.db`, since a SQLAlchemy session isn't safe across threads. That isolation is what
-  lets `AgentSession._run_calls_concurrently` run **multiple `spawn_subagent` calls from
-  the same round in parallel** worker threads instead of one after another — the model
-  decomposing a task into independent chunks actually saves wall-clock time now, not just
-  context budget. Everything else in a round still executes sequentially.
+  child's tools. The child **inherits the resolved parent profile/model, generation
+  parameters, effective tool set, user, verified assistant scope, approval mode, and
+  cancellation**; it never selects global settings. Provider construction records the
+  profile name so children follow an actual fallback route too. Each child opens its
+  **own DB session** and rechecks conversation ownership and assistant visibility.
+  `read_only: true` restricts tools to workspace reads, document search, and web fetch,
+  intersected with the parent's allowed set. Up to **3 read-only children** execute at a
+  time, with at most **8 child requests per round**; queued children skip execution after
+  cancellation. Mutation-capable children (`read_only: false`, the default) execute
+  sequentially within their parent turn. Unattended `ask` tools remain denied unless the
+  parent turn enabled auto-approval. Opt-in durable runs serialize unresolved top-level
+  work per conversation and inherit a thread-safe journal for child tool intent/results.
 - **Checkpoints** (`workspace/checkpoints.py`): each workspace is a git repo; the harness
   auto-snapshots after a successful mutating tool (`MUTATING_TOOLS`), and the user can
   restore any snapshot (current state is snapshotted first, so nothing is lost). A
-  per-workspace `RLock` serializes the actual git operations, since concurrent sub-agents
-  (above) can now mutate + checkpoint the same workspace at the same time.
+  per-workspace `RLock` serializes actual git operations. This lock does not make arbitrary
+  workspace edits transactional; child mutation sequencing is described above.
 - **Multimodal** (`attachments.py`, providers): images attach to a user message (base64
   data URLs), are persisted to `data/attachments/<msg>/` and replayed into the provider as
   image content parts for vision models. The OpenAI provider also surfaces `reasoning`
@@ -214,13 +270,14 @@ deals with provider-specific shapes.
   to the profile's configured model so stale settings don't override config.
 - **Spend budgets enforce at the model-call choke points** (`budgets.py`). Admin-set monthly
   USD caps (`Budget`, scoped to a user or department) are checked by `enforce_budget` in
-  *both* `routers/chat.py` and `routers/gateway.py`, so interactive chat and API-key traffic
-  are gated identically. "Spend this month" is a live, date-bounded sum over `UsageLedger`
+  `routers/chat.py`, `routers/gateway.py`, and the shared `model_calls.py` seam, including
+  subsequent rounds, children, and compaction. "Spend this month" is a live, date-bounded sum over `UsageLedger`
   (no counter to reset — the window rolls forward), so budgets reuse the chargeback ledger
   rather than adding new accounting. Enforcement is **most-restrictive-wins** (a user's own
   budget and their department budget both apply) and only blocks **priced** models (those in
-  `observability.pricing`); free/local models stay usable. Because cost is known only after a
-  turn finishes, it blocks the *next* turn once at/over budget rather than mid-turn. See
+  `observability.pricing`). Known usage is recorded as provider snapshots arrive; later
+  calls are gated without terminating an in-flight stream. Missing prices/usage are unknown,
+  not proof of free execution. See [MODEL_CALLS.md](MODEL_CALLS.md) and
   [BUDGETS.md](BUDGETS.md).
 - **Guardrails enforce at the same choke points** (`guardrails.py`). The admin policy
   redacts or blocks PII/custom-pattern matches in content sent to providers (checked in
@@ -267,7 +324,7 @@ in agent-generated pages run, but can't read the parent app's cookies/storage/DO
 html and markdown have a Preview/Source toggle; the panel width is user-resizable via a
 drag handle on its left edge.
 
-## 5. Data model (SQLite, `models.py`)
+## 5. Data model (SQLite / optional Postgres, `models.py`)
 
 - `User` (role, `auth_provider`, bcrypt `password_hash`, `department` for chargeback);
   owns the rows below via `user_id`.
@@ -275,7 +332,9 @@ drag handle on its left edge.
   `{id,name,arguments,content,is_error,artifacts}`; `Message.artifacts` (JSON) stores
   produced files; `Message.usage` (JSON) stores `{input,output,total,cost}`. This is what
   lets the UI re-render a full agent turn after reload.
-- `Document` 1—* `DocChunk` (chunk text + JSON embedding vector).
+- `Document` 1—* `DocChunk` (chunk text, JSON embedding vector, provenance and embedding
+  identity). `Document.ingestion` stores the durable processing attempt; `Setting` key
+  `rag:index` stores rebuild progress and the published Qdrant collection pointer.
 - `Assistant` — an admin-curated persona: name/description/`avatar` (data URL or emoji),
   optional `profile`/`model`, `system_prompt`, `params` (JSON, reserved),
   `prompt_suggestions` (JSON), `capabilities` (JSON hard limits), `visibility`
@@ -284,8 +343,13 @@ drag handle on its left edge.
   per-thread pin; dangles harmlessly after deletion thanks to the config snapshot) and
   **`Document`** (KB docs, which are deployment-owned: `user_id=NULL`).
 - `Setting` (key/value), `McpServer`, `ToolPref` (enabled + permission per tool),
-  `Memory` (cross-conversation facts), `PendingApproval` (paused-run state for resume).
-- `UsageLedger` — append-only, **FK-free** per-turn token/cost rows with a snapshot of the
+  `Memory` (cross-conversation facts), `PendingApproval` (versioned paused-run state plus
+  claim/outcome status, ORM-cascaded with its conversation).
+- `Run`, `RunEvent`, `ToolExecution` — private request/status, bounded ordered replay, and
+  dispatch/result evidence; ORM-cascaded with their conversation. See [RUNS.md](RUNS.md).
+- `Skill` — reusable instructions with slug, description, visibility, creator, and
+  auto-activation flag. Resources/scripts are not bundled; see [SKILLS.md](SKILLS.md).
+- `UsageLedger` — **FK-free** per-call token/cost rows and historical turn entries with a snapshot of the
   billable identity (username/email/department). Deliberately survives user deletion for
   chargeback; see [OBSERVABILITY.md](OBSERVABILITY.md) / [AUTH.md](AUTH.md).
 - `Budget` — a monthly USD spend cap scoped to a user (`scope_value` = `User.id`) or a
@@ -320,9 +384,15 @@ Three layers, each with a clear job:
   model, theme, system prompt, params — each user's own, changed from the Settings UI;
   seeded from the (now overlay-aware) config defaults.
 
+> Startup holds a shared server/maintenance lock, upgrades the checked Alembic schema,
+> then initializes application services. Failed upgrades stop startup before seeding or
+> integration connections. Readiness includes the database revision. See
+> [BACKUP_RESTORE.md](BACKUP_RESTORE.md).
+
 > Single-process note: the overlay and `config.yml` are cached in-process and invalidated on
 > write. The app is effectively single-process (embedded Qdrant locks its dir), so
-> cross-process cache invalidation is out of scope; a multi-worker deployment is Tier 5.
+> cross-process cache invalidation is not implemented. Optional Postgres and server-mode
+> Qdrant alone do not make multi-worker operation supported; see [ROADMAP.md](ROADMAP.md).
 
 ## 7. Where to add things (quick index)
 
@@ -338,9 +408,10 @@ Three layers, each with a clear job:
 - **A content filter on model traffic** → add a detector/rule in `guardrails.py` (built-ins
   live in `BUILTIN_PATTERNS`); it is already enforced at both choke points + the harness.
   See [GUARDRAILS.md](GUARDRAILS.md).
-- **Harder code-exec isolation** → implement `DockerRunner` in `sandbox/runner.py`.
-- **Bigger RAG corpus** → replace `rag/retrieve.search_chunks` with a vector index; keep
-  the signature so `search_documents` is unaffected.
+- **Harder code-exec isolation** → extend `SandboxRunner` in `sandbox/runner.py`;
+  `ContainerRunner` and `AgentCoreCodeInterpreterRunner` already exist.
+- **Bigger RAG corpus** → use server-mode Qdrant behind the existing `VectorStore` seam;
+  benchmark ingestion/retrieval and preserve ownership filters. Vector search already exists.
 
 ## 8. Running & verifying
 

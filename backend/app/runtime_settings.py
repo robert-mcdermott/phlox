@@ -94,4 +94,5 @@ def generation_params(settings: dict[str, Any]) -> dict[str, Any]:
         "temperature": settings["temperature"],
         "max_tokens": settings["max_tokens"],
         "max_tool_rounds": settings["max_tool_rounds"],
+        "max_context_tokens": settings["max_context_tokens"],
     }

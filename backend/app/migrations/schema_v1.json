@@ -1,0 +1,1304 @@
+{
+  "tables": {
+    "api_keys": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "VARCHAR(32)",
+          "nullable": false,
+          "primary_key": true
+        },
+        {
+          "name": "user_id",
+          "type": "VARCHAR(32)",
+          "nullable": false,
+          "primary_key": false
+        },
+        {
+          "name": "name",
+          "type": "VARCHAR(150)",
+          "nullable": false,
+          "primary_key": false
+        },
+        {
+          "name": "key_hash",
+          "type": "VARCHAR(64)",
+          "nullable": false,
+          "primary_key": false
+        },
+        {
+          "name": "prefix",
+          "type": "VARCHAR(32)",
+          "nullable": false,
+          "primary_key": false
+        },
+        {
+          "name": "scopes",
+          "type": "JSON",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "is_active",
+          "type": "BOOLEAN",
+          "nullable": false,
+          "primary_key": false
+        },
+        {
+          "name": "expires_at",
+          "type": "DATETIME",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "last_used_at",
+          "type": "DATETIME",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "created_at",
+          "type": "DATETIME",
+          "nullable": false,
+          "primary_key": false
+        }
+      ],
+      "unique": [],
+      "foreign_keys": [],
+      "indexes": [
+        {
+          "name": "ix_api_keys_key_hash",
+          "columns": [
+            "key_hash"
+          ],
+          "unique": true
+        },
+        {
+          "name": "ix_api_keys_user_id",
+          "columns": [
+            "user_id"
+          ],
+          "unique": false
+        }
+      ]
+    },
+    "app_config": {
+      "columns": [
+        {
+          "name": "section",
+          "type": "VARCHAR(50)",
+          "nullable": false,
+          "primary_key": true
+        },
+        {
+          "name": "value",
+          "type": "JSON",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "updated_at",
+          "type": "DATETIME",
+          "nullable": false,
+          "primary_key": false
+        },
+        {
+          "name": "updated_by",
+          "type": "VARCHAR(32)",
+          "nullable": true,
+          "primary_key": false
+        }
+      ],
+      "unique": [],
+      "foreign_keys": [],
+      "indexes": []
+    },
+    "assistants": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "VARCHAR(32)",
+          "nullable": false,
+          "primary_key": true
+        },
+        {
+          "name": "name",
+          "type": "VARCHAR(200)",
+          "nullable": false,
+          "primary_key": false
+        },
+        {
+          "name": "description",
+          "type": "TEXT",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "avatar",
+          "type": "TEXT",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "profile",
+          "type": "VARCHAR(100)",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "model",
+          "type": "VARCHAR(200)",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "system_prompt",
+          "type": "TEXT",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "params",
+          "type": "JSON",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "prompt_suggestions",
+          "type": "JSON",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "capabilities",
+          "type": "JSON",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "visibility",
+          "type": "VARCHAR(20)",
+          "nullable": false,
+          "primary_key": false
+        },
+        {
+          "name": "created_by",
+          "type": "VARCHAR(32)",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "is_active",
+          "type": "BOOLEAN",
+          "nullable": false,
+          "primary_key": false
+        },
+        {
+          "name": "created_at",
+          "type": "DATETIME",
+          "nullable": false,
+          "primary_key": false
+        },
+        {
+          "name": "updated_at",
+          "type": "DATETIME",
+          "nullable": false,
+          "primary_key": false
+        }
+      ],
+      "unique": [],
+      "foreign_keys": [],
+      "indexes": [
+        {
+          "name": "ix_assistants_created_by",
+          "columns": [
+            "created_by"
+          ],
+          "unique": false
+        }
+      ]
+    },
+    "auth_handoffs": {
+      "columns": [
+        {
+          "name": "code_hash",
+          "type": "VARCHAR(64)",
+          "nullable": false,
+          "primary_key": true
+        },
+        {
+          "name": "user_id",
+          "type": "VARCHAR(32)",
+          "nullable": false,
+          "primary_key": false
+        },
+        {
+          "name": "expires_at",
+          "type": "DATETIME",
+          "nullable": false,
+          "primary_key": false
+        },
+        {
+          "name": "created_at",
+          "type": "DATETIME",
+          "nullable": false,
+          "primary_key": false
+        }
+      ],
+      "unique": [],
+      "foreign_keys": [],
+      "indexes": [
+        {
+          "name": "ix_auth_handoffs_expires_at",
+          "columns": [
+            "expires_at"
+          ],
+          "unique": false
+        },
+        {
+          "name": "ix_auth_handoffs_user_id",
+          "columns": [
+            "user_id"
+          ],
+          "unique": false
+        }
+      ]
+    },
+    "budgets": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "VARCHAR(32)",
+          "nullable": false,
+          "primary_key": true
+        },
+        {
+          "name": "scope_type",
+          "type": "VARCHAR(20)",
+          "nullable": false,
+          "primary_key": false
+        },
+        {
+          "name": "scope_value",
+          "type": "VARCHAR(200)",
+          "nullable": false,
+          "primary_key": false
+        },
+        {
+          "name": "limit_usd",
+          "type": "FLOAT",
+          "nullable": false,
+          "primary_key": false
+        },
+        {
+          "name": "warn_pct",
+          "type": "INTEGER",
+          "nullable": false,
+          "primary_key": false
+        },
+        {
+          "name": "is_active",
+          "type": "BOOLEAN",
+          "nullable": false,
+          "primary_key": false
+        },
+        {
+          "name": "created_at",
+          "type": "DATETIME",
+          "nullable": false,
+          "primary_key": false
+        },
+        {
+          "name": "updated_at",
+          "type": "DATETIME",
+          "nullable": false,
+          "primary_key": false
+        }
+      ],
+      "unique": [
+        [
+          "scope_type",
+          "scope_value"
+        ]
+      ],
+      "foreign_keys": [],
+      "indexes": []
+    },
+    "conversations": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "VARCHAR(32)",
+          "nullable": false,
+          "primary_key": true
+        },
+        {
+          "name": "user_id",
+          "type": "VARCHAR(32)",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "assistant_id",
+          "type": "VARCHAR(32)",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "title",
+          "type": "VARCHAR(300)",
+          "nullable": false,
+          "primary_key": false
+        },
+        {
+          "name": "profile",
+          "type": "VARCHAR(100)",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "model",
+          "type": "VARCHAR(200)",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "system_prompt",
+          "type": "TEXT",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "params",
+          "type": "JSON",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "created_at",
+          "type": "DATETIME",
+          "nullable": false,
+          "primary_key": false
+        },
+        {
+          "name": "updated_at",
+          "type": "DATETIME",
+          "nullable": false,
+          "primary_key": false
+        }
+      ],
+      "unique": [],
+      "foreign_keys": [],
+      "indexes": [
+        {
+          "name": "ix_conversations_assistant_id",
+          "columns": [
+            "assistant_id"
+          ],
+          "unique": false
+        },
+        {
+          "name": "ix_conversations_user_id",
+          "columns": [
+            "user_id"
+          ],
+          "unique": false
+        }
+      ]
+    },
+    "documents": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "VARCHAR(32)",
+          "nullable": false,
+          "primary_key": true
+        },
+        {
+          "name": "user_id",
+          "type": "VARCHAR(32)",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "assistant_id",
+          "type": "VARCHAR(32)",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "filename",
+          "type": "VARCHAR(500)",
+          "nullable": false,
+          "primary_key": false
+        },
+        {
+          "name": "conversation_id",
+          "type": "VARCHAR(32)",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "mime",
+          "type": "VARCHAR(200)",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "size_bytes",
+          "type": "INTEGER",
+          "nullable": false,
+          "primary_key": false
+        },
+        {
+          "name": "n_chunks",
+          "type": "INTEGER",
+          "nullable": false,
+          "primary_key": false
+        },
+        {
+          "name": "status",
+          "type": "VARCHAR(30)",
+          "nullable": false,
+          "primary_key": false
+        },
+        {
+          "name": "error",
+          "type": "TEXT",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "created_at",
+          "type": "DATETIME",
+          "nullable": false,
+          "primary_key": false
+        }
+      ],
+      "unique": [],
+      "foreign_keys": [],
+      "indexes": [
+        {
+          "name": "ix_documents_assistant_id",
+          "columns": [
+            "assistant_id"
+          ],
+          "unique": false
+        },
+        {
+          "name": "ix_documents_conversation_id",
+          "columns": [
+            "conversation_id"
+          ],
+          "unique": false
+        },
+        {
+          "name": "ix_documents_user_id",
+          "columns": [
+            "user_id"
+          ],
+          "unique": false
+        }
+      ]
+    },
+    "mcp_servers": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "VARCHAR(32)",
+          "nullable": false,
+          "primary_key": true
+        },
+        {
+          "name": "name",
+          "type": "VARCHAR(100)",
+          "nullable": false,
+          "primary_key": false
+        },
+        {
+          "name": "transport",
+          "type": "VARCHAR(20)",
+          "nullable": false,
+          "primary_key": false
+        },
+        {
+          "name": "command",
+          "type": "VARCHAR(500)",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "args",
+          "type": "JSON",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "env",
+          "type": "JSON",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "url",
+          "type": "VARCHAR(500)",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "headers",
+          "type": "JSON",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "auth_token",
+          "type": "VARCHAR(2000)",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "enabled",
+          "type": "BOOLEAN",
+          "nullable": false,
+          "primary_key": false
+        },
+        {
+          "name": "created_at",
+          "type": "DATETIME",
+          "nullable": false,
+          "primary_key": false
+        }
+      ],
+      "unique": [
+        [
+          "name"
+        ]
+      ],
+      "foreign_keys": [],
+      "indexes": []
+    },
+    "memories": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "VARCHAR(32)",
+          "nullable": false,
+          "primary_key": true
+        },
+        {
+          "name": "user_id",
+          "type": "VARCHAR(32)",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "content",
+          "type": "TEXT",
+          "nullable": false,
+          "primary_key": false
+        },
+        {
+          "name": "kind",
+          "type": "VARCHAR(30)",
+          "nullable": false,
+          "primary_key": false
+        },
+        {
+          "name": "source_conversation_id",
+          "type": "VARCHAR(32)",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "embedding",
+          "type": "JSON",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "created_at",
+          "type": "DATETIME",
+          "nullable": false,
+          "primary_key": false
+        }
+      ],
+      "unique": [],
+      "foreign_keys": [],
+      "indexes": [
+        {
+          "name": "ix_memories_user_id",
+          "columns": [
+            "user_id"
+          ],
+          "unique": false
+        }
+      ]
+    },
+    "oauth_login_states": {
+      "columns": [
+        {
+          "name": "state_hash",
+          "type": "VARCHAR(64)",
+          "nullable": false,
+          "primary_key": true
+        },
+        {
+          "name": "nonce",
+          "type": "VARCHAR(100)",
+          "nullable": false,
+          "primary_key": false
+        },
+        {
+          "name": "code_verifier",
+          "type": "VARCHAR(150)",
+          "nullable": false,
+          "primary_key": false
+        },
+        {
+          "name": "expires_at",
+          "type": "DATETIME",
+          "nullable": false,
+          "primary_key": false
+        },
+        {
+          "name": "created_at",
+          "type": "DATETIME",
+          "nullable": false,
+          "primary_key": false
+        }
+      ],
+      "unique": [],
+      "foreign_keys": [],
+      "indexes": [
+        {
+          "name": "ix_oauth_login_states_expires_at",
+          "columns": [
+            "expires_at"
+          ],
+          "unique": false
+        }
+      ]
+    },
+    "settings": {
+      "columns": [
+        {
+          "name": "key",
+          "type": "VARCHAR(100)",
+          "nullable": false,
+          "primary_key": true
+        },
+        {
+          "name": "value",
+          "type": "JSON",
+          "nullable": true,
+          "primary_key": false
+        }
+      ],
+      "unique": [],
+      "foreign_keys": [],
+      "indexes": []
+    },
+    "skills": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "VARCHAR(32)",
+          "nullable": false,
+          "primary_key": true
+        },
+        {
+          "name": "name",
+          "type": "VARCHAR(100)",
+          "nullable": false,
+          "primary_key": false
+        },
+        {
+          "name": "description",
+          "type": "TEXT",
+          "nullable": false,
+          "primary_key": false
+        },
+        {
+          "name": "instructions",
+          "type": "TEXT",
+          "nullable": false,
+          "primary_key": false
+        },
+        {
+          "name": "auto_activate",
+          "type": "BOOLEAN",
+          "nullable": false,
+          "primary_key": false
+        },
+        {
+          "name": "visibility",
+          "type": "VARCHAR(20)",
+          "nullable": false,
+          "primary_key": false
+        },
+        {
+          "name": "created_by",
+          "type": "VARCHAR(32)",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "is_active",
+          "type": "BOOLEAN",
+          "nullable": false,
+          "primary_key": false
+        },
+        {
+          "name": "created_at",
+          "type": "DATETIME",
+          "nullable": false,
+          "primary_key": false
+        },
+        {
+          "name": "updated_at",
+          "type": "DATETIME",
+          "nullable": false,
+          "primary_key": false
+        }
+      ],
+      "unique": [],
+      "foreign_keys": [],
+      "indexes": [
+        {
+          "name": "ix_skills_created_by",
+          "columns": [
+            "created_by"
+          ],
+          "unique": false
+        },
+        {
+          "name": "ix_skills_name",
+          "columns": [
+            "name"
+          ],
+          "unique": true
+        }
+      ]
+    },
+    "tool_prefs": {
+      "columns": [
+        {
+          "name": "name",
+          "type": "VARCHAR(120)",
+          "nullable": false,
+          "primary_key": true
+        },
+        {
+          "name": "enabled",
+          "type": "BOOLEAN",
+          "nullable": false,
+          "primary_key": false
+        },
+        {
+          "name": "permission",
+          "type": "VARCHAR(10)",
+          "nullable": false,
+          "primary_key": false
+        }
+      ],
+      "unique": [],
+      "foreign_keys": [],
+      "indexes": []
+    },
+    "usage_ledger": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "VARCHAR(32)",
+          "nullable": false,
+          "primary_key": true
+        },
+        {
+          "name": "message_id",
+          "type": "VARCHAR(64)",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "conversation_id",
+          "type": "VARCHAR(32)",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "user_id",
+          "type": "VARCHAR(32)",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "username",
+          "type": "VARCHAR(150)",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "email",
+          "type": "VARCHAR(300)",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "department",
+          "type": "VARCHAR(200)",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "turn_id",
+          "type": "VARCHAR(64)",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "parent_call_id",
+          "type": "VARCHAR(64)",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "profile",
+          "type": "VARCHAR(100)",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "call_kind",
+          "type": "VARCHAR(32)",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "status",
+          "type": "VARCHAR(24)",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "usage_status",
+          "type": "VARCHAR(24)",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "rate_snapshot",
+          "type": "JSON",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "usage_details",
+          "type": "JSON",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "model",
+          "type": "VARCHAR(200)",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "input_tokens",
+          "type": "INTEGER",
+          "nullable": false,
+          "primary_key": false
+        },
+        {
+          "name": "output_tokens",
+          "type": "INTEGER",
+          "nullable": false,
+          "primary_key": false
+        },
+        {
+          "name": "total_tokens",
+          "type": "INTEGER",
+          "nullable": false,
+          "primary_key": false
+        },
+        {
+          "name": "cost_usd",
+          "type": "FLOAT",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "created_at",
+          "type": "DATETIME",
+          "nullable": false,
+          "primary_key": false
+        }
+      ],
+      "unique": [
+        [
+          "message_id"
+        ]
+      ],
+      "foreign_keys": [],
+      "indexes": [
+        {
+          "name": "ix_usage_ledger_created_at",
+          "columns": [
+            "created_at"
+          ],
+          "unique": false
+        },
+        {
+          "name": "ix_usage_ledger_turn_id",
+          "columns": [
+            "turn_id"
+          ],
+          "unique": false
+        },
+        {
+          "name": "ix_usage_ledger_user_id",
+          "columns": [
+            "user_id"
+          ],
+          "unique": false
+        }
+      ]
+    },
+    "users": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "VARCHAR(32)",
+          "nullable": false,
+          "primary_key": true
+        },
+        {
+          "name": "username",
+          "type": "VARCHAR(150)",
+          "nullable": false,
+          "primary_key": false
+        },
+        {
+          "name": "email",
+          "type": "VARCHAR(300)",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "display_name",
+          "type": "VARCHAR(200)",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "password_hash",
+          "type": "VARCHAR(200)",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "role",
+          "type": "VARCHAR(20)",
+          "nullable": false,
+          "primary_key": false
+        },
+        {
+          "name": "auth_provider",
+          "type": "VARCHAR(20)",
+          "nullable": false,
+          "primary_key": false
+        },
+        {
+          "name": "external_id",
+          "type": "VARCHAR(200)",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "department",
+          "type": "VARCHAR(200)",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "is_active",
+          "type": "BOOLEAN",
+          "nullable": false,
+          "primary_key": false
+        },
+        {
+          "name": "must_change_password",
+          "type": "BOOLEAN",
+          "nullable": false,
+          "primary_key": false
+        },
+        {
+          "name": "created_at",
+          "type": "DATETIME",
+          "nullable": false,
+          "primary_key": false
+        }
+      ],
+      "unique": [],
+      "foreign_keys": [],
+      "indexes": [
+        {
+          "name": "ix_users_external_id",
+          "columns": [
+            "external_id"
+          ],
+          "unique": false
+        },
+        {
+          "name": "ix_users_username",
+          "columns": [
+            "username"
+          ],
+          "unique": true
+        }
+      ]
+    },
+    "doc_chunks": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "VARCHAR(32)",
+          "nullable": false,
+          "primary_key": true
+        },
+        {
+          "name": "document_id",
+          "type": "VARCHAR(32)",
+          "nullable": false,
+          "primary_key": false
+        },
+        {
+          "name": "ordinal",
+          "type": "INTEGER",
+          "nullable": false,
+          "primary_key": false
+        },
+        {
+          "name": "text",
+          "type": "TEXT",
+          "nullable": false,
+          "primary_key": false
+        },
+        {
+          "name": "embedding",
+          "type": "JSON",
+          "nullable": true,
+          "primary_key": false
+        }
+      ],
+      "unique": [],
+      "foreign_keys": [
+        {
+          "columns": [
+            "document_id"
+          ],
+          "target": [
+            "documents.id"
+          ],
+          "ondelete": "CASCADE"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "ix_doc_chunks_document_id",
+          "columns": [
+            "document_id"
+          ],
+          "unique": false
+        }
+      ]
+    },
+    "messages": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "VARCHAR(32)",
+          "nullable": false,
+          "primary_key": true
+        },
+        {
+          "name": "conversation_id",
+          "type": "VARCHAR(32)",
+          "nullable": false,
+          "primary_key": false
+        },
+        {
+          "name": "role",
+          "type": "VARCHAR(20)",
+          "nullable": false,
+          "primary_key": false
+        },
+        {
+          "name": "content",
+          "type": "TEXT",
+          "nullable": false,
+          "primary_key": false
+        },
+        {
+          "name": "tool_calls",
+          "type": "JSON",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "artifacts",
+          "type": "JSON",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "attachments",
+          "type": "JSON",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "usage",
+          "type": "JSON",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "model",
+          "type": "VARCHAR(200)",
+          "nullable": true,
+          "primary_key": false
+        },
+        {
+          "name": "created_at",
+          "type": "DATETIME",
+          "nullable": false,
+          "primary_key": false
+        }
+      ],
+      "unique": [],
+      "foreign_keys": [
+        {
+          "columns": [
+            "conversation_id"
+          ],
+          "target": [
+            "conversations.id"
+          ],
+          "ondelete": "CASCADE"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "ix_messages_conversation_id",
+          "columns": [
+            "conversation_id"
+          ],
+          "unique": false
+        },
+        {
+          "name": "ix_messages_created_at",
+          "columns": [
+            "created_at"
+          ],
+          "unique": false
+        }
+      ]
+    },
+    "pending_approvals": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "VARCHAR(32)",
+          "nullable": false,
+          "primary_key": true
+        },
+        {
+          "name": "conversation_id",
+          "type": "VARCHAR(32)",
+          "nullable": false,
+          "primary_key": false
+        },
+        {
+          "name": "state",
+          "type": "JSON",
+          "nullable": false,
+          "primary_key": false
+        },
+        {
+          "name": "status",
+          "type": "VARCHAR(20)",
+          "nullable": false,
+          "primary_key": false
+        },
+        {
+          "name": "created_at",
+          "type": "DATETIME",
+          "nullable": false,
+          "primary_key": false
+        }
+      ],
+      "unique": [],
+      "foreign_keys": [
+        {
+          "columns": [
+            "conversation_id"
+          ],
+          "target": [
+            "conversations.id"
+          ],
+          "ondelete": "CASCADE"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "ix_pending_approvals_conversation_id",
+          "columns": [
+            "conversation_id"
+          ],
+          "unique": false
+        }
+      ]
+    }
+  },
+  "legacy_additions": {
+    "usage_ledger": {
+      "turn_id": "VARCHAR(64)",
+      "parent_call_id": "VARCHAR(64)",
+      "profile": "VARCHAR(100)",
+      "call_kind": "VARCHAR(32)",
+      "status": "VARCHAR(24)",
+      "usage_status": "VARCHAR(24)",
+      "rate_snapshot": "JSON",
+      "usage_details": "JSON"
+    },
+    "pending_approvals": {
+      "status": "VARCHAR(20) NOT NULL DEFAULT 'pending'"
+    },
+    "messages": {
+      "attachments": "JSON",
+      "usage": "JSON"
+    },
+    "documents": {
+      "conversation_id": "VARCHAR(32)",
+      "user_id": "VARCHAR(32)",
+      "assistant_id": "VARCHAR(32)"
+    },
+    "conversations": {
+      "user_id": "VARCHAR(32)",
+      "assistant_id": "VARCHAR(32)"
+    },
+    "memories": {
+      "user_id": "VARCHAR(32)"
+    },
+    "users": {
+      "department": "VARCHAR(200)",
+      "must_change_password": "BOOLEAN NOT NULL DEFAULT FALSE"
+    },
+    "mcp_servers": {
+      "headers": "JSON",
+      "auth_token": "VARCHAR(2000)"
+    }
+  }
+}

@@ -1,5 +1,7 @@
 # API Gateway (OpenAI-compatible)
 
+[User Guide](USER_GUIDE.md) · [Project overview](../README.md)
+
 Phlox can be called programmatically as an **authenticated, OpenAI-compatible LLM gateway**:
 one endpoint, all your configured models (Bedrock + any OpenAI-compatible backend), with the
 same per-user / per-department cost accounting as the chat UI. Point any OpenAI SDK or tool
@@ -7,9 +9,9 @@ at `<phlox>/v1` and it works unmodified.
 
 > **Status — Phase 1 (raw passthrough).** Implements `POST /v1/chat/completions` and
 > `GET /v1/models`: **exactly one model call per request**, so cost is predictable. The
-> agentic pipeline (`POST /v1/agent/completions`, RAG + tools + MCP, fan-out usage grouped
-> by `parent_request_id`) is **Phase 2** — the auth + accounting layer below is already
-> built to absorb it (see [ROADMAP.md](ROADMAP.md) and issue #5).
+> agentic pipeline is **deferred until the durable run, policy, and accounting foundations
+> in [ROADMAP.md](ROADMAP.md) are complete** (M4.3). The proposed
+> `POST /v1/agent/completions` shape remains subject to that API design; it is not implemented.
 
 ## 1. API keys
 
@@ -94,17 +96,16 @@ print(resp.choices[0].message.content)
 
 ## 3. Cost / token accounting
 
-Usage is captured at the **model-call layer**, not the endpoint, so attribution is identical
-to interactive chat and is ready to absorb Phase 2's multi-call agentic requests. Each
-gateway model call appends one row to the durable **`UsageLedger`**
-(`usage_ledger.record_gateway_usage`):
+Gateway generation uses the same `model_calls.stream_model` seam as chat. Each call is
+inserted into `UsageLedger` before dispatch and updated as provider usage arrives. The
+request ID groups calls under `turn_id`; the initial row uses that ID as `message_id`.
+Explicit compatibility retries receive separate IDs linked by `parent_call_id`.
 
-- Cost is computed from the `model_pricing` table (`observability.pricing`, also live-editable
-  in **Settings → Configuration**) — see [OBSERVABILITY.md](OBSERVABILITY.md).
-- The synthetic per-call `request_id` is stored in the ledger's unique `message_id` column,
-  so a retried write can't double-count.
-- `parent_request_id` (stored in `conversation_id`) is reserved to group the N calls of one
-  agentic request in Phase 2.
+Actual model and price snapshots determine costs. Missing rates/usage remain unknown;
+partial usage survives stream failures and consumer closure. A final context check reserves
+output tokens before dispatch (HTTP 400 `context_length_exceeded` on preflight failure).
+The OpenAI-compatible response shape remains unchanged; use Phlox usage APIs for unknown
+usage/cost status. See [MODEL_CALLS.md](MODEL_CALLS.md) for scope and limits.
 
 Gateway usage therefore appears automatically in the admin **Usage & Cost** view
 (`GET /api/usage/by-user`, "usage by month × user × department × model") and the per-user

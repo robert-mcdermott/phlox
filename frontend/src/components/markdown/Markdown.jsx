@@ -7,6 +7,7 @@ import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
 import { Check, Copy } from 'lucide-react'
 import Mermaid from './Mermaid'
+import { remarkCitations } from './citations'
 
 function CodeBlock({ className, children }) {
   const [copied, setCopied] = useState(false)
@@ -32,7 +33,7 @@ function CodeBlock({ className, children }) {
   )
 }
 
-export default function Markdown({ children }) {
+export default function Markdown({ children, citations, onSource }) {
   return (
     <div className="prose prose-sm max-w-none break-words
       prose-headings:text-content prose-p:text-content prose-li:text-content
@@ -40,7 +41,7 @@ export default function Markdown({ children }) {
       prose-code:text-content prose-code:before:content-[''] prose-code:after:content-['']
       prose-table:text-content prose-th:text-content prose-td:border-border">
       <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkMath]}
+        remarkPlugins={[remarkGfm, remarkMath, ...(citations ? [remarkCitations] : [])]}
         rehypePlugins={[rehypeHighlight, rehypeKatex]}
         components={{
           // react-markdown v9 dropped the `inline` prop; detect block code by the
@@ -56,11 +57,21 @@ export default function Markdown({ children }) {
               <code className="rounded bg-surface-3 px-1.5 py-0.5 text-[0.85em]">{children}</code>
             )
           },
-          a: ({ href, children }) => (
-            <a href={href} target="_blank" rel="noreferrer" className="text-accent underline">
-              {children}
-            </a>
-          ),
+          a: ({ href, children }) => {
+            const label = /^#phlox-source-(S[1-9][0-9]{0,5})$/.exec(href || '')?.[1]
+            if (label && citations) {
+              const reference = citations.find((item) => item.label === label)
+              const available = Boolean(reference?.source_id)
+              return <button type="button" disabled={!available}
+                aria-label={available ? `View source ${label}` : `Unverified source ${label}`}
+                title={available ? 'Inspect captured passage' : 'No evidence was registered for this reference'}
+                onClick={() => onSource?.(reference)}
+                className="mx-0.5 inline rounded border border-border bg-surface-2 px-1.5 py-0.5 text-xs font-medium text-accent disabled:text-muted disabled:line-through">
+                {label}{!available && ' ?'}
+              </button>
+            }
+            return <a href={href} target="_blank" rel="noreferrer" className="text-accent underline">{children}</a>
+          },
         }}
       >
         {children || ''}

@@ -147,6 +147,12 @@ class Conversation(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
 
+    sources: Mapped[list["Source"]] = relationship(cascade="all, delete-orphan")
+
+    runs: Mapped[list["Run"]] = relationship(cascade="all, delete-orphan")
+
+    approvals: Mapped[list["PendingApproval"]] = relationship(cascade="all, delete-orphan")
+
     messages: Mapped[list["Message"]] = relationship(
         back_populates="conversation",
         cascade="all, delete-orphan",
@@ -164,6 +170,8 @@ class Message(Base):
     # role: user | assistant | system | tool
     role: Mapped[str] = mapped_column(String(20))
     content: Mapped[str] = mapped_column(Text, default="")
+    # Validated label -> source ID bindings; no excerpt/title copied into message metadata.
+    citations: Mapped[list | None] = mapped_column(JSON, nullable=True)
     # Structured tool-call steps the assistant took this turn (list of dicts).
     tool_calls: Mapped[list | None] = mapped_column(JSON, nullable=True)
     # Artifacts produced this turn (images/files): [{name, mime, path, kind}].
@@ -196,6 +204,8 @@ class Document(Base):
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
+    ingestion: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
     chunks: Mapped[list["DocChunk"]] = relationship(
         back_populates="document", cascade="all, delete-orphan"
     )
@@ -212,6 +222,9 @@ class DocChunk(Base):
     text: Mapped[str] = mapped_column(Text)
     # Embedding vector stored as JSON array of floats (small scale; fine for SQLite).
     embedding: Mapped[list | None] = mapped_column(JSON, nullable=True)
+
+    provenance: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    embedding_identity: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     document: Mapped[Document] = relationship(back_populates="chunks")
 
@@ -271,8 +284,8 @@ class Memory(Base):
 
 
 class UsageLedger(Base):
-    """Durable, append-only record of token usage + cost per assistant turn, for
-    chargeback accounting.
+    """Durable token usage + cost per application model call, plus historical turn
+    entries. Calls are inserted before dispatch and updated as usage arrives.
 
     **Deliberately decoupled from the live data model:** it has *no foreign keys* to
     ``users``/``conversations`` and is excluded from ``delete_user_data``, so it survives
@@ -286,7 +299,7 @@ class UsageLedger(Base):
     __tablename__ = "usage_ledger"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
-    # The assistant Message this row was derived from; unique so backfill is idempotent.
+    # Unique call ID (or historical Message ID); makes legacy backfill idempotent.
     # Not a ForeignKey: the source message may be deleted while this row must persist. Wider
     # than the usual id column: the gateway path stores a synthetic "chatcmpl-<uuid32>" id
     # (41 chars) here instead of a Message.id. SQLite ignores the declared VARCHAR length
@@ -298,6 +311,15 @@ class UsageLedger(Base):
     username: Mapped[str | None] = mapped_column(String(150), nullable=True)
     email: Mapped[str | None] = mapped_column(String(300), nullable=True)
     department: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    # Model-call metadata; null means a legacy per-message/gateway ledger row.
+    turn_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    parent_call_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    profile: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    call_kind: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    status: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    usage_status: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    rate_snapshot: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    usage_details: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     # Usage metadata.
     model: Mapped[str | None] = mapped_column(String(200), nullable=True)
     input_tokens: Mapped[int] = mapped_column(Integer, default=0)
@@ -395,6 +417,8 @@ class PendingApproval(Base):
         ForeignKey("conversations.id", ondelete="CASCADE"), index=True
     )
     state: Mapped[dict] = mapped_column(JSON)
+    # A claim is never automatically retried: the tool may have had side effects.
+    status: Mapped[str] = mapped_column(String(20), default="pending", server_default="pending")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
 
@@ -438,3 +462,101 @@ class AppConfig(Base):
     value: Mapped[dict | list | None] = mapped_column(JSON)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
     updated_by: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
+
+class Run(Base):
+    """Private server-owned execution. Clearing active_conversation_id releases admission."""
+
+    __tablename__ = "runs"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(String(32), index=True)
+    conversation_id: Mapped[str] = mapped_column(ForeignKey("conversations.id", ondelete="CASCADE"), index=True)
+    active_conversation_id: Mapped[str | None] = mapped_column(String(32), unique=True, nullable=True)
+    request_key: Mapped[str] = mapped_column(String(100))
+    request_hash: Mapped[str] = mapped_column(String(64))
+    context_version: Mapped[int] = mapped_column(Integer, default=1)
+    payload: Mapped[dict] = mapped_column(JSON)
+    status: Mapped[str] = mapped_column(String(24), default="queued", index=True)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    pending_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    message_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    last_seq: Mapped[int] = mapped_column(Integer, default=0)
+    event_bytes: Mapped[int] = mapped_column(Integer, default=0)
+    events_expired: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
+    events: Mapped[list["RunEvent"]] = relationship(cascade="all, delete-orphan")
+    executions: Mapped[list["ToolExecution"]] = relationship(cascade="all, delete-orphan")
+    __table_args__ = (UniqueConstraint("user_id", "request_key", name="uq_run_request"),)
+
+
+class RunEvent(Base):
+    __tablename__ = "run_events"
+    run_id: Mapped[str] = mapped_column(ForeignKey("runs.id", ondelete="CASCADE"), primary_key=True)
+    seq: Mapped[int] = mapped_column(Integer, primary_key=True)
+    data: Mapped[dict] = mapped_column(JSON)
+
+
+class ToolExecution(Base):
+    """Dispatch intent and observed result; a missing result is never permission to replay."""
+
+    __tablename__ = "tool_executions"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    run_id: Mapped[str] = mapped_column(ForeignKey("runs.id", ondelete="CASCADE"), index=True)
+    call_id: Mapped[str] = mapped_column(String(200))
+    name: Mapped[str] = mapped_column(String(200))
+    status: Mapped[str] = mapped_column(String(24), default="started")
+    # Arguments and results are in the bounded private event log / final transcript.
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
+class Source(Base):
+    """Conversation-private captured evidence. Tombstones keep labels unambiguous."""
+
+    __tablename__ = "sources"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    conversation_id: Mapped[str] = mapped_column(ForeignKey("conversations.id", ondelete="CASCADE"), index=True)
+    number: Mapped[int] = mapped_column(Integer)
+    fingerprint: Mapped[str] = mapped_column(String(64))
+    kind: Mapped[str] = mapped_column(String(20), default="document")
+    document_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    chunk_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    title: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    excerpt: Mapped[str | None] = mapped_column(Text, nullable=True)
+    content_hash: Mapped[str] = mapped_column(String(64))
+    location: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    captured_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    uses: Mapped[list["SourceUse"]] = relationship(cascade="all, delete-orphan")
+    __table_args__ = (
+        UniqueConstraint("conversation_id", "number", name="uq_source_number"),
+        UniqueConstraint("conversation_id", "fingerprint", name="uq_source_fingerprint"),
+    )
+
+
+class SourceUse(Base):
+    """Evidence actually supplied within an accounting turn, including its children."""
+
+    __tablename__ = "source_uses"
+    turn_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    source_id: Mapped[str] = mapped_column(ForeignKey("sources.id", ondelete="CASCADE"), primary_key=True)
+    query: Mapped[str] = mapped_column(String(500), default="")
+
+
+# All application document deletion paths use ORM deletion, including assistant KBs and
+# account purges. Remove retained source content in the same transaction as the document.
+from sqlalchemy import event, update  # noqa: E402
+from sqlalchemy.orm import Session  # noqa: E402
+
+
+@event.listens_for(Session, "before_flush")
+def _purge_deleted_source_content(session, flush_context, instances):
+    ids = [row.id for row in session.deleted if isinstance(row, Document)]
+    if ids:
+        session.execute(update(SourceUse).where(SourceUse.source_id.in_(
+            session.query(Source.id).filter(Source.document_id.in_(ids))
+        )).values(query='').execution_options(synchronize_session=False))
+        session.execute(update(Source).where(Source.document_id.in_(ids)).values(
+            document_id=None, chunk_id=None, title=None, url=None, excerpt=None, location=None,
+        ).execution_options(synchronize_session=False))

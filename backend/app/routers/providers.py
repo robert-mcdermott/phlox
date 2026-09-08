@@ -30,11 +30,15 @@ def test_profile(profile: str, admin: User = Depends(require_admin)):
     """Send a tiny prompt to verify the profile is reachable."""
     check_rate_limit("provider-test", admin.id, limit=5, window_seconds=60)
     try:
-        provider = build_provider(profile)
+        from app.model_calls import CallScope, ScopedProvider
+        from dataclasses import replace
+
+        provider = ScopedProvider(build_provider(profile),
+                                  replace(CallScope.new(None, admin.id), kind="probe"))
         text = ""
         for delta in provider.stream(
             [{"role": "user", "content": "Reply with the single word: ok"}],
-            [] if not provider.supports_tools else [ToolSpec("noop", "no-op", {"type": "object", "properties": {}})],
+            [] if not provider.provider.supports_tools else [ToolSpec("noop", "no-op", {"type": "object", "properties": {}})],
             {"temperature": 0, "max_tokens": 16},
         ):
             if delta.type == "text":

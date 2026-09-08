@@ -19,9 +19,10 @@ logger = logging.getLogger(__name__)
 def _usage_dict(usage) -> dict[str, int]:
     """Normalize an OpenAI usage object to {input, output, total}."""
     return {
-        "input": int(getattr(usage, "prompt_tokens", 0) or 0),
-        "output": int(getattr(usage, "completion_tokens", 0) or 0),
-        "total": int(getattr(usage, "total_tokens", 0) or 0),
+        "input": getattr(usage, "prompt_tokens", None),
+        "output": getattr(usage, "completion_tokens", None),
+        "total": getattr(usage, "total_tokens", None),
+        "cache_read": getattr(getattr(usage, "prompt_tokens_details", None), "cached_tokens", None),
     }
 
 
@@ -125,38 +126,44 @@ class OpenAIProvider(LLMProvider):
         usage = None
 
         stream = self._open_stream(kwargs)
-        for chunk in stream:
-            # The usage chunk arrives at the end with empty choices.
-            if getattr(chunk, "usage", None):
-                usage = chunk.usage
-            if not chunk.choices:
-                continue
-            choice = chunk.choices[0]
-            delta = choice.delta
-            if choice.finish_reason:
-                finish_reason = choice.finish_reason
+        try:
+            for chunk in stream:
+                # The usage chunk arrives at the end with empty choices.
+                if getattr(chunk, "usage", None):
+                    usage = chunk.usage
+                    yield StreamDelta(type="usage", usage=_usage_dict(usage))
+                if not chunk.choices:
+                    continue
+                choice = chunk.choices[0]
+                delta = choice.delta
+                if choice.finish_reason:
+                    finish_reason = choice.finish_reason
 
-            if delta and delta.content:
-                yield StreamDelta(type="text", text=delta.content)
+                if delta and delta.content:
+                    yield StreamDelta(type="text", text=delta.content)
 
-            # Reasoning/thinking models (e.g. qwen3) stream their chain-of-thought in a
-            # separate `reasoning` field — surface it as a reasoning delta.
-            if delta:
-                reasoning = getattr(delta, "reasoning", None)
-                if reasoning is None and getattr(delta, "model_extra", None):
-                    reasoning = delta.model_extra.get("reasoning")
-                if reasoning:
-                    yield StreamDelta(type="reasoning", text=reasoning)
+                # Reasoning/thinking models (e.g. qwen3) stream their chain-of-thought in a
+                # separate `reasoning` field — surface it as a reasoning delta.
+                if delta:
+                    reasoning = getattr(delta, "reasoning", None)
+                    if reasoning is None and getattr(delta, "model_extra", None):
+                        reasoning = delta.model_extra.get("reasoning")
+                    if reasoning:
+                        yield StreamDelta(type="reasoning", text=reasoning)
 
-            if delta and getattr(delta, "tool_calls", None):
-                for tc in delta.tool_calls:
-                    slot = acc.setdefault(tc.index, {"id": "", "name": "", "args": ""})
-                    if tc.id:
-                        slot["id"] = tc.id
-                    if tc.function and tc.function.name:
-                        slot["name"] = tc.function.name
-                    if tc.function and tc.function.arguments:
-                        slot["args"] += tc.function.arguments
+                if delta and getattr(delta, "tool_calls", None):
+                    for tc in delta.tool_calls:
+                        slot = acc.setdefault(tc.index, {"id": "", "name": "", "args": ""})
+                        if tc.id:
+                            slot["id"] = tc.id
+                        if tc.function and tc.function.name:
+                            slot["name"] = tc.function.name
+                        if tc.function and tc.function.arguments:
+                            slot["args"] += tc.function.arguments
+        finally:
+            close = getattr(stream, "close", None)
+            if close:
+                close()
 
         if acc:
             calls: list[ToolCall] = []
@@ -166,12 +173,8 @@ class OpenAIProvider(LLMProvider):
                 except json.JSONDecodeError:
                     args = {}
                 calls.append(ToolCall(id=slot["id"] or slot["name"], name=slot["name"], arguments=args))
-            if usage is not None:
-                yield StreamDelta(type="usage", usage=_usage_dict(usage))
             yield StreamDelta(type="tool_calls", tool_calls=calls)
         else:
-            if usage is not None:
-                yield StreamDelta(type="usage", usage=_usage_dict(usage))
             yield StreamDelta(type="done", stop_reason=finish_reason or "stop")
 
     def _open_stream(self, kwargs: dict):
@@ -182,6 +185,9 @@ class OpenAIProvider(LLMProvider):
         except Exception as e:  # noqa: BLE001
             msg = str(e).lower()
             if "tools" in kwargs and ("multimodal" in msg or "does not support tools" in msg):
+                from app.model_calls import note_retry
+
+                note_retry()
                 logger.info("Model rejected tools+vision; retrying this turn without tools")
                 kwargs.pop("tools", None)
                 kwargs.pop("tool_choice", None)

@@ -14,7 +14,7 @@
   --color-text: #f0e6f7;
   --color-text-muted: #b69fc9;
   --color-accent: #df00ff; /* phlox */
-  --color-accent-fg: #ffffff;
+  --color-accent-fg: #160821;
   --color-user-bubble: #7a1fa2;
   --color-user-bubble-fg: #ffffff;
   --color-header: #110619;
@@ -52,7 +52,7 @@
   --color-text: #1f2937;
   --color-text-muted: #6b7280;
   --color-accent: #00abc8; /* hutch-cyan */
-  --color-accent-fg: #ffffff;
+  --color-accent-fg: #04222a;
   --color-user-bubble: #1b365d; /* hutch-navy */
   --color-user-bubble-fg: #ffffff;
   --color-header: #ffffff;
@@ -71,7 +71,7 @@
   --color-text: #111827;
   --color-text-muted: #6b7280;
   --color-accent: #0ea5b7;
-  --color-accent-fg: #ffffff;
+  --color-accent-fg: #04222a;
   --color-user-bubble: #0ea5b7;
   --color-user-bubble-fg: #ffffff;
   --color-header: #ffffff;
@@ -157,7 +157,7 @@
   --color-text: #3a3226;
   --color-text-muted: #8a7d68;
   --color-accent: #b8860b;
-  --color-accent-fg: #ffffff;
+  --color-accent-fg: #211b14;
   --color-user-bubble: #1b365d;
   --color-user-bubble-fg: #ffffff;
   --color-header: #fffdf9;

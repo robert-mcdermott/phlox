@@ -70,8 +70,10 @@ text. This is a token-level check, not an accessibility certification of the ent
 
 The fixed brand palette (`phlox`, plus the legacy `hutch-navy`, `hutch-cyan`,
 `hutch-purple`, `hutch-gold`) is always available as Tailwind colors regardless of theme —
-use these for brand-locked elements (e.g. the "New chat" button). Use the **semantic**
-tokens for everything that should adapt to the theme.
+use these for brand-locked elements such as logos. Use the **semantic** tokens for
+controls that should adapt to the theme. The "New chat" button uses `bg-accent` and
+`text-accent-fg`, so both its background and label follow the selected theme.
+Accent foregrounds use dark text where needed for contrast on brighter colors.
 
 ## Add a theme
 

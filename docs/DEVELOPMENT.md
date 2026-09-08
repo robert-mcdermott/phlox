@@ -33,7 +33,16 @@ Backend tests use isolated data, disabled auth or explicit test identities, and 
 providers rather than real model credentials. Tests cover API ownership, agent behavior,
 approvals, accounting, runs, source citations, and database operations. Chromium scenarios
 run the real SPA against synthetic HTTP fixtures, including login, approvals, replay,
-source inspection and exports. They do not certify every real provider or deployed service.
+source inspection, exports, and document retry/rebuild progress. They do not certify every
+real provider or deployed service.
+
+The versioned [retrieval fixtures](../backend/evals/retrieval_v1.json) and
+[ingestion tests](../backend/tests/test_ingestion.py) cover exact facts, conflicting versions,
+no-answer keyword queries, private distractors, real PDF/DOCX parsing, and a scripted
+paraphrase embedding. A DOCX table fixture measures a fact missed by the previous
+paragraph-only extractor and retrieved by the new parser. These deterministic contracts
+are not a live-model semantic quality score; local semantic models and rerankers still need
+evaluation on a representative corpus before changing defaults.
 
 The [CI workflow](../.github/workflows/ci.yml) also runs SQLite/Postgres migration and restore
 drills against a disposable PostgreSQL 16 service, with native dump/restore tools. Local

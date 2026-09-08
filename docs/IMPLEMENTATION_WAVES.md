@@ -240,9 +240,41 @@ in code; worker-off deployments physically purge expired snapshots at startup an
 on every read. Web capture, artifact-version references, richer ingestion provenance, and
 semantic citation evaluation remain future work.
 
-## Following wave — Retrieval and ingestion quality
+## Wave 7 — Reliable document ingestion and richer source locations
 
-Build on these inspectable sources by preserving parser/page/section provenance and
-embedding identity, then making ingestion/reindex progress and failures explicit (M2.2).
-Use the citation fixtures to measure retrieval improvements before expanding autonomous
-research or adding more retrieval machinery.
+**Status:** implemented and verified, 2026-09-08. **Scope:** a bounded portion of M2.2,
+building on Wave 6's document evidence. See [INGESTION.md](INGESTION.md) for the user and
+operator guide, including the upgrade procedure for existing libraries.
+
+**User outcome:** track processing, retry interrupted uploads, inspect real page/section
+locations, retrieve DOCX table contents, and migrate embedding models explicitly while
+preserving the previous index on failure. No new service or runs flag is required.
+
+| Task | Deliverable | Acceptance |
+|---|---|---|
+| W7.1 — Preserve extraction provenance | Bounded PDF pages, Markdown/DOCX headings and DOCX tables; hashes, offsets and parser/chunker versions; richer citation panel/export locations. | Real PDF/DOCX fixtures retain pages and table facts; legacy evidence identities survive migration. |
+| W7.2 — Make processing durable | SQL queue/attempt/progress, one document worker, upload/retry/reprocess UI for personal and assistant documents, interrupted recovery. | Restart requires explicit retry; duplicate active requests are rejected; successful retry replaces chunks; deletion prevents publication. |
+| W7.3 — Track embedding identity | Provider/profile/model/version/endpoint fingerprint and dimensions; strict provider batch validation. | Same-dimension changes are detected; outages never publish hash substitutions; invalid/incomplete vectors fail safely. |
+| W7.4 — Publish indexes safely | Explicit admin rebuild with progress; separate staged collection, SQL vector/pointer publication, authorized keyword degradation. | Provider/staging failures preserve the previous index; copied/private/stale hits cannot supply evidence, including assistant revocation during embedding. |
+| W7.5 — Verify upgrade and retrieval | Frozen Wave-6 schema, additive `0005_ingestion`, SQLite/Postgres migration/restore drills; versioned retrieval fixtures and browser recovery checks. | Old chats/citations survive, backups restore new metadata, DOCX table recall improves over paragraph-only extraction, UI exposes retry and rebuild failure. |
+
+Verification: **382 backend tests passed, 1 non-applicable SQLite case skipped**, with
+Postgres 16 enabled (**19 new cases**). **12 Chromium scenarios**, Ruff, frontend production
+build, documentation checks, and `git diff --check` pass. Tests use isolated databases,
+real local Qdrant, actual parser fixtures, and scripted providers. Existing dependency
+deprecation warnings and the diagram chunk-size build warning remain.
+
+Boundaries: no OCR, PDF layout inference, cross-upload deduplication, separate ingestion
+cancel button, hard parser isolation, staging collection garbage collector, or distributed
+worker. Processing timeouts are cooperative. Full re-embedding is bounded to 10,000 ready
+chunks and 8 million vector components; limits and recovery are documented. Old source
+snapshots retain their original evidence. Keyword/paraphrase fixtures establish behavior,
+not a representative live-model retrieval score. Memory keeps its separate embedding path.
+
+## Following wave — Captured web evidence
+
+Extend the source registry to fetched web pages, with URLs, titles, fetch time, bounded
+retained excerpts, explicit failed/paywalled fetches, and clickable citations. Preserve the
+existing ownership and untrusted-content boundaries. Establish reproducible fetch/citation
+fixtures before exposing a larger autonomous research workflow. M2.2's optional OCR/local
+semantic model evaluation and larger-library processing remain separately scoped work.

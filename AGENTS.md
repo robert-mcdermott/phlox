@@ -13,6 +13,7 @@ including local models like Ollama).
 lifecycle. Then the focused guides:
 - [docs/USER_GUIDE.md](docs/USER_GUIDE.md) — installation, configuration, usage, and troubleshooting
 - [docs/RUNS.md](docs/RUNS.md) — opt-in reconnectable execution, Stop, and recovery
+- [docs/INGESTION.md](docs/INGESTION.md) — document queue/retry, embedding identity, staged index rebuilds
 - [docs/SOURCES.md](docs/SOURCES.md) — document citations and snapshot access/retention
 - [docs/ROADMAP.md](docs/ROADMAP.md) — active improvement plan and milestone acceptance criteria
 - [docs/CODEBASE_REVIEW.md](docs/CODEBASE_REVIEW.md) — implementation findings behind the plan
@@ -105,7 +106,9 @@ per-call usage, price snapshots, unknown-cost reporting, and bounded context che
 SQLite/Postgres recovery drills. **Wave 5 (F07) is implemented:** opt-in reconnectable runs,
 explicit Stop, and conservative interruption recovery. **Wave 6 (document F08) is implemented:**
 private source snapshots, stable citations, source inspection and reauthorized Markdown exports
-(see [docs/SOURCES.md](docs/SOURCES.md)). M1/M2 remain in progress; ingestion quality and web
-evidence are still roadmap work. Consult the wave log
+(see [docs/SOURCES.md](docs/SOURCES.md)). **Wave 7 (bounded M2.2) is implemented:** document
+processing/retry, PDF page and DOCX table provenance, embedding identity, staged rebuilds,
+and explicit keyword degradation. M1/M2 remain in progress; OCR, semantic retrieval evaluation,
+and web evidence are still roadmap work. Consult the wave log
 for verification and remaining boundaries. Sensitive-data/PHI governance remains a separate
 deployment gate. Extend along the documented seams above.

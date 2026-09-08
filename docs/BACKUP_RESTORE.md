@@ -30,9 +30,10 @@ accounts, tool preferences, MCP connections, or index work. A migration failure 
 startup. `/api/readiness` is 503 when the database revision is unavailable/out of date or
 the selected sandbox is unavailable.
 
-The current head is `0004_sources`, which adds private evidence snapshots, turn-source
-links, and nullable message citations for [Wave 6](SOURCES.md). Revision `0003_runs` adds
-run/replay/action tables. Revisions `0001_wave3`, `0002_ledger_width`, and `0003_runs` remain
+The current head is `0005_ingestion`, adding nullable document processing, chunk provenance,
+and embedding identity metadata for [Wave 7](INGESTION.md). `0004_sources` adds private
+evidence snapshots, turn-source links, and nullable message citations; `0003_runs` adds
+run/replay/action tables. Revisions `0001_wave3`, `0002_ledger_width`, `0003_runs`, and `0004_sources` remain
 readable by check/backup before upgrade. The initial revision, `0001_wave3`, contains a **frozen** schema snapshot and
 the previous releases' explicit additive-column allowlist. Existing tables are inspected
 for column types/lengths/nullability, primary keys, uniqueness, foreign keys, and named
@@ -138,9 +139,12 @@ uv run uvicorn app.main:app --host 127.0.0.1 --port 8001
 
 `reindex` is offline and rebuilds the configured vector collection from saved embeddings,
 without making model calls. On a restored config that target is a new local Qdrant path.
-On other configs it replaces the configured collection, so check the environment first.
-It does not change embedding models or fill missing vectors. After startup, the usual index
-synchronization can probe the configured embedder and re-embed if dimensions changed.
+It stages a new collection and records the active collection in SQL before switching; old
+collection cleanup is best effort. Check the target environment first. It does not change
+embedding models, fill missing vectors, or establish unknown embedding identities. Startup
+does not re-embed automatically. Use the admin Documents panel's **Rebuild search index**
+to explicitly re-embed ready passages after a model change or legacy-library upgrade.
+Restored unfinished document jobs become interrupted; retry them manually. See [INGESTION.md](INGESTION.md).
 
 Check login, a saved chat, document retrieval, attachment downloads, workspace files,
 checkpoint history, permissions, and usage before switching traffic. Claimed approvals stay

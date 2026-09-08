@@ -349,7 +349,10 @@ Upload documents in **Settings → Documents**, attach one to a message, or type
 composer to reference an existing ready document. The library supports global and
 conversation-scoped documents. Wait for indexing to finish; only ready documents can be
 used as evidence. PDF, DOCX, text, Markdown, and code/text files are supported; scanned
-PDFs need a text layer because automatic OCR is not implemented.
+PDFs need a text layer because automatic OCR is not implemented. Processing progress appears
+in the document library and assistant knowledge settings. Use **Retry processing** after a
+failure/restart or **Reprocess document** to parse a ready file again. Uploads are limited to
+20 MiB. The document worker runs independently of the optional chat runs feature.
 
 Enable **Search documents** and ask a specific question, such as “Summarize this policy and
 cite the passages you use.” Document search uses Qdrant with dense and sparse retrieval
@@ -362,18 +365,22 @@ embeddings:
   model: YOUR_INSTALLED_EMBEDDING_MODEL_ID
 ```
 
-The profile must refer to an embedding-capable OpenAI-compatible endpoint. Without a
-working embedder, Phlox can fall back to deterministic local hash embeddings. That keeps
-retrieval available but is not equivalent to a semantic embedding model. Startup detects
-vector-dimension changes and can re-embed/rebuild; it does not reliably detect changing to
-a different model with the same dimension. Keep embedding settings stable and review
-retrieval quality after changes. The admin Documents panel's **Reindex** action runs the
-same dimension check, re-embedding only when the dimension changes, then rebuilds the index.
-The offline `app.ops reindex` command rebuilds from saved embeddings. Neither is a general
-solution for switching to a same-dimension model.
+The profile must refer to an embedding-capable OpenAI-compatible endpoint. With no profile,
+Phlox deliberately uses local hash vectors, which are not semantic embeddings. Configured
+provider/index failures instead produce an explicit **keyword-only search** notice; existing
+vectors are preserved. Model, endpoint, or `embeddings.version` changes require an explicit
+rebuild, including same-dimension changes. Startup never automatically re-embeds documents.
+
+In **Settings → Documents**, an admin can **Rebuild search index**. This embeds all ready
+passages with the current configuration, then publishes a staged index only after success.
+It can incur provider costs. After upgrading an older library, rebuild to populate its
+unknown embedding identities; keyword search remains available meanwhile. Then reprocess
+older PDFs/DOCX files to add page/table locations. The offline `app.ops reindex` command
+only rebuilds saved vectors. See [Document processing](INGESTION.md) for upgrade steps,
+embedding version configuration, limits, and the distinction between reprocess and rebuild.
 
 New document answers can use stable **[S1]** citations. Click one to inspect the retained
-excerpt, filename, chunk-relative location and capture time. Changed/truncated passages
+excerpt, filename, available PDF page or section/table location, chunk range, and capture time. Changed/truncated passages
 are marked; invented references are unverified. Model-generated citations in older messages
 are not retroactively upgraded. This feature is always available in both chat modes, with
 no separate flag. It currently covers personal documents and assistant knowledge bases;
@@ -509,7 +516,7 @@ secret environment**. Enabling runs or citations does not require a fresh databa
    frontend (`npm ci` then `npm run build`) for production. The development launcher does
    not refresh existing frontend dependencies automatically after every lockfile change.
 4. Start normally. Checked Alembic migrations run before application bootstrap. Current
-   head is `0004_sources`; this includes the earlier `0003_runs` migration even with runs
+   head is `0005_ingestion`; this includes the earlier run/source migrations even with runs
    disabled. Do not stamp a database manually or overwrite it with an empty one.
 5. Check `/api/readiness`, sign in, and verify an existing conversation and document.
 
@@ -536,7 +543,7 @@ automatic replay. Full commands and limitations: [BACKUP_RESTORE.md](BACKUP_REST
 | Run admission is full | Pending approvals and interruptions count toward limits; resolve them in existing conversations |
 | Refresh lost ongoing work | `runs.enabled` defaults false; enable in the active file and restart. Past request-bound work is not made durable retroactively |
 | Source missing or unverified | Document readiness, access/assistant visibility, snapshot expiry/deletion, unknown model label; see SOURCES.md |
-| Poor document retrieval | Search toggle/reference, extraction quality, embedding endpoint availability and consistent model/dimensions; Reindex alone does not re-embed |
+| Poor document retrieval | Check processing status and extraction quality; an admin can rebuild unknown/changed embedding identities. Keyword-only search may miss paraphrases; see [INGESTION.md](INGESTION.md) |
 | Code import fails | Package exists inside the selected execution environment; ephemeral containers do not retain ad-hoc installs |
 | MCP connection fails | Command/dependencies installed where Phlox runs, correct transport/URL/credentials, current connection state and tool policy |
 | Logged out on restart | Development ephemeral JWT secret; load a stable secret to retain sessions |
@@ -556,7 +563,7 @@ and a representative document question after setup.
 | Topic | Guide |
 |---|---|
 | Server installation and containers | [DEPLOYMENT.md](DEPLOYMENT.md), [DOCKER.md](DOCKER.md) |
-| Runs, approvals, document evidence | [RUNS.md](RUNS.md), [APPROVALS.md](APPROVALS.md), [SOURCES.md](SOURCES.md) |
+| Runs, approvals, document evidence | [RUNS.md](RUNS.md), [APPROVALS.md](APPROVALS.md), [SOURCES.md](SOURCES.md), [INGESTION.md](INGESTION.md) |
 | Accounts and Entra ID | [AUTH.md](AUTH.md) |
 | Execution environments | [SANDBOX.md](SANDBOX.md) |
 | Usage, context, pricing, budgets | [MODEL_CALLS.md](MODEL_CALLS.md), [OBSERVABILITY.md](OBSERVABILITY.md), [BUDGETS.md](BUDGETS.md) |

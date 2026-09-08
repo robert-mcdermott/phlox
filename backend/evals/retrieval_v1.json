@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "mode": "keyword-fallback",
+  "documents": [
+    {"name": "policy", "text": "Bicycles require helmets. Vehicle travel is permitted."},
+    {"name": "old", "text": "2024 reimbursement meal allowance: $30."},
+    {"name": "new", "text": "2026 reimbursement meal allowance: $45."},
+    {"name": "private", "text": "Private reimbursement meal allowance: $900. Bicycles require helmets.", "private": true}
+  ],
+  "queries": [
+    {"query": "bicycles helmets", "documents": ["policy"]},
+    {"query": "reimbursement allowance", "documents": ["old", "new"]},
+    {"query": "quasars", "documents": []}
+  ]
+}

@@ -115,7 +115,7 @@ important distinction between snapshot removal and historical transcript retenti
 | **Auth** | `auth/{security,service,deps,entra}.py`, `routers/auth.py` | Local login (bcrypt+JWT), admin gate, Entra ID SSO seam, user mgmt. See [AUTH.md](AUTH.md) |
 | **Sandbox** | `sandbox/runner.py` | Execution isolation seam: `LocalSubprocessRunner` + `ContainerRunner` (Podman/Docker-compatible) |
 | **Workspace** | `workspace/manager.py` | Per-conversation working dir + path-traversal guard |
-| **RAG** | `rag/ingest.py`, `embed.py`, `retrieve.py`, `store.py` | Parse → chunk → embed → **Qdrant** vector search (`VectorStore` seam) |
+| **RAG** | `rag/jobs.py`, `parsing.py`, `ingest.py`, `identity.py`, `maintenance.py`, `retrieve.py`, `store.py` | Durable processing queue; versioned parsing/embeddings; staged **Qdrant** publication and authorized keyword degradation |
 | **MCP** | `mcp/manager.py` | Connect MCP servers, proxy their tools into the registry |
 | **Observability** | `observability.py`, `model_calls.py`, `usage_ledger.py`, `routers/usage.py` | Per-request logging, OTel seam, per-call token/cost capture + durable chargeback ledger. See [OBSERVABILITY.md](OBSERVABILITY.md) |
 | **Budgets** | `budgets.py`, `routers/budgets.py` | Monthly USD spend caps per user/department: current-month spend (from the ledger), warn/block status, and `enforce_budget` applied at the chat + gateway choke points. See [BUDGETS.md](BUDGETS.md) |
@@ -187,6 +187,14 @@ important distinction between snapshot removal and historical transcript retenti
   **sparse** (lexical) vector in Qdrant; retrieval queries both, fuses with RRF in Python
   (robust on embedded mode), then reranks. Sparse vectors + the default reranker are
   dependency-free/offline.
+- **Document ingestion is queued** (`rag/jobs.py`), independently of `runs.enabled`.
+  `Document.ingestion` persists attempt/progress; restart marks unfinished jobs interrupted.
+  `parsing.py` preserves pages/sections/tables and enforces limits; `identity.py` validates
+  provider/model/version/dimensions without automatic hash substitution. SQL ready chunks
+  and current assistant visibility authorize all retrieval, including keyword degradation.
+  Explicit admin rebuilds stage vectors before publishing the SQL `rag:index` collection
+  pointer; startup never automatically re-embeds. `VectorStore.stage/activate/discard` are
+  the publication seam. See [INGESTION.md](INGESTION.md) for limits and recovery.
 - **Cross-conversation memory** (`memory.py`): durable facts (saved by the `save_memory`
   tool or the Memory tab) are semantically retrieved each turn and appended to the system
   prompt, so the assistant "remembers" the user across chats.
@@ -314,7 +322,9 @@ drag handle on its left edge.
   `{id,name,arguments,content,is_error,artifacts}`; `Message.artifacts` (JSON) stores
   produced files; `Message.usage` (JSON) stores `{input,output,total,cost}`. This is what
   lets the UI re-render a full agent turn after reload.
-- `Document` 1—* `DocChunk` (chunk text + JSON embedding vector).
+- `Document` 1—* `DocChunk` (chunk text, JSON embedding vector, provenance and embedding
+  identity). `Document.ingestion` stores the durable processing attempt; `Setting` key
+  `rag:index` stores rebuild progress and the published Qdrant collection pointer.
 - `Assistant` — an admin-curated persona: name/description/`avatar` (data URL or emoji),
   optional `profile`/`model`, `system_prompt`, `params` (JSON, reserved),
   `prompt_suggestions` (JSON), `capabilities` (JSON hard limits), `visibility`

@@ -8,16 +8,15 @@ and never appear in personal document listings.
 """
 from __future__ import annotations
 
-import shutil
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from app.auth.deps import get_current_user, require_admin
 from app.config import UPLOADS_DIR
 from app.database import get_db
 from app.models import Assistant, Document, User
-from app.routers.documents import DocumentOut, _ingest_job
+from app.routers.documents import DocumentOut, save_upload
 from app.schemas import AssistantCreate, AssistantOut, AssistantUpdate
 
 router = APIRouter(prefix="/api/assistants", tags=["assistants"])
@@ -145,32 +144,25 @@ def list_assistant_documents(
 @router.post("/{assistant_id}/documents", response_model=DocumentOut)
 async def upload_assistant_document(
     assistant_id: str,
-    background: BackgroundTasks,
     file: UploadFile,
     db: Session = Depends(get_db),
     user: User = Depends(require_admin),
 ):
     _manageable(db, assistant_id, user)
-    doc = Document(
-        filename=file.filename or "upload",
-        mime=file.content_type,
-        status="pending",
-        assistant_id=assistant_id,
-        user_id=None,  # deployment-owned; see module docstring
-    )
-    db.add(doc)
-    db.commit()
-    db.refresh(doc)
+    return await save_upload(db, file, assistant_id=assistant_id, user_id=None)
 
-    dest = UPLOADS_DIR / f"{doc.id}_{doc.filename}"
-    with open(dest, "wb") as f:
-        shutil.copyfileobj(file.file, f)
-    doc.size_bytes = dest.stat().st_size
-    db.commit()
-    db.refresh(doc)
 
-    background.add_task(_ingest_job, doc.id, str(dest))
-    return doc
+@router.post('/{assistant_id}/documents/{document_id}/retry', response_model=DocumentOut)
+def retry_assistant_document(assistant_id: str, document_id: str,
+                             db: Session = Depends(get_db), user: User = Depends(require_admin)):
+    from app.rag.jobs import enqueue
+    from app.runs import LOCK
+    with LOCK:
+        _manageable(db, assistant_id, user)
+        doc = db.get(Document, document_id)
+        if not doc or doc.assistant_id != assistant_id:
+            raise HTTPException(404, 'Document not found')
+        return enqueue(db, doc)
 
 
 @router.delete("/{assistant_id}/documents/{document_id}")

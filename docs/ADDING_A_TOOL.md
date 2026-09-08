@@ -140,3 +140,8 @@ to vector payload text. The harness automatically emits the shared turn catalog 
 results, including evidence registered by children. Do not generate local source numbers
 or accept model-authored source IDs as authority. See [SOURCES.md](SOURCES.md) for the
 snapshot, access, retention and export contract. Web tools require a future capture path.
+
+`search_chunks` returns a list-compatible `SearchResults` with an optional `notice`.
+Preserve that notice in tool output even when there are no hits: keyword degradation after
+an embedding/index failure is different from a successful search with no matching passages.
+Never bypass its current SQL ownership/readiness/assistant checks. See [INGESTION.md](INGESTION.md).

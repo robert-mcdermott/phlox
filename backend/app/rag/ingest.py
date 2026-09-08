@@ -1,121 +1,103 @@
-"""Parse uploaded files into text, chunk, embed, and store as DocChunks."""
+"""Parse, embed and publish complete document generations; retries replace rather than append."""
 from __future__ import annotations
 
 import logging
+import time
+import uuid
 from pathlib import Path
 
-from sqlalchemy.orm import Session
-
 from app.models import DocChunk, Document
-from app.rag.embed import embed_texts
+from app.rag.embed import sparse_embed
+from app.rag.identity import EmbeddingError, embed, identity
+from app.rag.parsing import DocumentError, chunks, extract, MAX_BYTES, TEXT_EXTS  # noqa: F401
+from app.runs import LOCK
 
 logger = logging.getLogger(__name__)
 
-CHUNK_SIZE = 1200  # characters
-CHUNK_OVERLAP = 150
+
+class Interrupted(DocumentError):
+    pass
 
 
-def _payload(document, chunk) -> dict:
-    """Qdrant payload for a chunk (scope keys omitted when empty so IsEmpty matches)."""
+def _payload(document, chunk):
     from app.rag.retrieve import build_chunk_payload
-
-    return build_chunk_payload(
-        chunk,
-        document.filename,
-        document.conversation_id,
-        document.user_id,
-        document.assistant_id,
-    )
-TEXT_EXTS = {".txt", ".md", ".markdown", ".py", ".js", ".ts", ".json", ".csv", ".html", ".xml", ".yaml", ".yml"}
+    return build_chunk_payload(chunk, document.filename, document.conversation_id, document.user_id, document.assistant_id)
 
 
-def extract_text(path: Path, mime: str | None) -> str:
-    ext = path.suffix.lower()
-    if ext == ".pdf":
-        return _extract_pdf(path)
-    if ext == ".docx":
-        return _extract_docx(path)
-    if ext in TEXT_EXTS or (mime and mime.startswith("text/")):
-        return path.read_text(encoding="utf-8", errors="replace")
-    # Last resort: try as text.
-    try:
-        return path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return ""
+def extract_text(path, mime=None):
+    return '\n\n'.join(text for text, _ in extract(path, mime))
 
 
-def _extract_pdf(path: Path) -> str:
-    from pypdf import PdfReader
-
-    reader = PdfReader(str(path))
-    return "\n\n".join((page.extract_text() or "") for page in reader.pages)
-
-
-def _extract_docx(path: Path) -> str:
-    import docx
-
-    d = docx.Document(str(path))
-    return "\n".join(p.text for p in d.paragraphs)
-
-
-def chunk_text(text: str, size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> list[str]:
+def chunk_text(text, size=1200, overlap=150):
     text = text.strip()
-    if not text:
-        return []
-    chunks: list[str] = []
-    start = 0
-    while start < len(text):
-        end = min(start + size, len(text))
-        chunks.append(text[start:end])
-        if end == len(text):
-            break
-        start = end - overlap
-    return chunks
+    return [text[n:n + size] for n in range(0, len(text), size - overlap) if n == 0 or n + overlap < len(text)]
 
 
-def ingest_document(db: Session, document: Document, file_path: Path) -> None:
-    """Parse → chunk → embed → persist. Updates document.status in place."""
-    try:
-        text = extract_text(file_path, document.mime)
-        chunks = chunk_text(text)
-        if not chunks:
-            document.status = "error"
-            document.error = "No extractable text"
+def ingest_document(db, document, file_path: Path, stopped=lambda: False):
+    doc_id = document.id
+    token = (document.ingestion or {}).get('token')
+    started = time.monotonic()
+
+    def check():
+        db.expire_all()
+        current = db.get(Document, doc_id)
+        if stopped() or not current or current.status != 'processing' or (current.ingestion or {}).get('token') != token:
+            raise Interrupted('Processing interrupted. Retry to start a new attempt.')
+        if time.monotonic() - started > 300:
+            raise DocumentError('Processing exceeded five minutes. Retry a smaller document.')
+        return current
+
+    def progress(stage, completed=0, total=0):
+        with LOCK:
+            current = check()
+            current.ingestion = {**current.ingestion, 'stage': stage, 'completed': completed, 'total': total}
             db.commit()
-            return
-        vectors = embed_texts(chunks)
-        chunk_rows: list[DocChunk] = []
-        for i, (chunk, vec) in enumerate(zip(chunks, vectors, strict=False)):
-            row = DocChunk(document_id=document.id, ordinal=i, text=chunk, embedding=vec)
-            db.add(row)
-            chunk_rows.append(row)
-        db.flush()  # assign chunk ids before indexing
 
-        # Index vectors in the vector store (Qdrant). SQLite stays the source of truth.
-        from app.rag.embed import sparse_embed
+    try:
+        if file_path.stat().st_size > MAX_BYTES:
+            raise DocumentError('Document exceeds the 20 MiB limit.')
+        progress('extracting')
+        passages, digest = chunks(file_path, document.mime, check)
+        spec = identity()
+        # Never insert vectors of a new identity into the last good index.
+        existing = db.query(DocChunk.embedding_identity).join(Document).filter(Document.status == 'ready', Document.id != doc_id).all()
+        if any(not x[0] or x[0].get('fingerprint') != spec['fingerprint'] for x in existing):
+            raise EmbeddingError('Embedding identity changed or is unknown. Ask an admin to rebuild the index, then retry this document.')
+        vectors = []
+        for offset in range(0, len(passages), 64):
+            progress('embedding', len(vectors), len(passages))
+            batch, actual = embed([p[0] for p in passages[offset:offset + 64]], spec)
+            if len(passages) * actual['dimensions'] > 8_000_000:
+                raise EmbeddingError('Document exceeds the 8 million vector component limit. Split it or use smaller embeddings.')
+            if vectors and len(vectors[0]) != actual['dimensions']:
+                raise EmbeddingError('Embedding dimensions changed between batches. Retry with a stable provider.')
+            vectors.extend(batch)
+        progress('indexing', len(vectors), len(passages))
         from app.rag.store import get_vector_store
-
         store = get_vector_store()
-        store.ensure_collection(len(vectors[0]))
-        store.upsert(
-            [
-                {
-                    "id": row.id,
-                    "dense": vec,
-                    "sparse": sparse_embed(row.text),
-                    "payload": _payload(document, row),
-                }
-                for row, vec in zip(chunk_rows, vectors, strict=False)
-            ]
-        )
-
-        document.n_chunks = len(chunks)
-        document.status = "ready"
-        document.error = None
-        db.commit()
-        logger.info("Ingested %s (%d chunks)", document.filename, len(chunks))
-    except Exception as e:  # noqa: BLE001
-        logger.exception("Ingestion failed for %s", document.filename)
-        document.status = "error"
-        document.error = str(e)
-        db.commit()
+        with LOCK:
+            current = check()
+            if identity()['fingerprint'] != spec['fingerprint']:
+                raise EmbeddingError('Embedding settings changed during processing. Retry.')
+            rows = [DocChunk(id=uuid.uuid4().hex, document_id=doc_id, ordinal=i, text=text,
+                             provenance=location, embedding=vector, embedding_identity=actual)
+                    for i, ((text, location), vector) in enumerate(zip(passages, vectors, strict=True))]
+            # Unpublished vectors cannot surface: retrieval always validates SQL ready rows.
+            store.ensure_collection(actual['dimensions'])
+            store.upsert([{'id': r.id, 'dense': r.embedding, 'sparse': sparse_embed(r.text), 'payload': _payload(current, r)} for r in rows])
+            current.chunks = rows
+            current.n_chunks, current.status, current.error = len(rows), 'ready', None
+            current.ingestion = {**current.ingestion, 'stage': 'ready', 'completed': len(rows),
+                                 'total': len(rows), 'content_hash': digest, 'parser_version': '2',
+                                 'chunker_version': '2', 'embedding': actual}
+            db.commit()
+    except Exception as exc:
+        db.rollback()
+        with LOCK:
+            current = db.get(Document, doc_id, populate_existing=True)
+            if current and current.status == 'processing' and (current.ingestion or {}).get('token') == token:
+                current.status = 'interrupted' if isinstance(exc, Interrupted) else 'error'
+                current.error = str(exc) if isinstance(exc, (DocumentError, EmbeddingError)) else 'Document processing failed. Check format/provider/index and retry.'
+                current.ingestion = {**current.ingestion, 'stage': current.status}
+                db.commit()
+        logger.warning('Document processing ended: %s', type(exc).__name__)

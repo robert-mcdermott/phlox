@@ -88,6 +88,10 @@ export const api = {
   getSuggestions: () => req('GET', '/api/settings/suggestions'),
 
   // documents
+  documentIndexStatus: () => req('GET', '/api/documents/index-status'),
+  rebuildDocumentIndex: () => req('POST', '/api/documents/reindex'),
+  retryDocument: (id) => req('POST', `/api/documents/${id}/retry`),
+  retryAssistantDocument: (id, docId) => req('POST', `/api/assistants/${id}/documents/${docId}/retry`),
   listDocuments: (conversationId) =>
     req('GET', conversationId ? `/api/documents?conversation_id=${conversationId}` : '/api/documents'),
   deleteDocument: (id) => req('DELETE', `/api/documents/${id}`),

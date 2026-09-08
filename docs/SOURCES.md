@@ -4,7 +4,8 @@
 
 Wave 6 implements the document portion of F08. New answers can cite uploaded documents
 and an assistant's knowledge base using stable labels such as **[S1]**. Click a citation
-to inspect the captured passage, filename, chunk, character range, and capture time.
+to inspect the captured passage, filename, available page/section/table location, chunk,
+character range, and capture time. Wave 7 adds [richer ingestion provenance](INGESTION.md).
 The panel marks shortened passages and documents that have changed since capture.
 A registered source identifies evidence supplied during the turn; it does **not** verify
 that the passage supports the answer's claim.
@@ -14,8 +15,9 @@ that the passage supports the answer's claim.
 This feature is enabled without a configuration flag, in both the default chat mode and
 opt-in [reconnectable runs](RUNS.md). No new service, provider, or model configuration is
 required. Stop Phlox and preserve a [backup](BACKUP_RESTORE.md) before upgrading. Normal
-startup applies migration `0004_sources`, which adds two tables and nullable message
-citation metadata. Existing messages remain intact; old numeric/D-prefixed citations are
+startup applies migrations through `0005_ingestion`; `0004_sources` adds two tables and
+nullable message citations, and `0005_ingestion` adds document provenance/processing fields.
+Existing messages remain intact; old numeric/D-prefixed citations are
 not retroactively assigned sources.
 
 Attach or reference a ready document, or enable **Search documents** for the prompt. Ask
@@ -29,7 +31,7 @@ Sources appendix, or explicit unavailable/unverified notices.
 
 - `Source` belongs to one conversation. Its opaque ID and increasing S-number are never
   reassigned to different evidence. Identity includes document ID, chunk ordinal, full
-  chunk hash, and the exact retained excerpt. Repeated retrieval of that same evidence
+  chunk hash, the exact retained excerpt, and parser provenance when available. Repeated retrieval of that same evidence
   reuses the label; a changed chunk or differently shortened passage receives a new one.
 - SQL `Document` and `DocChunk` rows are authoritative. Vector hits are candidates only:
   ownership, readiness, scope and chunk association are checked before any passage is
@@ -41,9 +43,13 @@ Sources appendix, or explicit unavailable/unverified notices.
 - Direct references and `search_documents` share the registry. The harness emits `sources`
   SSE catalogs; approval snapshots and durable event replay preserve the same labels.
   The frontend renders chips outside code and existing Markdown links.
-- Locations are **one-based chunk numbers in the UI** and character ranges within that
-  chunk. The stored offsets and ordinals are zero-based, end-exclusive. They are not PDF
-  page numbers: ingestion does not yet preserve page/section coordinates reliably.
+- Locations include **one-based PDF pages**, Markdown/DOCX heading sections, and DOCX
+  table/row numbers when available from the current parser. Chunk numbers in the UI are
+  one-based; stored chunk ordinals and character offsets are zero-based, end-exclusive.
+  `start`/`end` describe the retained chunk excerpt; `source_start`/`source_end` locate it
+  within its extraction segment. These are text offsets, not visual page coordinates.
+  Legacy chunks keep their chunk-only locations until reprocessed; retained old citations
+  are not retroactively assigned page numbers. Reprocessing may create new source identities.
 
 ## Privacy, deletion and limits
 
@@ -92,6 +98,6 @@ or tool arguments. A passage already displayed or downloaded cannot be remotely 
   label to a model. `catalog`, `bind`, and `inspect_source` handle turn references and reads.
 
 This delivery covers uploaded documents and assistant knowledge bases. Web discovery/
-fetched-page evidence, fetch failures/paywalls, PDF page coordinates, claim-support
+fetched-page evidence, fetch failures/paywalls, visual PDF highlighting, claim-support
 scoring, and artifact-version citation metadata remain later work. The generic kind/URL
 fields reserve an extension seam; they do not imply that web citations are captured today.

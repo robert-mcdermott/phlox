@@ -32,7 +32,7 @@ function scopedDocuments(docs, activeId) {
 
 function docStatus(doc) {
   if (doc.status === 'ready') return `${doc.n_chunks || 0} chunks`
-  if (doc.status === 'error') return doc.error || 'Indexing failed'
+  if (['error', 'interrupted'].includes(doc.status)) return (doc.error || 'Processing interrupted') + ' Retry in Settings → Documents.'
   return 'Indexing...'
 }
 
@@ -130,7 +130,7 @@ export default function Composer() {
   }, [docPicker.open, docPicker.query, documentRefs, documents])
 
   const pendingDocs = documentRefs.filter((d) => d.status && d.status !== 'ready')
-  const erroredDocs = documentRefs.filter((d) => d.status === 'error')
+  const erroredDocs = documentRefs.filter((d) => ['error', 'interrupted'].includes(d.status))
   const documentIds = documentRefs.map((d) => d.id || d.document_id).filter(Boolean)
   const canSubmit =
     (text.trim() || images.length > 0 || documentIds.length > 0 || skillRefs.length > 0) &&
@@ -362,7 +362,7 @@ export default function Composer() {
           <div className="mb-2 flex flex-wrap gap-2">
             {documentRefs.map((doc) => {
               const ready = doc.status === 'ready'
-              const error = doc.status === 'error'
+              const error = ['error', 'interrupted'].includes(doc.status)
               return (
                 <div
                   key={doc.id || doc.document_id}

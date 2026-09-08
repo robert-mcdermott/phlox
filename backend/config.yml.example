@@ -142,16 +142,16 @@ profiles:
     prompt_cache: true           # cache the system prompt + tools (Claude on Bedrock) for
                                  # lower latency/cost; set false if your model lacks caching
 
-# Embeddings used for document/RAG search. FILE-ONLY (not in the admin UI). If the configured
-# embedding profile cannot embed, Phlox falls back to a deterministic local hashing embedder so RAG
-# still works (hash fallback is not equivalent to semantic embeddings).
-# When a changed embedder produces a different vector dimension, Phlox re-embeds stored
-# documents and rebuilds the index on startup (see rag/maintenance.py).
-# Same-dimension model changes are NOT detected; keep the embedding model consistent.
+# Document/RAG embeddings. FILE-ONLY, restart required. See docs/INGESTION.md.
+# Missing profile deliberately selects local-hash vectors (not semantic embeddings).
+# Configured provider/index failures use explicit SQL keyword search, never hash substitution.
+# Model/version/endpoint changes require an admin Documents -> Rebuild search index action,
+# including same-dimension changes. Startup never automatically re-embeds the library.
 embeddings:
   # profile + model to use for embeddings (must be an "openai"-type profile / endpoint).
   profile: local-ollama          # fully local, no API key (after: ollama pull nomic-embed-text)
   model: nomic-embed-text
+  # version: '1'                 # bump when a provider replaces weights behind the same ID
   # OpenAI alternative:
   # profile: openai-gpt
   # model: text-embedding-3-small

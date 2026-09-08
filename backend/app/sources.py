@@ -65,7 +65,10 @@ def capture(db, *, conversation_id, user_id, turn_id, document_id, chunk_id=None
         if not text.strip():
             return None
         content_hash = hashlib.sha256(chunk.text.encode()).hexdigest()
-        fingerprint = hashlib.sha256(json.dumps([document_id, chunk.ordinal, content_hash, text]).encode()).hexdigest()
+        evidence = [document_id, chunk.ordinal, content_hash, text]
+        if chunk.provenance:
+            evidence.append(chunk.provenance)
+        fingerprint = hashlib.sha256(json.dumps(evidence, sort_keys=True).encode()).hexdigest()
         row = db.query(Source).filter_by(conversation_id=conv.id, fingerprint=fingerprint).first()
         use = db.get(SourceUse, (turn_id, row.id)) if row else None
         if not use and db.query(SourceUse).filter_by(turn_id=turn_id).count() >= MAX_TURN_SOURCES:
@@ -83,16 +86,23 @@ def capture(db, *, conversation_id, user_id, turn_id, document_id, chunk_id=None
         if row.excerpt is None:
             row.title = doc.filename[:500]
             row.excerpt = text
-            row.location = {'chunk': chunk.ordinal, 'start': 0, 'end': len(text),
+            row.location = {**(chunk.provenance or {}),
+                            'source_start': (chunk.provenance or {}).get('start'),
+                            'source_end': ((chunk.provenance or {}).get('start', 0) + len(text)) if chunk.provenance else None,
+                            'chunk': chunk.ordinal, 'start': 0, 'end': len(text),
                             'truncated': len(text) < len(chunk.text)}
             row.captured_at = now
+        # Identical evidence can be recaptured after reprocessing replaces chunk IDs.
+        row.chunk_id = chunk.id
         row.expires_at = now + timedelta(days=RETENTION_DAYS)
         if not use:
             db.add(SourceUse(turn_id=turn_id, source_id=row.id, query=query[:500]))
         db.commit()
         ref = {'label': f'S{row.number}', 'source_id': row.id}
         suffix = '\n[Passage shortened to the retained excerpt.]' if row.location['truncated'] else ''
-        return ref, f"[{ref['label']}] {row.title} (chunk {chunk.ordinal + 1}):\n{text}{suffix}"
+        location = f"page {row.location['page']}, " if row.location.get('page') else ''
+        location += f"section {row.location['section']}, " if row.location.get('section') else ''
+        return ref, f"[{ref['label']}] {row.title} ({location}chunk {chunk.ordinal + 1}):\n{text}{suffix}"
 
 
 def catalog(db, turn_id, conversation_id):
@@ -169,7 +179,8 @@ def export_markdown(db, conv):
             continue
         location = source['location']
         title = html.escape(source['title']).replace('[', '\\[').replace(']', '\\]')
-        blocks.append(f"[{label}] {title} — chunk {location['chunk'] + 1}; captured {source['captured_at'].isoformat()}.")
+        locator = (f"page {location['page']}; " if location.get('page') else '') + (f"section {html.escape(location['section'])}; " if location.get('section') else '')
+        blocks.append(f"[{label}] {title} — {locator}chunk {location['chunk'] + 1}; captured {source['captured_at'].isoformat()}.")
         if source['changed']:
             blocks.append('Document changed since this excerpt was captured.')
         if location.get('truncated'):

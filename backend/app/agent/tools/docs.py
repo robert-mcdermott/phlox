@@ -44,13 +44,16 @@ class SearchDocuments(Tool):
             conversation_id=ctx.conversation_id, user_id=ctx.user_id,
             document_ids=document_ids, assistant_id=ctx.assistant_id,
         )
+        notice = getattr(hits, "notice", None)
         if not hits:
-            return ToolResult(content="No relevant passages found in uploaded documents.")
+            return ToolResult(content=(notice + "\n" if notice else "") + "No matching passages found in uploaded documents.")
         from app import sources
         import uuid
 
         turn_id = ctx.accounting.turn_id if ctx.accounting else uuid.uuid4().hex
         blocks = [sources.INSTRUCTIONS]
+        if notice:
+            blocks.append(notice)
         omitted = False
         for hit in hits:
             captured = sources.capture(

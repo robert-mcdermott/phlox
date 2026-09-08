@@ -249,11 +249,20 @@ def test_search_chunks_passes_assistant_scope(db, monkeypatch):
             return []
 
     monkeypatch.setattr(retrieve, "get_vector_store", lambda: FakeStore())
-    monkeypatch.setattr(retrieve, "embed_query", lambda q: [0.0])
+    from app.models import Document, DocChunk
+    from app.rag.identity import identity
+    doc = Document(user_id='u1', filename='scope.txt', status='ready')
+    db.add(doc)
+    db.flush()
+    db.add(DocChunk(document_id=doc.id, text='q', ordinal=0,
+                    embedding_identity={**identity(), 'dimensions': 512}))
+    db.commit()
     monkeypatch.setattr(retrieve, "sparse_embed", lambda q: {"indices": [], "values": []})
 
     retrieve.search_chunks(db, "q", user_id="u1", assistant_id="a1")
     assert seen == {"user_id": "u1", "assistant_id": "a1"}
+    db.delete(doc)
+    db.commit()
 
 
 def test_chunk_payload_includes_assistant_scope(db):

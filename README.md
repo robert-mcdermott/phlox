@@ -28,8 +28,8 @@ everyday use, upgrades, and troubleshooting.
   checkpoints, with per-tool permissions and human approvals.
 - **Return to running work:** opt-in [reconnectable runs](docs/RUNS.md) keep working across
   browser refreshes and chat switches, with explicit Stop and interruption recovery.
-- **Research documents:** upload or reference files, search with hybrid retrieval, and
-  inspect [clickable citations](docs/SOURCES.md) showing captured source passages.
+- **Research documents:** [track processing and retry uploads](docs/INGESTION.md), search
+  documents and tables, and inspect [clickable citations](docs/SOURCES.md) with page/section locations.
 - **Search the web:** opt in per prompt; use built-in search or your SearXNG instance.
 - **Reuse workflows:** custom assistants, private/shared skills, memory, and MCP tools.
 - **Inspect outputs:** browse workspace files and preview HTML/Markdown in the artifact canvas.

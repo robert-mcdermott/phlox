@@ -38,6 +38,7 @@ async function fixture(t, { approval = null, auth = false, durable = false } = {
   const page = await context.newPage()
   page.setDefaultTimeout(8000)
   const state = {
+    docs: [], retries: [], rebuilds: 0, index: { mode: 'keyword', rebuild_required: true, notice: 'Embedding model changed. Rebuild required.' },
     sources: {}, sourceReads: [], exportReads: 0, exportMarkdown: '',
     approval, decisions: [], reject: false, authenticated: false, setup: true,
     run: null, events: [], cursors: [], cancellations: 0, creates: [], loseAcceptance: false,
@@ -95,7 +96,19 @@ async function fixture(t, { approval = null, auth = false, durable = false } = {
       cost_usd: null, known_cost_usd: 0.5, unknown_usage_calls: 1, unknown_cost_calls: 1,
       calls: 2, turns: 1,
     }] })
-    if (['/api/assistants', '/api/skills', '/api/documents'].includes(path)) return json([])
+    if (path === '/api/documents/index-status') return json(state.index)
+    if (path === '/api/documents/reindex') {
+      state.rebuilds++
+      state.index = { ...state.index, status: 'queued' }
+      return json(state.index)
+    }
+    if (path === '/api/documents/doc-1/retry') {
+      state.retries.push('doc-1')
+      state.docs[0] = { ...state.docs[0], status: 'queued', error: null, ingestion: { stage: 'queued' } }
+      return json(state.docs[0])
+    }
+    if (path === '/api/documents') return json(state.docs)
+    if (['/api/assistants', '/api/skills'].includes(path)) return json([])
     if (path === '/api/runs' && method === 'POST') {
       const key = route.request().headers()['idempotency-key']
       state.creates.push(key)
@@ -397,7 +410,7 @@ const sourceRef = { label: 'S1', source_id: 'source-1' }
 const sourceFixture = () => ({
   id: 'source-1', label: 'S1', available: true, title: 'Evidence.txt',
   excerpt: 'Retain the original evidence. <script>untrusted()</script>',
-  location: { chunk: 2, start: 0, end: 63, truncated: true },
+  location: { chunk: 2, page: 2, section: 'Travel policy', start: 0, end: 63, truncated: true },
   captured_at: '2026-09-07T00:00:00Z', changed: true,
 })
 
@@ -417,6 +430,8 @@ test('saved citations inspect exact evidence, preserve code, reload and recheck 
   await chip.click()
   await page.getByRole('dialog').getByText(state.sources['source-1'].excerpt, { exact: true }).waitFor()
   await page.getByText('Chunk 3 · Characters 1–63', { exact: true }).waitFor()
+  await page.getByText('Page 2', { exact: true }).waitFor()
+  await page.getByText('Section: Travel policy', { exact: true }).waitFor()
   await page.getByText('The document has changed since this excerpt was captured.', { exact: true }).waitFor()
   await page.keyboard.press('Escape')
   await page.getByRole('dialog').waitFor({ state: 'hidden' })
@@ -467,4 +482,28 @@ test('approval snapshots and durable event replay keep citation identity in new 
   await page.getByText('Approval chat', { exact: true }).click()
   await page.getByRole('button', { name: 'View source S1', exact: true }).click()
   await page.getByRole('dialog').getByText('Evidence.txt', { exact: true }).waitFor()
+})
+
+
+test('document processing recovery and index rebuild show progress and failures', async (t) => {
+  const { page, state } = await fixture(t)
+  state.docs = [{ id: 'doc-1', filename: 'Policy.pdf', status: 'interrupted', error: 'Restart interrupted processing.',
+    size_bytes: 200, n_chunks: 0, ingestion: { stage: 'interrupted' } }]
+  await page.getByTitle('Settings', { exact: true }).click()
+  await page.getByRole('button', { name: 'Documents', exact: true }).click()
+  await page.getByText('Embedding model changed. Rebuild required.', { exact: true }).waitFor()
+  await page.getByRole('button', { name: 'Retry processing', exact: true }).click()
+  await page.getByText('queued', { exact: true }).waitFor()
+  assert.deepEqual(state.retries, ['doc-1'])
+  state.docs[0] = { ...state.docs[0], status: 'processing', ingestion: { stage: 'embedding', completed: 64, total: 120 } }
+  await page.getByText('embedding · 64/120 chunks', { exact: true }).waitFor()
+  assert.equal(await page.getByRole('progressbar', { name: 'Processing Policy.pdf' }).getAttribute('value'), '64')
+  state.docs[0] = { ...state.docs[0], status: 'ready', n_chunks: 120, ingestion: { stage: 'ready', completed: 120, total: 120 } }
+  await page.getByRole('button', { name: 'Reprocess document', exact: true }).waitFor()
+  await page.getByRole('button', { name: 'Rebuild search index', exact: true }).click()
+  await page.getByRole('button', { name: 'Rebuilding…', exact: true }).waitFor()
+  assert.equal(state.rebuilds, 1)
+  state.index = { ...state.index, status: 'error', error: 'Rebuild failed. Previous index preserved.' }
+  await page.getByText('Rebuild failed. Previous index preserved.', { exact: true }).waitFor()
+  await page.getByRole('button', { name: 'Rebuild search index', exact: true }).waitFor()
 })

@@ -26,8 +26,10 @@ runs:
 ```
 
 This is a **file-only, restart-required** setting. It defaults to false. Startup upgrades
-the configured database to the current head, `0004_sources`, including when the flag is off.
-Revision `0003_runs` introduced the run tables; `0004_sources` adds document citations.
+the configured database to the current head, `0005_ingestion`, including when the flag is off.
+Revision `0003_runs` introduced run tables; `0004_sources` adds citations and `0005_ingestion`
+adds document processing/provenance metadata. The [document worker](INGESTION.md) is always
+available independently of `runs.enabled`; chat Stop does not cancel document processing.
 No manual stamping or new database is required. Known Wave-4 revisions remain checkable
 and back-upable before upgrade. Use the normal `./scripts/start.sh dev` or `prod` command
 from the repository root after editing the file. The `prod` launcher also requires the

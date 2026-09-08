@@ -38,11 +38,17 @@ def expected_metadata(revision):
     if revision in {None, '0001_wave3', '0002_ledger_width'}:
         from app.migrations.baseline import metadata
         return metadata()
-    if revision == '0003_runs':
+    if revision in {'0003_runs', '0004_sources'}:
         import json
         from app.migrations.baseline import SCHEMA, metadata
         additions = json.loads(Path(__file__).with_name('schema_v3_additions.json').read_text())
-        return metadata({'tables': {**SCHEMA['tables'], **additions}})
+        if revision == '0004_sources':
+            additions.update(json.loads(Path(__file__).with_name('schema_v4_additions.json').read_text()))
+        result = metadata({'tables': {**SCHEMA['tables'], **additions}})
+        if revision == '0004_sources':
+            import sqlalchemy as sa
+            result.tables['messages'].append_column(sa.Column('citations', sa.JSON, nullable=True))
+        return result
     from app.models import Base
     return Base.metadata
 

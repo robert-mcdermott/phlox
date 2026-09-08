@@ -1,8 +1,13 @@
 import { useEffect, useState } from 'react'
 import { Upload, Trash2, FileText, Loader2, CheckCircle, AlertCircle } from 'lucide-react'
+import DocumentProgress from './DocumentProgress'
+import IndexStatus from './IndexStatus'
+import { useStore } from '../../store/useStore'
 import { api } from '../../api/client'
 
 export default function DocumentsPanel() {
+  const isAdmin = useStore((s) => s.user?.role === 'admin')
+  const [error, setError] = useState(null)
   const [docs, setDocs] = useState([])
   const [uploading, setUploading] = useState(false)
 
@@ -21,7 +26,7 @@ export default function DocumentsPanel() {
     try {
       await api.uploadDocument(file)
       await load()
-    } finally {
+    } catch (err) { setError(err.message) } finally {
       setUploading(false)
       e.target.value = ''
     }
@@ -29,7 +34,7 @@ export default function DocumentsPanel() {
 
   const StatusIcon = ({ s }) =>
     s === 'ready' ? <CheckCircle size={15} className="text-green-600" />
-    : s === 'error' ? <AlertCircle size={15} className="text-red-600" />
+    : ['error', 'interrupted'].includes(s) ? <AlertCircle size={15} className="text-red-600" />
     : <Loader2 size={15} className="animate-spin text-accent" />
 
   return (
@@ -40,6 +45,8 @@ export default function DocumentsPanel() {
         lookup, or attach/reference specific documents for a single message.
       </p>
 
+      {isAdmin && <IndexStatus />}
+      {error && <p role="alert" className="mb-2 text-sm text-content">{error}</p>}
       <label className="mb-4 flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-border bg-surface px-4 py-8 text-center hover:border-accent">
         <input type="file" className="hidden" onChange={upload} disabled={uploading} />
         {uploading ? (
@@ -48,7 +55,7 @@ export default function DocumentsPanel() {
           <Upload size={22} className="mb-2 text-accent" />
         )}
         <span className="text-sm text-content">{uploading ? 'Uploading…' : 'Click to upload a document'}</span>
-        <span className="text-xs text-muted">PDF · DOCX · TXT · MD · code</span>
+        <span className="text-xs text-muted">PDF · DOCX · TXT · MD · code · up to 20 MiB</span>
       </label>
 
       <div className="space-y-2">
@@ -64,6 +71,7 @@ export default function DocumentsPanel() {
                 {d.error ? ` · ${d.error}` : ''}
               </div>
             </div>
+            <DocumentProgress document={d} onRetry={async () => { await api.retryDocument(d.id); await load() }} />
             <StatusIcon s={d.status} />
             <button
               onClick={() => api.deleteDocument(d.id).then(load)}

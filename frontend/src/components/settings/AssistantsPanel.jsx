@@ -3,6 +3,7 @@ import {
   Bot, Plus, Trash2, Pencil, X, Upload, FileText, Loader2, CheckCircle, AlertCircle,
   ImagePlus,
 } from 'lucide-react'
+import DocumentProgress from '../documents/DocumentProgress'
 import { api } from '../../api/client'
 import { useStore } from '../../store/useStore'
 import AssistantAvatar from '../assistants/AssistantAvatar'
@@ -63,6 +64,7 @@ const inputCls =
   'w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-content outline-none focus:border-accent'
 
 function KnowledgeSection({ assistantId }) {
+  const [error, setError] = useState(null)
   const [docs, setDocs] = useState([])
   const [uploading, setUploading] = useState(false)
 
@@ -84,7 +86,7 @@ function KnowledgeSection({ assistantId }) {
     try {
       await api.uploadAssistantDocument(assistantId, file)
       await load()
-    } finally {
+    } catch (err) { setError(err.message) } finally {
       setUploading(false)
       e.target.value = ''
     }
@@ -92,7 +94,7 @@ function KnowledgeSection({ assistantId }) {
 
   const StatusIcon = ({ s }) =>
     s === 'ready' ? <CheckCircle size={14} className="text-green-600" />
-    : s === 'error' ? <AlertCircle size={14} className="text-red-600" />
+    : ['error', 'interrupted'].includes(s) ? <AlertCircle size={14} className="text-red-600" />
     : <Loader2 size={14} className="animate-spin text-accent" />
 
   if (!assistantId) {
@@ -111,6 +113,7 @@ function KnowledgeSection({ assistantId }) {
         {uploading ? <Loader2 size={16} className="animate-spin text-accent" /> : <Upload size={16} className="text-accent" />}
         {uploading ? 'Uploading…' : 'Upload a document'}
       </label>
+      {error && <p role="alert" className="text-xs text-content">{error}</p>}
       {docs.length === 0 && <p className="text-xs text-muted">No documents yet. Uploaded files are searchable by everyone using this assistant.</p>}
       <div className="space-y-1.5">
         {docs.map((d) => (
@@ -122,6 +125,7 @@ function KnowledgeSection({ assistantId }) {
                 {(d.size_bytes / 1024).toFixed(0)} KB · {d.n_chunks} chunks{d.error ? ` · ${d.error}` : ''}
               </div>
             </div>
+            <DocumentProgress document={d} onRetry={async () => { await api.retryAssistantDocument(assistantId, d.id); await load() }} />
             <StatusIcon s={d.status} />
             <button
               onClick={() => api.deleteAssistantDocument(assistantId, d.id).then(load)}

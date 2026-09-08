@@ -67,9 +67,9 @@ def populate(engine):
             id='message', conversation_id='conversation', role='user', content='Keep this text',
             attachments=[{'type': 'image', 'idx': 0, 'ext': 'png'}], created_at=datetime.now(timezone.utc),
         ))
-        db.add(Document(id='document', user_id='owner', filename='source.txt', status='ready'))
+        db.execute(metadata().tables['documents'].insert().values(id='document', user_id='owner', filename='source.txt', status='ready', size_bytes=14, n_chunks=1, created_at=datetime.now(timezone.utc)))
         db.flush()
-        db.add(DocChunk(id='a'*32, document_id='document', ordinal=0, text='Source passage', embedding=[0.1, 0.2]))
+        db.execute(metadata().tables['doc_chunks'].insert().values(id='a'*32, document_id='document', ordinal=0, text='Source passage', embedding=[0.1, 0.2]))
         db.add(PendingApproval(id='approval', conversation_id='conversation', state={'version': 3}, status='claimed'))
         db.add(ToolPref(name='write_file', enabled=True, permission='ask'))
         db.add(AppConfig(section='pricing', value={'meter': {'input': 1, 'output': 2}}))
@@ -82,8 +82,8 @@ def assert_content(engine):
     with Session(engine) as db:
         assert db.get(User, 'owner').department == 'Science'
         assert db.scalar(sa.select(Message.content).where(Message.id == 'message')) == 'Keep this text'
-        assert db.get(Document, 'document').user_id == 'owner'
-        assert db.get(DocChunk, 'a'*32).embedding == [0.1, 0.2]
+        assert db.scalar(sa.select(Document.user_id).where(Document.id == 'document')) == 'owner'
+        assert db.scalar(sa.select(DocChunk.embedding).where(DocChunk.id == 'a'*32)) == [0.1, 0.2]
         assert db.get(ToolPref, 'write_file').permission == 'ask'
         assert db.get(AppConfig, 'pricing').value['meter']['output'] == 2
         assert db.query(UsageLedger).one().cost_usd == 0.25
@@ -94,7 +94,7 @@ def test_fresh_and_repeated_upgrade_match_models(engines):
     engine = engines()
     upgrade(engine)
     upgrade(engine)
-    assert status(engine) == {'current': '0004_sources', 'head': '0004_sources'}
+    assert status(engine) == {'current': '0005_ingestion', 'head': '0005_ingestion'}
     assert check(engine)['compatible']
     with engine.connect() as conn:
         validate(conn, expected=Base.metadata)
@@ -167,7 +167,7 @@ def test_concurrent_upgrade_serializes(engines):
     engine = engines()
     with ThreadPoolExecutor(max_workers=2) as pool:
         list(pool.map(lambda _: upgrade(engine), range(2)))
-    assert status(engine)['current'] == '0004_sources'
+    assert status(engine)['current'] == '0005_ingestion'
 
 
 def test_different_databases_do_not_share_alembic_context(engines):
@@ -218,7 +218,7 @@ def test_backup_restore_populated_instance(engines, tmp_path, monkeypatch):
     restored = pg_target or sa.create_engine(f'sqlite:///{target / "data/phlox.db"}')
     try:
         assert_content(restored)
-        assert status(restored)['current'] == '0004_sources'
+        assert status(restored)['current'] == '0005_ingestion'
         for name, content in files.items():
             assert (target / 'data' / name).read_bytes() == content
         restored_workspace = target / 'data/workspaces/conversation'
@@ -400,7 +400,7 @@ def test_lifespan_failure_releases_lock_and_readiness_checks_schema(client, monk
         pass
     with maintenance_lock(DATA_DIR, ENGINE):
         pass
-    monkeypatch.setattr('app.migrations.status', lambda _: {'current': None, 'head': '0004_sources'})
+    monkeypatch.setattr('app.migrations.status', lambda _: {'current': None, 'head': '0005_ingestion'})
     response = client.get('/api/readiness')
     assert response.status_code == 503 and response.json()['database']['ready'] is False
 
@@ -500,7 +500,7 @@ def test_wave4_revision_can_be_checked_backed_up_and_upgraded(engines, tmp_path)
                   pg_bin_dir=os.environ.get('PHLOX_TEST_PG_BIN_DIR'))
     upgrade(engine)
     assert_content(engine)
-    assert status(engine)['current'] == '0004_sources'
+    assert status(engine)['current'] == '0005_ingestion'
 
 
 def test_run_evidence_survives_restore_without_replaying(engines, tmp_path):
@@ -644,5 +644,66 @@ def test_wave5_upgrade_and_source_backup_restore(engines, tmp_path):
             assert not inspect_source(db, conv, ref['source_id'])['available']
             assert db.get(Source, ref['source_id']).excerpt is None
             assert db.get(SourceUse, ('source-turn', ref['source_id'])).query == ''
+    finally:
+        restored.dispose()
+
+
+def test_wave6_sources_upgrade_and_ingestion_metadata_restore(engines, tmp_path):
+    import hashlib
+    from datetime import timedelta
+    from app.migrations import expected_metadata
+    from app.models import Source, SourceUse
+    from app.sources import capture
+    engine = engines()
+    expected_metadata('0004_sources').create_all(engine)
+    with engine.begin() as conn:
+        conn.exec_driver_sql('CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL PRIMARY KEY)')
+        conn.exec_driver_sql("INSERT INTO alembic_version VALUES ('0004_sources')")
+    populate(engine)
+    digest = hashlib.sha256(b'Source passage').hexdigest()
+    fingerprint = hashlib.sha256(json.dumps(['document', 0, digest, 'Source passage']).encode()).hexdigest()
+    with Session(engine) as db:
+        source = Source(conversation_id='conversation', number=1, fingerprint=fingerprint,
+                        document_id='document', chunk_id='a'*32, title='source.txt', excerpt='Source passage',
+                        content_hash=digest, location={'chunk': 0, 'start': 0, 'end': 14, 'truncated': False},
+                        expires_at=datetime.now(timezone.utc) + timedelta(days=30))
+        db.add(source)
+        db.flush()
+        source_id = source.id
+        db.add(SourceUse(turn_id='old-turn', source_id=source_id))
+        db.commit()
+    assert check(engine)['compatible']
+    config = tmp_path / 'config.yml'
+    config.write_text('{}')
+    data = tmp_path / 'data'
+    data.mkdir()
+    pg_bin = os.environ.get('PHLOX_TEST_PG_BIN_DIR')
+    create_backup(engine, data, config, tmp_path / 'before', stopped=True, pg_bin_dir=pg_bin)
+    upgrade(engine)
+    assert_content(engine)
+    with Session(engine) as db:
+        assert db.get(Document, 'document').ingestion is None
+        assert db.get(DocChunk, 'a'*32).provenance is None
+        ref, _ = capture(db, conversation_id='conversation', user_id='owner', turn_id='new-turn',
+                         document_id='document', chunk_id='a'*32)
+        assert ref['source_id'] == source_id  # Legacy fingerprint remains stable.
+        db.get(Document, 'document').ingestion = {'stage': 'interrupted', 'attempt': 2}
+        db.get(DocChunk, 'a'*32).provenance = {'page': 2, 'parser_version': '2'}
+        db.get(DocChunk, 'a'*32).embedding_identity = {'fingerprint': 'versioned-test', 'dimensions': 2}
+        db.commit()
+    bundle = tmp_path / 'after'
+    create_backup(engine, data, config, bundle, stopped=True, pg_bin_dir=pg_bin)
+    target = tmp_path / 'restored'
+    pg_target = engines() if engine.dialect.name == 'postgresql' else None
+    restore_backup(bundle, target, database_url=pg_target.url if pg_target is not None else None,
+                   stopped=True, pg_bin_dir=pg_bin)
+    restored = pg_target or sa.create_engine(f'sqlite:///{target / "data/phlox.db"}')
+    try:
+        assert_content(restored)
+        with Session(restored) as db:
+            assert db.get(Document, 'document').ingestion['attempt'] == 2
+            assert db.get(DocChunk, 'a'*32).provenance['page'] == 2
+            assert db.get(DocChunk, 'a'*32).embedding_identity['dimensions'] == 2
+            assert db.get(Source, source_id).excerpt == 'Source passage'
     finally:
         restored.dispose()

@@ -46,6 +46,9 @@ export default function SourcePanel({ conversationId, reference, onClose }) {
       {source && !source.available && <p role="status">{source.reason || 'Source unavailable.'}</p>}
       {source?.available && <>
         <h3 className="break-words font-semibold">{source.title}</h3>
+        {source.location.page && <p className="text-muted">Page {source.location.page}</p>}
+        {source.location.section && <p className="text-muted">Section: {source.location.section}</p>}
+        {source.location.table_row && <p className="text-muted">Table {source.location.table || ''} row {source.location.table_row}</p>}
         <p className="text-muted">Chunk {source.location.chunk + 1} · Characters {source.location.start + 1}–{source.location.end}</p>
         <p className="text-muted">Captured {new Date(source.captured_at).toLocaleString()}</p>
         {source.changed && <p role="status">The document has changed since this excerpt was captured.</p>}

@@ -109,19 +109,7 @@ def _bootstrap() -> None:
             except Exception as e:  # noqa: BLE001
                 logger.warning("MCP auto-connect failed for %s: %s", server.name, e)
 
-        # Keep stored embeddings + the vector index consistent with the configured
-        # embedder (re-embeds automatically if the embedding model/dimension changed).
-        try:
-            from app.rag.maintenance import sync_index
-
-            result = sync_index(db)
-            if result.get("indexed"):
-                logger.info(
-                    "Vector index synced: %d indexed (%d re-embedded, dim=%s)",
-                    result["indexed"], result["reembedded"], result["dim"],
-                )
-        except Exception as e:  # noqa: BLE001
-            logger.warning("Vector index sync on startup skipped: %s", e)
+        # Index changes are explicit jobs. Never re-embed on startup after a provider outage.
     finally:
         db.close()
 
@@ -135,13 +123,17 @@ async def lifespan(app: FastAPI):
     from app.maintenance import maintenance_lock
 
     from app.runs import worker
+    from app.rag.jobs import worker as document_worker
 
     with maintenance_lock(DATA_DIR, ENGINE):
         worker_started = False
+        document_worker_started = False
         try:
             _bootstrap()
             worker.start()
             worker_started = True
+            document_worker.start()
+            document_worker_started = True
             logger.info("Phlox ready — %d tools registered", len(REGISTRY.names()))
             yield
         finally:
@@ -149,7 +141,11 @@ async def lifespan(app: FastAPI):
                 if worker_started:
                     await asyncio.to_thread(worker.stop)
             finally:
-                mcp_manager.close()
+                try:
+                    if document_worker_started:
+                        await asyncio.to_thread(document_worker.stop)
+                finally:
+                    mcp_manager.close()
 
 
 app = FastAPI(title="Phlox", version=get_version(display=False), lifespan=lifespan)

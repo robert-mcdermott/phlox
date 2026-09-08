@@ -1,0 +1,169 @@
+{
+  "sources": {
+    "columns": [
+      {
+        "name": "id",
+        "type": "VARCHAR(32)",
+        "nullable": false,
+        "primary_key": true
+      },
+      {
+        "name": "conversation_id",
+        "type": "VARCHAR(32)",
+        "nullable": false,
+        "primary_key": false
+      },
+      {
+        "name": "number",
+        "type": "INTEGER",
+        "nullable": false,
+        "primary_key": false
+      },
+      {
+        "name": "fingerprint",
+        "type": "VARCHAR(64)",
+        "nullable": false,
+        "primary_key": false
+      },
+      {
+        "name": "kind",
+        "type": "VARCHAR(20)",
+        "nullable": false,
+        "primary_key": false
+      },
+      {
+        "name": "document_id",
+        "type": "VARCHAR(32)",
+        "nullable": true,
+        "primary_key": false
+      },
+      {
+        "name": "chunk_id",
+        "type": "VARCHAR(32)",
+        "nullable": true,
+        "primary_key": false
+      },
+      {
+        "name": "title",
+        "type": "VARCHAR(500)",
+        "nullable": true,
+        "primary_key": false
+      },
+      {
+        "name": "url",
+        "type": "TEXT",
+        "nullable": true,
+        "primary_key": false
+      },
+      {
+        "name": "excerpt",
+        "type": "TEXT",
+        "nullable": true,
+        "primary_key": false
+      },
+      {
+        "name": "content_hash",
+        "type": "VARCHAR(64)",
+        "nullable": false,
+        "primary_key": false
+      },
+      {
+        "name": "location",
+        "type": "JSON",
+        "nullable": true,
+        "primary_key": false
+      },
+      {
+        "name": "captured_at",
+        "type": "DATETIME",
+        "nullable": false,
+        "primary_key": false
+      },
+      {
+        "name": "expires_at",
+        "type": "DATETIME",
+        "nullable": false,
+        "primary_key": false
+      }
+    ],
+    "unique": [
+      [
+        "conversation_id",
+        "fingerprint"
+      ],
+      [
+        "conversation_id",
+        "number"
+      ]
+    ],
+    "foreign_keys": [
+      {
+        "columns": [
+          "conversation_id"
+        ],
+        "target": [
+          "conversations.id"
+        ],
+        "ondelete": "CASCADE"
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_sources_conversation_id",
+        "columns": [
+          "conversation_id"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_sources_expires_at",
+        "columns": [
+          "expires_at"
+        ],
+        "unique": false
+      },
+      {
+        "name": "ix_sources_document_id",
+        "columns": [
+          "document_id"
+        ],
+        "unique": false
+      }
+    ]
+  },
+  "source_uses": {
+    "columns": [
+      {
+        "name": "turn_id",
+        "type": "VARCHAR(64)",
+        "nullable": false,
+        "primary_key": true
+      },
+      {
+        "name": "source_id",
+        "type": "VARCHAR(32)",
+        "nullable": false,
+        "primary_key": true
+      },
+      {
+        "name": "query",
+        "type": "VARCHAR(500)",
+        "nullable": false,
+        "primary_key": false
+      }
+    ],
+    "unique": [],
+    "foreign_keys": [
+      {
+        "columns": [
+          "source_id"
+        ],
+        "target": [
+          "sources.id"
+        ],
+        "ondelete": "CASCADE"
+      }
+    ],
+    "indexes": []
+  }
+}

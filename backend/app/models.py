@@ -204,6 +204,8 @@ class Document(Base):
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
+    ingestion: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
     chunks: Mapped[list["DocChunk"]] = relationship(
         back_populates="document", cascade="all, delete-orphan"
     )
@@ -220,6 +222,9 @@ class DocChunk(Base):
     text: Mapped[str] = mapped_column(Text)
     # Embedding vector stored as JSON array of floats (small scale; fine for SQLite).
     embedding: Mapped[list | None] = mapped_column(JSON, nullable=True)
+
+    provenance: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    embedding_identity: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     document: Mapped[Document] = relationship(back_populates="chunks")
 

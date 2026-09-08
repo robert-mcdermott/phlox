@@ -221,20 +221,34 @@ cannot open a private source by copying its URL or ID.
 
 ### M2.2 — Improve ingestion and retrieval before adding more retrieval machinery
 
-- [ ] Record embedding provider/model/version/dimensions and parser/chunker version.
+- [x] Record embedding provider/model/version/dimensions and parser/chunker version.
   A same-dimension model change must still trigger a controlled rebuild. Never mix remote
   and hash embeddings silently after an outage. Offer an explicit lexical-only degraded mode.
+  **Delivered in Wave 7**, including explicit staged rebuilds and legacy identity detection.
 - [ ] Use durable, retryable ingestion jobs with progress, content hashes, deduplication,
   cancellation, size/page/time quotas, and reconciliation between database and Qdrant.
+  **Wave 7 delivers** persisted attempts/progress, explicit retry after restart, content
+  hashes, replacement without duplicate SQL chunks, bounded processing, and staged rebuilds.
+  Cross-upload deduplication, a separate cancel action, hard parser isolation, and staging
+  collection garbage collection remain; current deletion/shutdown checks are cooperative.
 - [ ] Preserve PDF page boundaries, headings, and DOCX tables. Add explicit unsupported-file
   errors. Offer OCR for scanned PDFs as an optional worker with visible resource costs.
+  **Wave 7 delivers** PDF pages, Markdown/DOCX headings, DOCX tables, and format errors.
+  PDF layout/heading inference and optional OCR remain.
 - [ ] Add a tested local semantic embedding option; retain the dependency-light lexical
   path. Benchmark a cross-encoder behind the existing reranker interface before making it
   a default dependency. Add section-aware chunks and neighboring context where measured useful.
-- [ ] Treat index/provider errors differently from zero relevant results. Revalidate source
+- [x] Treat index/provider errors differently from zero relevant results. Revalidate source
   ownership/deletion against authoritative records when serving retrieval results.
+  **Delivered in Wave 7**, including rechecking assistant visibility after embedding calls.
 - [ ] Build a versioned retrieval set with exact facts, paraphrases, tables, conflicting
   versions, no-answer questions, and cross-user distractors. See release targets below.
+  **Wave 7 adds** versioned keyword fixtures, real PDF/DOCX parsing checks, a scripted
+  paraphrase provider, and a measured table-extraction improvement over the old parser.
+  Representative live-model evaluation and release-quality retrieval scores remain.
+
+See [INGESTION.md](INGESTION.md) and [Wave 7](IMPLEMENTATION_WAVES.md#wave-7--reliable-document-ingestion-and-richer-source-locations)
+for shipped limits, upgrade steps, verification, and remaining work.
 
 **Acceptance:** model migration/outage tests leave the last good index usable, interrupted
 ingestion is recoverable, deleted/private documents cannot surface, and the retrieval

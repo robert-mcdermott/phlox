@@ -36,58 +36,8 @@ def get_db() -> Iterator[Session]:
         db.close()
 
 
-# Columns added after the initial schema. create_all() won't ALTER existing tables on
-# either backend, so we add any missing columns idempotently at startup. (A real migration
-# tool like Alembic is the Tier-3 upgrade; this keeps dev data intact in the meantime.)
-_ADDED_COLUMNS: dict[str, dict[str, str]] = {
-    "usage_ledger": {
-        "turn_id": "VARCHAR(64)", "parent_call_id": "VARCHAR(64)", "profile": "VARCHAR(100)",
-        "call_kind": "VARCHAR(32)", "status": "VARCHAR(24)", "usage_status": "VARCHAR(24)",
-        "rate_snapshot": "JSON", "usage_details": "JSON",
-    },
-    "pending_approvals": {"status": "VARCHAR(20) NOT NULL DEFAULT 'pending'"},
-    "messages": {"attachments": "JSON", "usage": "JSON"},
-    "documents": {
-        "conversation_id": "VARCHAR(32)",
-        "user_id": "VARCHAR(32)",
-        "assistant_id": "VARCHAR(32)",
-    },
-    "conversations": {"user_id": "VARCHAR(32)", "assistant_id": "VARCHAR(32)"},
-    "memories": {"user_id": "VARCHAR(32)"},
-    "users": {
-        "department": "VARCHAR(200)",
-        "must_change_password": "BOOLEAN NOT NULL DEFAULT FALSE",
-    },
-    "mcp_servers": {"headers": "JSON", "auth_token": "VARCHAR(2000)"},
-}
-
-
-def _existing_columns(conn, table: str) -> set[str]:
-    from sqlalchemy import text
-
-    if IS_SQLITE:
-        return {row[1] for row in conn.execute(text(f"PRAGMA table_info({table})"))}
-    rows = conn.execute(
-        text("SELECT column_name FROM information_schema.columns WHERE table_name = :t"),
-        {"t": table},
-    )
-    return {row[0] for row in rows}
-
-
-def _ensure_columns() -> None:
-    from sqlalchemy import text
-
-    with ENGINE.begin() as conn:
-        for table, cols in _ADDED_COLUMNS.items():
-            existing = _existing_columns(conn, table)
-            for name, sqltype in cols.items():
-                if name not in existing:
-                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {sqltype}"))
-
-
 def init_db() -> None:
-    """Create tables. Imported lazily to avoid circular imports at module load."""
-    from app import models  # noqa: F401
+    """Upgrade the checked, versioned schema before any application bootstrap writes."""
+    from app.migrations import upgrade
 
-    models.Base.metadata.create_all(bind=ENGINE)
-    _ensure_columns()
+    upgrade(ENGINE)

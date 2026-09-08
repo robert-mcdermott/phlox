@@ -8,8 +8,9 @@ security or benchmark Phlox against commercial assistants.
 > fixes the MCP/delegation paths in R3–R4 and permission defaults from R14, with 215 passing
 > tests. Wave 2 addresses approval continuity in R1–R2 and begins browser isolation
 > coverage. Wave 3 adds per-call accounting and context checks for R5 and the accounting
-> gaps, reaching 278 backend tests. Findings below retain the original evidence; consult
-> the wave log for current
+> gaps. Wave 4 adds checked Alembic adoption and SQLite/Postgres backup/restore drills
+> for R13, reaching 319 passing backend tests and six browser scenarios. Findings below
+> retain the original evidence; consult the wave log for current
 > implementation status and remaining limitations.
 
 ## Assessment

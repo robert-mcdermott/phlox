@@ -76,10 +76,10 @@ does not promise to summarize every oversized request automatically.
 
 ## Upgrade and verification
 
-Normal backend startup adds nullable ledger columns using the existing idempotent additive
-upgrade. Existing rows are preserved. This wave does not introduce a migration framework,
-worker recovery, call-level admin inspection UI, or provider invoice reconciliation.
-Migration/restore tooling is the next wave.
+Wave 3 introduced nullable ledger columns through the old additive upgrade. Wave 4 now
+uses a checked Alembic baseline and preserves existing rows; see
+[BACKUP_RESTORE.md](BACKUP_RESTORE.md). Worker recovery, call-level admin inspection UI,
+and provider invoice reconciliation remain later work.
 
 [Accounting tests](../backend/tests/test_model_calls.py) cover concurrent children,
 fallback/retries, interrupted usage, prices/cache rates, context limits, deletion/backfill,

@@ -103,8 +103,9 @@ awaiting network responses, so an old stream cannot overwrite a newer conversati
 providers and isolated databases. Coverage includes multiple pauses, exact decisions,
 simultaneous claims, policy revocation, budgets, limits, expiry, ownership, failed setup,
 terminal outcomes, dismissal accounting, deletion, and an idempotent old-schema upgrade.
-SQLite is exercised here; the status SQL is portable, but a Postgres integration run is
-still part of the later migration/restore wave.
+SQLite exercises the full approval behavior suite. Wave 4 also verifies preservation of
+claimed approval rows through Postgres migrations and backup/restore; this does not add
+worker/crash reconciliation or certify all approval concurrency paths on Postgres.
 
 [Browser tests](../frontend/tests/browser/approval.test.js) use Node's test runner,
 Playwright Chromium, and the real SPA served on an ephemeral localhost port. Each test has

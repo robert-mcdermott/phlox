@@ -1,7 +1,7 @@
 """Phlox FastAPI application.
 
 Startup wiring:
-  1. create tables
+  1. acquire the maintenance lock and upgrade the checked schema
   2. register built-in tools into the shared REGISTRY
   3. seed per-tool preferences
   4. auto-connect enabled MCP servers (best-effort)
@@ -127,12 +127,17 @@ def _bootstrap() -> None:
 async def lifespan(app: FastAPI):
     from app.mcp.manager import mcp_manager
 
-    try:
-        _bootstrap()
-        logger.info("Phlox ready — %d tools registered", len(REGISTRY.names()))
-        yield
-    finally:
-        mcp_manager.close()
+    from app.config import DATA_DIR
+    from app.database import ENGINE
+    from app.maintenance import maintenance_lock
+
+    with maintenance_lock(DATA_DIR, ENGINE):
+        try:
+            _bootstrap()
+            logger.info("Phlox ready — %d tools registered", len(REGISTRY.names()))
+            yield
+        finally:
+            mcp_manager.close()
 
 
 app = FastAPI(title="Phlox", version=get_version(display=False), lifespan=lifespan)
@@ -166,11 +171,19 @@ def readiness():
 
     from app.sandbox.runner import sandbox_status
 
+    from app.database import ENGINE
+    from app.migrations import status
+
     sandbox = sandbox_status()
-    status_code = 200 if sandbox["available"] else 503
+    try:
+        database = status(ENGINE)
+        database["ready"] = database["current"] == database["head"]
+    except Exception:
+        database = {"ready": False}
+    status_code = 200 if sandbox["available"] and database["ready"] else 503
     return JSONResponse(
-        {"status": "ready" if status_code == 200 else "not-ready", "sandbox": sandbox},
-        status_code=status_code,
+        {"status": "ready" if status_code == 200 else "not-ready", "sandbox": sandbox,
+         "database": database}, status_code=status_code,
     )
 
 

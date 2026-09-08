@@ -216,8 +216,8 @@ exactly like the local-LLM case above. Running Phlox directly on the host (no co
 works the same way — just export `DATABASE_URL` before starting uvicorn, pointed at
 `localhost:5432` instead.
 
-Tables and any schema updates are created/applied automatically at startup — no separate
-migration step. Switching backends does **not** migrate existing data between them; pick
+Checked Alembic migrations run automatically at startup; schema drift aborts startup.
+Use the [backup/restore guide](BACKUP_RESTORE.md) before upgrading. Switching backends does **not** migrate existing data between them; pick
 one at deployment time (or migrate data out-of-band if you need to move later).
 
 ---
@@ -263,17 +263,17 @@ docker compose restart phlox      # restart (e.g. after editing config.yml)
 docker compose down               # stop & remove container (backend/config.yml + backend/data persist)
 docker compose up -d --build      # rebuild after pulling new code
 
-# Stop application writes before copying its local data
+# Stop application writes before backup/upgrade
 docker compose stop phlox
-tar czf phlox-backup.tgz backend/config.yml backend/data
-docker compose start phlox
 ```
 
-This archive covers the listed local paths. Also preserve the deployment environment/
-secret configuration and, when configured, a coordinated Postgres database backup before
-restarting writes. Postgres does not replace the uploads, attachments, and workspaces in
-`backend/data/`. See [DEPLOYMENT.md](DEPLOYMENT.md#9-updating) for complete backup scope;
-rehearse restoring into a separate instance.
+With the app stopped, run `uv run -m app.ops backup --output NEW_DIRECTORY --stopped` from
+`backend/` on a maintenance host with the same data/config mounts and database environment.
+For Postgres, install matching `pg_dump`/`pg_restore` tools on that host; these OS tools are
+not bundled in the app image. Preserve external environment secrets separately, verify the
+bundle, and rehearse restoring into a separate instance before restarting writes. See
+[BACKUP_RESTORE.md](BACKUP_RESTORE.md) for exact commands and scope. The command produces a
+database snapshot alongside files; copying only local paths would miss a Postgres database.
 
 ## Podman notes
 

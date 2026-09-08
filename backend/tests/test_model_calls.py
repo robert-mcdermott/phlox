@@ -414,18 +414,15 @@ def test_usage_views_reconcile_with_ledger_and_distinguish_unknown(client, db, s
 
 def test_ledger_metadata_upgrade_is_additive_and_repeatable(tmp_path, monkeypatch):
     from sqlalchemy import create_engine, text
-    from app import database
+    from app.migrations.baseline import add_legacy_columns
 
     engine = create_engine(f"sqlite:///{tmp_path / 'legacy.db'}")
-    additions = database._ADDED_COLUMNS["usage_ledger"]
-    monkeypatch.setattr(database, "ENGINE", engine)
-    monkeypatch.setattr(database, "IS_SQLITE", True)
-    monkeypatch.setattr(database, "_ADDED_COLUMNS", {"usage_ledger": additions})
     with engine.begin() as conn:
         conn.execute(text("CREATE TABLE usage_ledger (id TEXT, cost_usd REAL)"))
         conn.execute(text("INSERT INTO usage_ledger VALUES ('legacy', 1.5)"))
-    database._ensure_columns()
-    database._ensure_columns()
+    with engine.begin() as conn:
+        add_legacy_columns(conn)
+        add_legacy_columns(conn)
     with engine.connect() as conn:
         assert conn.execute(text("SELECT id, cost_usd, turn_id, rate_snapshot FROM usage_ledger")).one() == (
             "legacy", 1.5, None, None,

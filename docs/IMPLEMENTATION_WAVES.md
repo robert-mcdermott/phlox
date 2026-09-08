@@ -115,7 +115,57 @@ usage remain outside this seam. Unknown usage cannot be reconstructed after proc
 Budget reservations, worker recovery, provider invoice reconciliation, and migration tooling
 remain later work. New metadata does not add administrator access to private content.
 
-## Wave 4 — Migration and restore baseline (proposed next)
+## Wave 4 — Migration and restore baseline
 
-F06 migration/restore baseline; then F07 durable runs and F08 source citations. Ship the
-first research improvement before expanding into the project's longer-term autonomy features.
+**Status:** implemented and verified, 2026-09-07. **Scope:** F06 and the corresponding
+M1.3 deployment checks. No new product entities. See [BACKUP_RESTORE.md](BACKUP_RESTORE.md).
+
+- [x] Replace ad hoc startup ALTERs with a frozen Alembic baseline and checked adoption of
+  known prior SQLite/Postgres schemas. Repair missing known indexes; reject schema drift
+  and unknown revisions. Roll back failed DDL and revision updates together.
+- [x] Serialize migration operations and hold a single-process maintenance lock through
+  server startup/lifespan. Readiness includes the schema revision; failures stop bootstrap.
+- [x] Add operator CLI commands for schema status/check/upgrade, offline backup, verification,
+  restore into new destinations, and offline rebuild from stored embeddings.
+- [x] Bundle database, uploads, images, workspaces/real Git checkpoints, empty directories,
+  config/DB overlays, version metadata and secret environment names. Verify checksums and
+  refuse unsafe paths, existing targets, and active cooperative writers.
+- [x] Restore SQLite and Postgres fixtures, retain ownership/permissions/usage/claimed
+  approvals, and rebuild a local vector index with ownership filters intact. Isolate restored
+  database/vector paths from source infrastructure. Add a Postgres 16 CI service/drill.
+
+Verification: **312 backend tests passed, 1 non-applicable SQLite case skipped**, with a
+live disposable Postgres 16 service enabled (35 new operations cases). **6 Chromium
+scenarios**, Ruff, production frontend build, documentation link checks, CI YAML parsing,
+and `git diff --check` pass. Postgres fixtures use native version-16 dump/restore clients;
+restored local Qdrant retrieval and real Git checkpoints are checked. Existing nine backend
+deprecation warnings and the diagram chunk-size warning remain. No user deployment or
+live model was used; the disposable Postgres container was removed afterward.
+
+Compatibility follow-up: an actual pre-Alembic SQLite installation retained the original
+`usage_ledger.message_id VARCHAR(32)` declaration. The original Wave-4 check rejected it.
+The baseline now recognizes only that known old width, and revision `0002_ledger_width`
+widens it transactionally while preserving uniqueness and all data. Check/backup also
+accept known older revisions so operators can back up before upgrading. An isolated copy
+of the affected database upgraded with all existing table rows unchanged; the original was
+read-only. Regression coverage includes both engines, already-stamped baselines, long SQLite
+IDs, null IDs, duplicate rejection, unrelated width rejection, and conversion rollback.
+Follow-up verification: **319 backend tests passed, 1 non-applicable case skipped**,
+including Postgres 16; Ruff and `git diff --check` pass. The original database now passes
+read-only `db check` and remains unmodified pending the operator’s backup/start sequence.
+
+Remaining boundaries: this is offline recovery, not hot backup/PITR. External writers and
+older releases must be stopped explicitly; external secrets and remote side effects need
+separate recovery. Postgres and filesystem publication are not one atomic transaction;
+a failed restore may leave its newly provisioned target DB populated. Only trusted bundles
+are supported. Cross-engine conversion, automatic destructive downgrades, Windows ACL/lock
+integration testing, provider invoice reconciliation, and durable worker recovery remain
+later work. The verified database service is Postgres 16, not every managed deployment.
+
+## Wave 5 — Durable run foundation (proposed next)
+
+F07: introduce persistent run identity, state transitions and ordered events; preserve the
+existing chat API through an adapter. Begin with one supported worker, explicit ownership,
+reconnect/status inspection, and honest interruption states before implementing leases or
+any action replay. Continue with F08 source citations so the first research improvement
+ships before broader autonomy features.

@@ -339,19 +339,15 @@ def test_claim_rechecks_expiry_after_validation(db, approval):
 
 def test_additive_status_upgrade_preserves_old_snapshots(tmp_path, monkeypatch):
     from sqlalchemy import create_engine, text
-    from app import database
+    from app.migrations.baseline import add_legacy_columns
 
     engine = create_engine(f"sqlite:///{tmp_path / 'old.db'}")
-    monkeypatch.setattr(database, "ENGINE", engine)
-    monkeypatch.setattr(database, "IS_SQLITE", True)
-    monkeypatch.setattr(database, "_ADDED_COLUMNS", {
-        "pending_approvals": {"status": "VARCHAR(20) NOT NULL DEFAULT 'pending'"},
-    })
     with engine.begin() as conn:
         conn.execute(text("CREATE TABLE pending_approvals (id VARCHAR(32), state JSON)"))
         conn.execute(text("INSERT INTO pending_approvals VALUES ('old', '{}')"))
-    database._ensure_columns()
-    database._ensure_columns()
+    with engine.begin() as conn:
+        add_legacy_columns(conn)
+        add_legacy_columns(conn)
     with engine.connect() as conn:
         assert conn.execute(text("SELECT id, state, status FROM pending_approvals")).one() == (
             "old", "{}", "pending",

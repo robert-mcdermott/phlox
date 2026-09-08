@@ -104,6 +104,7 @@ models).
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System map, request lifecycle, module guide — **start here** |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Active improvement plan: reliable runs, cited research, projects, artifacts, and controlled autonomy |
 | [docs/CODEBASE_REVIEW.md](docs/CODEBASE_REVIEW.md) | September 2026 review: implementation findings, verification, and roadmap rationale |
+| [docs/BACKUP_RESTORE.md](docs/BACKUP_RESTORE.md) | Versioned migrations, offline backups, and tested restore commands |
 | [docs/MODEL_CALLS.md](docs/MODEL_CALLS.md) | Per-call accounting, unknown costs, and context fit |
 | [docs/APPROVALS.md](docs/APPROVALS.md) | Approval recovery, atomic claims, expiry, and execution limits |
 | [docs/IMPLEMENTATION_WAVES.md](docs/IMPLEMENTATION_WAVES.md) | Completed implementation waves, verification, and next work |

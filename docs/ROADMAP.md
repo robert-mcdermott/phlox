@@ -3,7 +3,7 @@
 Reviewed **2026-09-07** against commit `e07ddc7d`. This is the active product and
 engineering plan. The [codebase review](CODEBASE_REVIEW.md) records evidence, limitations,
 and verification; the [original roadmap](ROADMAP_LEGACY.md) preserves the delivery history.
-**M1 is in progress:** [Waves 1–3](IMPLEMENTATION_WAVES.md) implement F01–F04, permission
+**M1 is in progress:** [Waves 1–4](IMPLEMENTATION_WAVES.md) implement F01–F04 and F06, permission
 defaults, and the initial F05 browser harness. See the wave log for current verification. M2–M5 remain proposed. Existing features and
 completed work are identified explicitly; unchecked entries do not yet ship.
 
@@ -162,15 +162,16 @@ attention. Stop acknowledgement and actual provider/tool termination are reporte
 
 ### M1.3 — Make changes safe to ship
 
-- [ ] Replace `_ensure_columns` with Alembic migrations and a baseline for existing
+- [x] Replace `_ensure_columns` with Alembic migrations and a baseline for existing
   SQLite/Postgres installations. Verify schema shape before stamping old databases.
+  Delivered in Wave 4; [migration and recovery guide](BACKUP_RESTORE.md).
 - [ ] Add isolated browser tests for login/setup, send/stream, approval after reload,
   stop/reconnect, conversation switching, attachment, and canvas. Use scripted providers;
   no paid model calls in ordinary CI.
-- [ ] Add a documented backup/restore command covering database, source uploads, attachments,
+- [x] Add a documented backup/restore command covering database, source uploads, attachments,
   workspaces/checkpoints, config/DB overlays, and secrets references. Quiesce writes or use
   coordinated snapshots. Qdrant may be rebuilt from the authoritative data.
-- [ ] Add CI checks for migrations on both databases and deployment lifespan/readiness.
+- [x] Add CI checks for migrations on both databases and deployment lifespan/readiness.
   Keep one process as the supported default; Postgres alone does not make caches, queues,
   MCP sessions, rate limits, or workspace locks distributed.
 - [ ] Split frontend run state from navigation/auth/settings incrementally; type the run
@@ -398,7 +399,8 @@ the three core journeys. The rest are conditional bets; measure use before expan
 ## 10. Quality targets and measurement
 
 These are **proposed release targets**, not current measurements. The initial review
-baseline was 179 passing backend tests; Wave 3 raises that to 278, plus accounting browser coverage
+baseline was 179 passing backend tests; Wave 4 reaches 319 passing tests (including
+SQLite/Postgres recovery drills), with one non-applicable case skipped and six browser scenarios
 and a successful build.
 Live answer quality and browser performance have not been measured. Use synthetic fixtures and opt-in, locally
 stored pilot feedback; raw user content must not become default telemetry or eval data.
@@ -431,14 +433,14 @@ Start here; do not open every milestone simultaneously. Sizes are relative:
 | 3 / F03 | Resume state/accounting, atomic approval claim, cumulative limits | M | **Complete, Wave 2:** cumulative counters, atomic claim, current policy, expiry, recovery, terminal outcomes |
 | 4 / F04 | Per-model-call usage records and context fit enforcement | L | **Complete, Wave 3:** call attribution, partial usage, price snapshots, approval reconciliation, bounded context |
 | 5 / F05 | Browser test harness and state isolation | M | **Started, Waves 2–3:** isolated Chromium approval/accounting scenarios in CI; extend to full-stack and further user journeys |
-| 6 / F06 | Migration baseline plus backup/restore fixture | L | Populated SQLite and Postgres fixtures upgrade and restore |
+| 6 / F06 | Migration baseline plus backup/restore fixture | L | **Complete, Wave 4:** checked migrations, offline bundles, SQLite/Postgres restore with checkpoint/index recovery |
 | 7 / F07 | Durable run/event service plus reconnect UI, behind a flag | L, then re-estimate | Disconnect and restart scenarios pass with stable run/event IDs |
 | 8 / F08 | Source registry and clickable citations prototype | M | Two retrieval calls and direct refs render unambiguous accessible sources |
 | 9 / F09 | Embedding identity and ingestion consistency | M–L | Same-dimension model change, outage, deletion, and retry fixtures pass |
 | 10 / F10 | First five core-journey evals and pilot scripts | M | Explicit pass rubrics, provider metadata, costs, and failure examples recorded |
 
 F03 is a minimal correctness repair; F07 moves that state into the durable run service.
-F04 starts with call IDs that can later attach to runs. F06 precedes shipping new persistent
+F04 supplies call IDs that can attach to runs. F06 is complete and precedes shipping new persistent
 schemas; F08 may prototype on fixtures while F07 lands. Expand F10 to the release targets
 as M2/M3 ship. This ordering deliberately pairs foundational work with visible progress.
 

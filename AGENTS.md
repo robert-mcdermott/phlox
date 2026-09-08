@@ -13,6 +13,7 @@ including local models like Ollama).
 lifecycle. Then the focused guides:
 - [docs/ROADMAP.md](docs/ROADMAP.md) — active improvement plan and milestone acceptance criteria
 - [docs/CODEBASE_REVIEW.md](docs/CODEBASE_REVIEW.md) — implementation findings behind the plan
+- [docs/BACKUP_RESTORE.md](docs/BACKUP_RESTORE.md) — migrations, offline backup/restore, and recovery drills
 - [docs/MODEL_CALLS.md](docs/MODEL_CALLS.md) — call accounting, prices, and context fit
 - [docs/APPROVALS.md](docs/APPROVALS.md) — claims, recovery, counters, expiry, and interruption
 - [docs/IMPLEMENTATION_WAVES.md](docs/IMPLEMENTATION_WAVES.md) — delivered work and next wave
@@ -61,6 +62,9 @@ needed. CI (`.github/workflows/ci.yml`) runs the same. Live-model checks (real p
 live in `backend/evals/run_evals.py` and are not part of CI.
 
 ## Conventions
+- Schema changes require a new Alembic revision in `backend/app/migrations/versions/`.
+  Keep the baseline snapshot immutable and test populated upgrades on both databases.
+  See [docs/BACKUP_RESTORE.md](docs/BACKUP_RESTORE.md).
 - The **agent loop** lives in `backend/app/agent/harness.py`; it is provider-agnostic.
   Don't put provider-specific logic there — it belongs in `backend/app/providers/`.
 - **All tools** (built-in, MCP, RAG) register into one `REGISTRY`
@@ -93,6 +97,7 @@ child context, bounded read-only children, and sequential child mutation. **Wave
 initial F05) is implemented:** atomic approval claims, cumulative counters, current-policy
 checks, UI recovery, and browser regression tests. **Wave 3 (F04) is implemented:**
 per-call usage, price snapshots, unknown-cost reporting, and bounded context checks.
-M1 remains in progress; migration/restore and durable worker recovery are still planned. Consult the wave log
+**Wave 4 (F06) is implemented:** checked Alembic adoption, offline backup/restore, and
+SQLite/Postgres recovery drills. M1 remains in progress; durable worker recovery is next. Consult the wave log
 for verification and remaining boundaries. Sensitive-data/PHI governance remains a separate
 deployment gate. Extend along the documented seams above.

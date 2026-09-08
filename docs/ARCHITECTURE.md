@@ -79,7 +79,8 @@ deals with provider-specific shapes.
 |---|---|---|
 | **Entry** | `main.py` | App, router mounting, startup wiring (DB, tools, MCP), SPA serving |
 | **Config** | `config.py`, `runtime_settings.py`, `app_config.py` | `config.yml` seed (profiles/defaults) + DB-backed per-user settings + admin deployment overrides (live overlay) |
-| **Persistence** | `database.py`, `models.py`, `schemas.py` | SQLite default / optional Postgres, ORM tables, additive startup DDL, Pydantic I/O |
+| **Persistence** | `database.py`, `models.py`, `schemas.py`, `migrations/` | SQLite / Postgres, checked Alembic migrations, ORM tables, Pydantic I/O |
+| **Operations** | `ops.py`, `backup.py`, `maintenance.py` | Offline verified bundles, restore into new destinations, server/maintenance exclusion. See [BACKUP_RESTORE.md](BACKUP_RESTORE.md) |
 | **Providers** | `providers/base.py`, `openai_provider.py`, `bedrock_provider.py`, `registry.py` | Provider abstraction + streaming + embeddings |
 | **Agent** | `agent/harness.py`, `registry.py`, `permissions.py`, `events.py`, `context.py` | The resumable loop, tool registry, permission gate, SSE events, context compaction |
 | **Tools** | `agent/tools/{base,fs,shell,code,docs,web,memory,planning,subagent,checkpoint}.py` | Built-in tools (file/exec/web/RAG + memory, todo planning, sub-agents, checkpoints) |
@@ -338,6 +339,11 @@ Three layers, each with a clear job:
 - **Per-user runtime settings** (DB `Setting` table, `runtime_settings.py`): active profile,
   model, theme, system prompt, params — each user's own, changed from the Settings UI;
   seeded from the (now overlay-aware) config defaults.
+
+> Startup holds a shared server/maintenance lock, upgrades the checked Alembic schema,
+> then initializes application services. Failed upgrades stop startup before seeding or
+> integration connections. Readiness includes the database revision. See
+> [BACKUP_RESTORE.md](BACKUP_RESTORE.md).
 
 > Single-process note: the overlay and `config.yml` are cached in-process and invalidated on
 > write. The app is effectively single-process (embedded Qdrant locks its dir), so

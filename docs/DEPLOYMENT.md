@@ -143,7 +143,7 @@ sudo chown -R phlox:phlox /opt/phlox/app
 
 SQLite (a single file under `backend/data/`) is the default and needs no setup. For a
 deployment that wants a separate, network-reachable database — easier off-box backups,
-multiple app instances, an existing Postgres you already run — point Phlox at it instead:
+an existing Postgres you already run — point Phlox at it instead:
 
 1. Install the driver into the backend venv (skip this if you already ran `uv sync` with
    the extra):
@@ -159,8 +159,8 @@ multiple app instances, an existing Postgres you already run — point Phlox at 
    (`localhost` works if Postgres runs on the same box.) `DATABASE_URL` takes precedence
    over any `database.url` set in `config.yml` — use whichever you find easier to manage;
    the env var is usually the better fit alongside the JWT secret above.
-3. Restart: `sudo systemctl restart phlox`. Tables are created automatically on first boot
-   against the new database — there's no separate migration step, but it starts **empty**;
+3. Restart: `sudo systemctl restart phlox`. Checked Alembic migrations run automatically
+   on first boot against the new database, which starts **empty**;
    this doesn't migrate existing SQLite data over (do that out-of-band, e.g.
    `pgloader`, if you're moving an existing deployment rather than starting fresh).
 
@@ -310,17 +310,13 @@ sudo -u phlox sh -c 'cd frontend && npm ci && npm run build'     # rebuild SPA
 sudo systemctl restart phlox
 ```
 
-Startup creates missing tables and applies a limited set of additive column changes on
-either backend; this is not a general versioned migration system. Versioned migrations and
-tested upgrade/restore tooling are planned in [ROADMAP.md](ROADMAP.md), M1.3.
-
-Before upgrading, stop writes and back up `backend/config.yml`, the deployment environment/
-secret configuration, and all of `backend/data/`. With Postgres, **also** back up the database
-(`pg_dump` or your managed backup mechanism): uploads, attachments, workspaces, and checkpoints
-still live in the data directory. DB-backed configuration overrides are in the database.
-Coordinate database and file snapshots, protect backups like the source data, and rehearse
-restoring the complete set into a separate instance. Copying only the SQLite file or only
-the Postgres database does not preserve the complete application.
+Startup runs checked Alembic migrations before application bootstrap. Preserve a complete
+offline backup **before** restarting new code. The operator CLI covers the database, source
+files, images, workspaces/checkpoints, and config overlays in one verified bundle; environment
+secrets still require your normal secret-management backup. Postgres client tools are needed
+for that backend. See [BACKUP_RESTORE.md](BACKUP_RESTORE.md) for exact backup/restore commands,
+compatibility checks, failure handling, and a separate-instance recovery drill. One application
+process remains the supported deployment model, including with Postgres.
 
 ---
 

@@ -44,6 +44,14 @@ paragraph-only extractor and retrieved by the new parser. These deterministic co
 are not a live-model semantic quality score; local semantic models and rerankers still need
 evaluation on a representative corpus before changing defaults.
 
+[Web evidence tests](../backend/tests/test_web_evidence.py) use an isolated loopback HTTP
+server for redirects, extraction, body limits, incomplete responses, access barriers and
+cancellation. DNS/connection fixtures verify numeric-address pinning and TLS hostname
+preservation. Scripted chat tests cover stable web labels through approval and durable
+replay; backup drills restore web snapshots on SQLite/Postgres. Chromium covers inspection,
+original links, snapshot removal, failures and replay. These checks do not claim universal
+website extraction or semantic citation accuracy.
+
 The [CI workflow](../.github/workflows/ci.yml) also runs SQLite/Postgres migration and restore
 drills against a disposable PostgreSQL 16 service, with native dump/restore tools. Local
 Postgres drills require the `postgres` extra, `PHLOX_TEST_POSTGRES_URL`, and optionally

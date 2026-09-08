@@ -21,3 +21,11 @@ def inspect_source(conversation_id: str, source_id: str, db: Session = Depends(g
 def export(conversation_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     conv = require_owned_conversation(db, conversation_id, user)
     return {'markdown': sources.export_markdown(db, conv)}
+
+
+@router.delete('/{conversation_id}/sources/{source_id}')
+def forget_source(conversation_id: str, source_id: str, db: Session = Depends(get_db),
+                  user: User = Depends(get_current_user)):
+    conv = require_owned_conversation(db, conversation_id, user)
+    sources.forget_web(db, conv, source_id)
+    return {'deleted': source_id}

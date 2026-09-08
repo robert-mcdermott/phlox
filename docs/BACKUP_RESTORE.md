@@ -71,6 +71,9 @@ than dropping columns, is the rollback procedure for this baseline.
   embeddings, citation snapshots/bindings, users, permissions, approval/run state and action evidence, usage, API-key
   hashes, and DB config overlays. Restored runs are not automatically replayed on startup;
   see [interruption recovery](RUNS.md#run-and-restart-behavior).
+  Wave 8 web snapshots and failure records use the existing source tables; their retained
+  passages, URLs, fetch times and turn bindings are restored without fetching the sites.
+  Expiry still applies after restore. Wave 8 introduces no schema revision.
 - `data/`: source uploads, images, workspaces, complete Git checkpoint repositories, empty
   directories, and other regular files under the configured data directory.
 - `config.yml`: an exact copy of the seed config, including any secrets it contains.

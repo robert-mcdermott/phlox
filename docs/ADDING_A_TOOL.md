@@ -139,7 +139,11 @@ only the returned block to the model; an unavailable/over-limit result must not 
 to vector payload text. The harness automatically emits the shared turn catalog after tool
 results, including evidence registered by children. Do not generate local source numbers
 or accept model-authored source IDs as authority. See [SOURCES.md](SOURCES.md) for the
-snapshot, access, retention and export contract. Web tools require a future capture path.
+snapshot, access, retention and export contract. For fetched HTML/text evidence, use
+`app.web_fetch.fetch` and `app.sources.capture_web`, as the built-in `web_fetch` tool does.
+Pass the cancellation signal and current accounting turn. Never register discovery snippets
+or failed response bodies as successful page evidence; only supply registered passages to
+the model. See [WEB_SOURCES.md](WEB_SOURCES.md) for the transport and privacy contract.
 
 `search_chunks` returns a list-compatible `SearchResults` with an optional `notice`.
 Preserve that notice in tool output even when there are no hits: keyword degradation after

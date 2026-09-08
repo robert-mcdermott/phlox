@@ -188,6 +188,9 @@ web_search:
 # loosening this at runtime would be a security surprise). By default `web_fetch` refuses
 # to reach private/loopback/link-local addresses (incl. the cloud metadata IP,
 # 169.254.169.254), so a prompt can't use the agent as a pivot into your internal network.
+# Wave 8 pins connections to checked IPs at every redirect, verifies HTTPS hostnames,
+# and bounds downloads to 2 MiB / 30 seconds. No cookies, URL credentials, or env proxies.
+# Captured web citations need no new flag. See docs/WEB_SOURCES.md for limits and retention.
 web_fetch:
   allow_private_networks: false   # true disables the guard entirely (fetch any address)
   # Hostnames, IPs, or CIDR ranges allowed through the guard even though they're

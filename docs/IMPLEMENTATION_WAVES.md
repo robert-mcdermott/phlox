@@ -271,10 +271,42 @@ chunks and 8 million vector components; limits and recovery are documented. Old 
 snapshots retain their original evidence. Keyword/paraphrase fixtures establish behavior,
 not a representative live-model retrieval score. Memory keeps its separate embedding path.
 
-## Following wave — Captured web evidence
+## Wave 8 — Captured web evidence and reliable fetching
 
-Extend the source registry to fetched web pages, with URLs, titles, fetch time, bounded
-retained excerpts, explicit failed/paywalled fetches, and clickable citations. Preserve the
-existing ownership and untrusted-content boundaries. Establish reproducible fetch/citation
-fixtures before exposing a larger autonomous research workflow. M2.2's optional OCR/local
-semantic model evaluation and larger-library processing remain separately scoped work.
+**Status:** implemented and verified, 2026-09-08. **Scope:** fetched HTML/text evidence
+from M2.1/F08 and the bounded fetch prerequisites for M2.3. Existing source tables support
+this wave; there is no schema revision or new flag. See [WEB_SOURCES.md](WEB_SOURCES.md).
+
+**User outcome:** inspect the actual web passages behind an answer, distinguish discovery
+snippets and failed fetches from evidence, preserve references through pauses/reloads, and
+remove retained web snapshots without reassigning their citation labels.
+
+| Task | Deliverable | Acceptance |
+|---|---|---|
+| W8.1 — Capture web evidence | Normalized URL, title, fetch time, extracted content hash, bounded passages and stable S-labels in the existing private registry. | Identical fetches reuse labels; changed text gets new identities; snippets never masquerade as fetched evidence. |
+| W8.2 — Bound and harden fetching | Validated numeric-address connections, original Host/TLS hostname, redirect checks, body/time limits, bounded DNS tasks and Stop. | No second hostname lookup at connection; private/transition targets fail closed; oversize/incomplete downloads and cancellation publish no passage. |
+| W8.3 — Explain unavailable pages | Explicit HTTP/connection/format/limit failures and possible access barriers, with no captured response body as evidence. | Denied, paywalled, empty, unsupported and interrupted fixtures produce truthful errors; unavailable citation panels show no excerpt. |
+| W8.4 — Inspect, retain, export | Web source panel with original URL, fetch time, retained passage, differing-version notice and snapshot removal. Shared retention and Markdown export. | Foreign users/admins receive 404; deletion/expiry removes retained content; old transcripts remain explicitly separate. |
+| W8.5 — Verify persistence | Scripted approval/durable replay, SQLite/Postgres backup restoration, real local HTTP fixtures and Chromium scenarios. | References resolve to the same retained web passage across pauses, new tabs and restored backups. |
+
+Verification: **416 backend tests passed, 1 non-applicable SQLite case skipped**, with
+Postgres 16 enabled (**34 new cases**). **15 Chromium scenarios**, Ruff, frontend production
+build, documentation checks and `git diff --check` pass. One isolated, credential-free live
+HTTPS fetch of example.com verified the real TLS/extraction path. No user model calls or
+live data were used. Existing dependency deprecation and diagram chunk-size warnings remain.
+
+Boundaries: 2 MiB bodies, 30-second fetch deadline, 3-second socket operation timeout,
+five redirects, four unfinished OS DNS tasks, and 20,000 extracted characters split into
+6,000-character passages. No environment proxies, cookies, authenticated browsing, compressed
+responses, JavaScript rendering, web PDF parsing, universal paywall detection, semantic
+claim verification, or autonomous Research mode. Snapshots remain private for 30 days;
+source removal does not rewrite messages, run events, exports or backups. A stopped OS
+resolver may finish in a bounded daemon task, but cannot initiate a connection.
+
+## Following wave — Bounded Research mode
+
+Build an explicit research workflow on captured document/web evidence: source selection,
+server-enforced scope, bounded search/read/synthesize passes, progress and budget visibility,
+and useful partial answers when sources or budget run out. Evaluate it against Quick answer
+using reproducible fixtures before broadening autonomy. Optional OCR/local semantic model
+evaluation and larger-library processing remain separately scoped work.

@@ -691,6 +691,9 @@ def test_wave6_sources_upgrade_and_ingestion_metadata_restore(engines, tmp_path)
         db.get(DocChunk, 'a'*32).provenance = {'page': 2, 'parser_version': '2'}
         db.get(DocChunk, 'a'*32).embedding_identity = {'fingerprint': 'versioned-test', 'dimensions': 2}
         db.commit()
+        from app.sources import capture_web
+        capture_web(db, conversation_id='conversation', user_id='owner', turn_id='web-backup-turn',
+                    url='https://example.com/policy', title='Web policy', text='Preserve web evidence too.')
     bundle = tmp_path / 'after'
     create_backup(engine, data, config, bundle, stopped=True, pg_bin_dir=pg_bin)
     target = tmp_path / 'restored'
@@ -705,5 +708,9 @@ def test_wave6_sources_upgrade_and_ingestion_metadata_restore(engines, tmp_path)
             assert db.get(DocChunk, 'a'*32).provenance['page'] == 2
             assert db.get(DocChunk, 'a'*32).embedding_identity['dimensions'] == 2
             assert db.get(Source, source_id).excerpt == 'Source passage'
+            from app.sources import inspect_source
+            web = db.query(Source).filter_by(kind='web').one()
+            assert web.url == 'https://example.com/policy' and web.excerpt == 'Preserve web evidence too.'
+            assert inspect_source(db, db.get(Conversation, 'conversation'), web.id)['available']
     finally:
         restored.dispose()

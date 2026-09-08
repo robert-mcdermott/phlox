@@ -194,7 +194,9 @@ stop startup with actionable guidance. CI exercises the browser journey, not jus
 
 **Wave 6 delivers the document foundation:** a private source registry, conversation-stable
 S-labels, typed message references, and clickable retained excerpts for uploaded documents
-and assistant knowledge bases. See [SOURCES.md](SOURCES.md). Web evidence and artifact-version
+and assistant knowledge bases. **Wave 7 adds richer document provenance; Wave 8 extends
+capture to web pages**, including failed fetches, DNS-pinned bounded transport, and source
+removal. See [SOURCES.md](SOURCES.md) and [WEB_SOURCES.md](WEB_SOURCES.md). Artifact-version
 citations remain below; historical answers are not retroactively converted.
 
 Extend the source registry with web evidence and richer ingestion locations.
@@ -202,18 +204,19 @@ Store document/version, page or section and offsets, passage, retrieval query, U
 fetch time, and content hash as applicable. Distinguish discovery snippets from fetched
 evidence. Give citations typed message metadata instead of relying on Markdown parsing.
 
-- [ ] Render inline citation chips and a source drawer with the exact supporting passage;
+- [x] Render inline citation chips and a source drawer with the exact supporting passage;
   support both uploaded files and fetched pages. Deduplicate sources without losing passages.
-  **Document delivery complete in Wave 6; fetched pages remain.**
+  **Documents delivered in Wave 6; fetched HTML/text pages delivered in Wave 8.**
 - [x] Validate document citation IDs and chunk-relative evidence locations. Mark unsupported references and omitted
   evidence; a valid source ID alone does not prove that a claim is supported.
   **Wave 6 marks unknown labels and omitted/truncated passages; semantic claim verification remains later.**
 - [ ] Preserve citations in exports and artifact versions. Source access must be rechecked
   on every read. Deletion removes retained content or leaves an explicit unavailable marker.
-  **Wave 6 delivers conversation Markdown export and document access/deletion checks; artifact versions remain.**
-- [ ] Keep source snapshots private, bounded, and subject to retention policy. Record
+  **Waves 6/8 deliver document/web Markdown export and access/deletion checks; artifact versions remain.**
+- [x] Keep source snapshots private, bounded, and subject to retention policy. Record
   fetch failures/paywalls instead of inventing source content.
-  **Wave 6 bounds document snapshots and applies 30-day expiry; web capture remains.**
+  **Waves 6/8 apply shared snapshot bounds and 30-day expiry to documents/web.** Web failures
+  have no supporting excerpt; HTTP-200 access-barrier detection is explicitly heuristic.
 
 **Acceptance:** repeated searches cannot make `[1]` refer to different documents; all
 citations in the fixture suite resolve to the intended accessible passage. A second user
@@ -266,6 +269,9 @@ scope must be a server-enforced constraint, including child tools and fallbacks.
 - [ ] Add source filters (selected documents, domains, date range), stronger page extraction,
   duplicate detection, fetch byte limits, and cancellation. Harden the fetch connection
   against DNS changes between validation and connection before increasing fetch concurrency.
+  **Wave 8 delivers** bounded HTML/text extraction, duplicate passage identities, body/time
+  limits, cancellation, and numeric-address pinning with HTTPS hostname verification.
+  Research-specific source filters and orchestration remain.
 - [ ] Show progress as sources found/read, unresolved questions, and remaining budget.
   Show a concise work log, not a claim to expose the model's hidden reasoning.
 - [ ] Preserve evidence versus inference and identify disagreements with dated sources.

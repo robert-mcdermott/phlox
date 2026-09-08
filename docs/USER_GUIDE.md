@@ -384,7 +384,8 @@ excerpt, filename, available PDF page or section/table location, chunk range, an
 are marked; invented references are unverified. Model-generated citations in older messages
 are not retroactively upgraded. This feature is always available in both chat modes, with
 no separate flag. It currently covers personal documents and assistant knowledge bases;
-web results do not yet use this captured-evidence registry.
+successfully fetched HTML/text web pages also use the captured-evidence registry. Search
+snippets remain discovery leads until Phlox fetches their pages.
 
 Access is rechecked on each source read/export. Source excerpts expire 30 days after last
 capture; deletion removes source snapshots and leaves unavailable labels. Historical answer/
@@ -397,6 +398,14 @@ Web search uses ddgs without a search API key by default; set `web_search.searxn
 pages but rejects private/loopback/link-local addresses by default. Configure an explicit
 `web_fetch.allowlist_hosts` for intended internal destinations instead of disabling the
 guard broadly. These tools require network access even when your model is local.
+
+Ask Phlox to read the pages it finds and cite supporting passages. Web citations show the
+original URL, fetch time, and retained text. Failed/denied fetches have no supporting passage;
+the source panel explains the failure. Captures survive reload, approval pauses, runs, and
+Markdown export. **Remove retained snapshot** erases that web passage while leaving its
+citation unavailable; it does not rewrite messages or exports. Chat Stop interrupts active
+fetching. See [Web research and captured sources](WEB_SOURCES.md) for configuration,
+privacy, limits, and unsupported sites. This needs no new flag or embedding rebuild.
 
 ## Assistants, skills, memory, and MCP
 

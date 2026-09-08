@@ -69,6 +69,10 @@ async function fixture(t, { approval = null, auth = false, durable = false } = {
     if (path.startsWith('/api/conversations/alpha/sources/')) {
       const id = path.split('/').at(-1)
       state.sourceReads.push(id)
+      if (method === 'DELETE') {
+        state.sources[id] = { id, available: false, reason: 'Retained web snapshot removed.' }
+        return json({ deleted: id })
+      }
       return state.sources[id] ? json(state.sources[id]) : json({ detail: 'Source not found' }, 404)
     }
     if (path === '/api/conversations/alpha/export') {
@@ -414,6 +418,50 @@ const sourceFixture = () => ({
   captured_at: '2026-09-07T00:00:00Z', changed: true,
 })
 
+const webSourceFixture = () => ({
+  ...sourceFixture(), kind: 'web', title: 'Public travel policy', url: 'https://example.com/policy',
+  location: { status: 'fetched', start: 0, end: 63, truncated: true, fetched_at: '2026-09-08T00:00:00Z' },
+})
+
+test('web citations show retained passages, original links, changed versions and removal', async (t) => {
+  const { page, state } = await fixture(t)
+  state.sources['source-1'] = webSourceFixture()
+  state.messages.push({ id: 'web-cited', role: 'assistant', content: 'Web evidence [S1].', citations: [sourceRef] })
+  await page.getByText('Approval chat', { exact: true }).click()
+  const chip = page.getByRole('button', { name: 'View source S1', exact: true })
+  await chip.click()
+  const dialog = page.getByRole('dialog')
+  const link = dialog.getByRole('link', { name: /Open original page/ })
+  assert.equal(await link.getAttribute('href'), 'https://example.com/policy')
+  assert.equal(await link.getAttribute('rel'), 'noopener noreferrer')
+  await dialog.getByText('Characters 1–63', { exact: true }).waitFor()
+  assert.equal(await dialog.getByText(/Chunk /).count(), 0)
+  await dialog.getByText(/Another captured version/).waitFor()
+  await dialog.getByText(state.sources['source-1'].excerpt, { exact: true }).waitFor()
+  assert.equal(await dialog.locator('script').count(), 0)
+  await page.keyboard.press('Escape')
+  await page.reload()
+  await page.getByText('Approval chat', { exact: true }).click()
+  await chip.click()
+  await dialog.getByRole('button', { name: 'Remove retained snapshot', exact: true }).click()
+  await dialog.getByText('Retained web snapshot removed.', { exact: true }).waitFor()
+  assert.equal(await dialog.locator('blockquote').count(), 0)
+  assert.equal(await dialog.getByRole('link').count(), 0)
+})
+
+test('failed web citations show an unavailable fetch without an evidence passage', async (t) => {
+  const { page, state } = await fixture(t)
+  state.sources['source-1'] = { ...webSourceFixture(), available: false, excerpt: null,
+    reason: 'HTTP 403: Access denied or payment/login required.',
+    location: { status: 'http_error', http_status: 403, fetched_at: '2026-09-08T00:00:00Z' },
+  }
+  state.messages.push({ id: 'failed-web', role: 'assistant', content: 'Page unavailable [S1].', citations: [sourceRef] })
+  await page.getByText('Approval chat', { exact: true }).click()
+  await page.getByRole('button', { name: 'View source S1', exact: true }).click()
+  await page.getByRole('dialog').getByText(state.sources['source-1'].reason, { exact: true }).waitFor()
+  assert.equal(await page.getByRole('dialog').locator('blockquote').count(), 0)
+})
+
 test('saved citations inspect exact evidence, preserve code, reload and recheck revoked access', async (t) => {
   const { page, state } = await fixture(t)
   state.sources['source-1'] = sourceFixture()
@@ -455,15 +503,15 @@ test('saved citations inspect exact evidence, preserve code, reload and recheck 
   assert.equal(state.exportReads, 1)
 })
 
-test('approval snapshots and durable event replay keep citation identity in new tabs', async (t) => {
+for (const web of [false, true]) test(`approval snapshots and durable replay retain ${web ? 'web' : 'document'} citations in new tabs`, async (t) => {
   const approval = { ...pending(), content: 'Evidence [S1].', sources: [sourceRef] }
   const { page, state, context } = await fixture(t, { durable: true, approval })
-  state.sources['source-1'] = sourceFixture()
+  state.sources['source-1'] = web ? webSourceFixture() : sourceFixture()
   state.run = { id: 'run-1', conversation_id: 'alpha', status: 'awaiting_approval', pending_id: 'approval-1' }
   state.events = [{ type: 'sources', sources: [sourceRef] }, { type: 'token', content: 'Evidence [S1].' }]
   await openApproval(page)
   await page.getByRole('button', { name: 'View source S1', exact: true }).click()
-  await page.getByRole('dialog').getByText('Evidence.txt', { exact: true }).waitFor()
+  await page.getByRole('dialog').getByText(web ? 'Public travel policy' : 'Evidence.txt', { exact: true }).waitFor()
   await page.keyboard.press('Escape')
   await page.reload()
   await openApproval(page)
@@ -472,7 +520,7 @@ test('approval snapshots and durable event replay keep citation identity in new 
   await other.goto(baseURL)
   await openApproval(other)
   await other.getByRole('button', { name: 'View source S1', exact: true }).click()
-  await other.getByRole('dialog').getByText('Evidence.txt', { exact: true }).waitFor()
+  await other.getByRole('dialog').getByText(web ? 'Public travel policy' : 'Evidence.txt', { exact: true }).waitFor()
   assert.ok(state.sourceReads.length >= 2 && state.sourceReads.every((id) => id === 'source-1'))
   await other.close()
   // A running subscription rebuilds the same catalog from persisted events alone.
@@ -481,7 +529,7 @@ test('approval snapshots and durable event replay keep citation identity in new 
   await page.reload()
   await page.getByText('Approval chat', { exact: true }).click()
   await page.getByRole('button', { name: 'View source S1', exact: true }).click()
-  await page.getByRole('dialog').getByText('Evidence.txt', { exact: true }).waitFor()
+  await page.getByRole('dialog').getByText(web ? 'Public travel policy' : 'Evidence.txt', { exact: true }).waitFor()
 })
 
 
@@ -490,7 +538,7 @@ test('document processing recovery and index rebuild show progress and failures'
   state.docs = [{ id: 'doc-1', filename: 'Policy.pdf', status: 'interrupted', error: 'Restart interrupted processing.',
     size_bytes: 200, n_chunks: 0, ingestion: { stage: 'interrupted' } }]
   await page.getByTitle('Settings', { exact: true }).click()
-  await page.getByRole('button', { name: 'Documents', exact: true }).click()
+  await page.getByRole('navigation').getByRole('button', { name: 'Documents', exact: true }).click()
   await page.getByText('Embedding model changed. Rebuild required.', { exact: true }).waitFor()
   await page.getByRole('button', { name: 'Retry processing', exact: true }).click()
   await page.getByText('queued', { exact: true }).waitFor()

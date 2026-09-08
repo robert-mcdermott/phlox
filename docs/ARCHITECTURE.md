@@ -7,8 +7,8 @@
 > This page describes the current implementation. The September 2026
 > [codebase review](CODEBASE_REVIEW.md) records its recovery, accounting, retrieval, and
 > operational limitations. The [active roadmap](ROADMAP.md) describes proposed changes;
-> opt-in [reconnectable runs](RUNS.md) and [document source citations](SOURCES.md) now ship.
-> Projects, web evidence capture, and artifact versioning remain proposed.
+> opt-in [reconnectable runs](RUNS.md), [document citations](SOURCES.md), and
+> [captured web sources](WEB_SOURCES.md) now ship. Projects and artifact versioning remain proposed.
 
 Phlox is a feature-rich, ChatGPT-style web app. It does
 chat, an agentic tool-using harness (code execution, filesystem, shell, web), document
@@ -83,7 +83,7 @@ The **canonical message format** (provider-neutral) is documented at the top of
 `providers/base.py`. Providers translate it to/from their wire formats; the harness never
 deals with provider-specific shapes.
 
-### Document evidence seam
+### Evidence seam
 
 `app/sources.py` captures authorized SQL passages for direct document references and
 `search_documents`, using conversation-stable `Source` records and accounting-turn
@@ -94,6 +94,13 @@ current document/assistant access for the source panel and Markdown export. A Do
 ORM deletion hook purges retained source content in the deletion transaction. Startup
 and worker maintenance expire snapshots. See [SOURCES.md](SOURCES.md) for limits and the
 important distinction between snapshot removal and historical transcript retention.
+
+`web_fetch.py` resolves and validates each redirect target, pins its numeric socket address,
+preserves HTTPS hostname verification, and bounds reading/extraction with cancellation.
+`agent/tools/web.py::WebFetch` registers page passages/failures through `sources.capture_web`.
+Discovery snippets are never page evidence. Web sources use the same private catalog,
+replay, retention, and exports; the owner can remove a retained web snapshot through the
+source router. Wave 8 reuses existing schema fields. See [WEB_SOURCES.md](WEB_SOURCES.md).
 
 ## 3. Backend module map (`backend/app/`)
 
@@ -107,6 +114,7 @@ important distinction between snapshot removal and historical transcript retenti
 | **Providers** | `providers/base.py`, `openai_provider.py`, `bedrock_provider.py`, `registry.py` | Provider abstraction + streaming + embeddings |
 | **Agent** | `agent/harness.py`, `registry.py`, `permissions.py`, `events.py`, `context.py` | The resumable loop, tool registry, permission gate, SSE events, context compaction |
 | **Tools** | `agent/tools/{base,fs,shell,code,docs,web,memory,planning,subagent,checkpoint}.py` | Built-in tools (file/exec/web/RAG + memory, todo planning, sub-agents, checkpoints) |
+| **Web evidence** | `web_fetch.py`, `sources.py`, `routers/sources.py` | DNS-pinned bounded fetch/extraction; private snapshots, failures, inspection, deletion and exports |
 | **Assistants** | `routers/assistants.py` | Admin-curated personas (base model + system prompt + shared knowledge base + capability limits); reads for all users, writes admin-gated |
 | **Skills** | `skills.py`, `routers/skills.py`, `agent/tools/skills.py` | Reusable instructions, SKILL.md import/export, explicit invocation and progressive disclosure; see [SKILLS.md](SKILLS.md) |
 | **Memory** | `memory.py`, `routers/memories.py` | Cross-conversation memory: save + semantic retrieval into the system prompt |
@@ -144,9 +152,11 @@ important distinction between snapshot removal and historical transcript retenti
   in (`web_search: true`, `document_search: true`) or the user directly references a
   document on the message. Web search uses ddgs by default and can use SearXNG via
   `web_search.searxng_url` / `SEARXNG_URL`. `web_fetch` has an **SSRF guard**
-  (`agent/tools/web.py::_ssrf_guard`): by default it refuses to reach private/loopback/
-  link-local addresses (incl. the cloud metadata IP), re-checked on every redirect hop so a
-  public host can't 302 its way to an internal one. File-only via `web_fetch` in
+  (`web_fetch.py`): by default all resolved addresses must be public, including each redirect
+  hop. Connections use a checked numeric address, verified peer, original Host/SNI, and
+  HTTPS certificate verification; automatic hostname reconnect and environment proxies
+  are disabled. Reading and extraction are bounded; Stop interrupts network waiting.
+  File-only via `web_fetch` in
   `config.yml` (`allow_private_networks`, `allowlist_hosts`) — not admin-UI-editable, same
   reasoning as the sandbox runner type.
 - **Sandbox is a swappable interface** (`sandbox/runner.py`). `LocalSubprocessRunner`

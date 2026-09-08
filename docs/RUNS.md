@@ -81,6 +81,11 @@ records without a saved result become `outcome_unknown`. Inspect the transcript,
 and external results, then use **I reviewed the results — allow a new turn** to release the
 conversation. Acknowledgement does not re-execute or certify any action.
 
+Captured [web citations](WEB_SOURCES.md) share document citations' persistent catalog and
+approval/replay behavior. Stop interrupts active built-in web fetching; a cancelled fetch
+does not publish new evidence after observing cancellation. A request may already have
+reached its remote server. Restart does not automatically fetch it again.
+
 Approvals stay on the same run/accounting turn, retaining their existing 24-hour expiry,
 atomic claim, exact decision validation, cumulative rounds, and current-policy checks.
 Preflight rejection leaves an unclaimed approval retryable. The worker checks again after

@@ -30,7 +30,8 @@ everyday use, upgrades, and troubleshooting.
   browser refreshes and chat switches, with explicit Stop and interruption recovery.
 - **Research documents:** [track processing and retry uploads](docs/INGESTION.md), search
   documents and tables, and inspect [clickable citations](docs/SOURCES.md) with page/section locations.
-- **Search the web:** opt in per prompt; use built-in search or your SearXNG instance.
+- **Research the web:** discover pages with built-in search or SearXNG, then inspect
+  [captured web citations](docs/WEB_SOURCES.md) with retained passages, URLs, and fetch times.
 - **Reuse workflows:** custom assistants, private/shared skills, memory, and MCP tools.
 - **Inspect outputs:** browse workspace files and preview HTML/Markdown in the artifact canvas.
 - **Operate your own deployment:** accounts and Entra ID SSO, isolated execution options,

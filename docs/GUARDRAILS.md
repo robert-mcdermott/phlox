@@ -1,5 +1,7 @@
 # Guardrails (PII redaction & blocking)
 
+[User Guide](USER_GUIDE.md) · [Project overview](../README.md)
+
 Phlox can detect and **redact or block** PII and organization-specific patterns in the
 content that flows **into** model providers (user messages, replayed history, tool
 results) and **out of** them (streamed completions). One deployment-wide policy is

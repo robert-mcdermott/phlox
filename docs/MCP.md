@@ -1,5 +1,7 @@
 # MCP Integration
 
+[User Guide](USER_GUIDE.md) · [Project overview](../README.md)
+
 Phlox is an **MCP client**: it connects to Model Context Protocol servers and exposes
 their tools to the model alongside the built-ins. No code is needed to add a server —
 configure it in the UI (**Settings → MCP Servers**).
@@ -35,7 +37,7 @@ rest of the app keeps working.
   session task and waits for cleanup. If cleanup exceeds 5 seconds, reconnect fails with
   “still shutting down”; retry after the old transport finishes. Cleanup is not interrupted
   by repeated disconnect attempts.
-- **Stop**, a call's 120-second timeout, and disconnect request cancellation of in-flight
+- **Stop**, a call's 120-second timeout, and server disconnect request cancellation of in-flight
   local MCP calls. A remote service may already have performed an action; the error says
   its outcome may be unknown. Phlox does not automatically retry that action.
 - App shutdown drains sessions/calls and stops the MCP event-loop thread.

@@ -11,6 +11,9 @@ including local models like Ollama).
 ## Read this before changing code
 **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — the system map and the request
 lifecycle. Then the focused guides:
+- [docs/USER_GUIDE.md](docs/USER_GUIDE.md) — installation, configuration, usage, and troubleshooting
+- [docs/RUNS.md](docs/RUNS.md) — opt-in reconnectable execution, Stop, and recovery
+- [docs/SOURCES.md](docs/SOURCES.md) — document citations and snapshot access/retention
 - [docs/ROADMAP.md](docs/ROADMAP.md) — active improvement plan and milestone acceptance criteria
 - [docs/CODEBASE_REVIEW.md](docs/CODEBASE_REVIEW.md) — implementation findings behind the plan
 - [docs/BACKUP_RESTORE.md](docs/BACKUP_RESTORE.md) — migrations, offline backup/restore, and recovery drills
@@ -33,7 +36,7 @@ lifecycle. Then the focused guides:
 
 ## Run it
 Easiest: `./scripts/start.sh dev` (macOS/Linux) or `.\scripts\start.ps1 dev` (Windows). It
-checks/installs `uv` + Node prerequisites, runs `uv sync`/`npm install` if needed, seeds
+checks for `uv` + Node prerequisites, runs `uv sync`/`npm install` if needed, seeds
 `backend/config.yml`, starts both servers, and opens your browser. `./scripts/stop.sh` (or
 `.\scripts\stop.ps1`) frees the ports again. `prod` instead of `dev` builds the SPA once and
 runs a single Uvicorn process (`:8000`) instead of two dev servers.
@@ -41,7 +44,8 @@ runs a single Uvicorn process (`:8000`) instead of two dev servers.
 Manual equivalent:
 ```bash
 # backend  (terminal 1)
-cd backend && uv sync && cp config.yml.example config.yml   # edit profiles
+cd backend && uv sync --inexact
+# Create config.yml from config.yml.example only if absent; edit profiles.
 uv run uvicorn app.main:app --reload --port 8000
 
 # frontend (terminal 2)

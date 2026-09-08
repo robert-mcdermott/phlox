@@ -1,5 +1,7 @@
 # Database migrations, backup, and restore
 
+[User Guide](USER_GUIDE.md) · [Project overview](../README.md)
+
 Implemented in [Wave 4](IMPLEMENTATION_WAVES.md). The supported operating model is **one
 Phlox process** per data directory/database, with SQLite or Postgres. These commands are
 operator tools; they are not exposed through the web API or agent tools.

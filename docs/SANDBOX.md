@@ -1,5 +1,7 @@
 # Code-Execution Sandbox
 
+[User Guide](USER_GUIDE.md) · [Project overview](../README.md)
+
 Phlox runs agent code/shell tools (`execute_python`, `execute_node`, `run_shell`)
 through a swappable **`SandboxRunner`** (`backend/app/sandbox/runner.py`). Three
 implementations ship; pick one in `config.yml`.
@@ -35,8 +37,8 @@ sandbox:
     session_timeout_seconds: 900
 ```
 
-The `runner` type and engine come from this file. The **container resource limits**
-(`memory`, `cpus`, `pids_limit`, `network`, images) can also be edited **live** by an admin
+The `runner` type comes from this file. The **container settings**
+(`engine`, `memory`, `cpus`, `pids_limit`, `network`, images) can also be edited **live** by an admin
 in **Settings → (Admin) Configuration** — those overrides are stored in the DB, take
 precedence over the file, and apply to the next execution with no restart (the cached runner
 is rebuilt). The **runner type itself is never UI-editable** — flipping isolation
@@ -94,7 +96,7 @@ sandbox:
   container:
     python_image: phlox-sandbox-python:latest
     node_image:   phlox-sandbox-node:latest
-    network: bridge          # safe to lock down now — packages are already in the image
+    network: none            # packages are already in the image; no runtime egress needed
 ```
 
 The Python image includes numpy, pandas, scipy, matplotlib, seaborn, scikit-learn,
@@ -200,8 +202,10 @@ stream for `agentcore`), and the harness re-emits it as a `tool_progress` SSE ev
 
 Every execution also honors a per-turn `cancel_event`, threaded through the same path.
 Two things can set it: the command's own `timeout`, or the user clicking **Stop** (the
-chat router watches for the client disconnecting and sets the event so the harness's loop
-notices even though the SSE connection is already gone). Either way, the runner kills the
+default request-bound chat mode also signals cancellation on client disconnect). With
+[reconnectable runs](RUNS.md) enabled, disconnect only detaches the viewer: use the explicit
+chat Stop button to request cancellation of server-owned execution. The local and
+container runners terminate the
 **whole process tree**, not just the immediate child — plain `Popen.kill()` only kills the
 shell (`/bin/sh -c '...'`); anything that shell forked (the actual build/test command) was
 being orphaned and left running to completion regardless of the timeout. The local and

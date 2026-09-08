@@ -1,5 +1,7 @@
 # Theming
 
+[User Guide](USER_GUIDE.md) · [Project overview](../README.md)
+
 Phlox ships the **Phlox Dark** look by default and lets users switch themes at
 runtime. Theming is a **CSS-variable token layer** under Tailwind, so themes change
 instantly with no rebuild.

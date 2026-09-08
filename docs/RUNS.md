@@ -1,5 +1,7 @@
 # Reconnectable runs
 
+[User Guide](USER_GUIDE.md) · [Project overview](../README.md)
+
 [Wave 5](IMPLEMENTATION_WAVES.md) adds an opt-in server worker for interactive chat.
 A submitted task keeps running when you refresh, switch chats, close a tab, or lose the
 network. Reopen the conversation to see saved progress or the completed transcript.
@@ -24,10 +26,12 @@ runs:
 ```
 
 This is a **file-only, restart-required** setting. It defaults to false. Startup upgrades
-the configured database to Alembic revision `0003_runs`, including when the flag is off.
+the configured database to the current head, `0004_sources`, including when the flag is off.
+Revision `0003_runs` introduced the run tables; `0004_sources` adds document citations.
 No manual stamping or new database is required. Known Wave-4 revisions remain checkable
 and back-upable before upgrade. Use the normal `./scripts/start.sh dev` or `prod` command
-from the repository root after editing the file.
+from the repository root after editing the file. The `prod` launcher also requires the
+[production secret and sandbox setup](USER_GUIDE.md#start-stop-and-production-preparation).
 
 Use **one application process** per database/data directory. The existing maintenance
 lock is held until the worker and tool threads finish. Shutdown asks active work to stop

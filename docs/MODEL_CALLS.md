@@ -1,5 +1,7 @@
 # Model-call accounting and context fit
 
+[User Guide](USER_GUIDE.md) · [Project overview](../README.md)
+
 Delivered in [Wave 3](IMPLEMENTATION_WAVES.md). The shared seam is
 `backend/app/model_calls.py`; provider adapters only translate their wire format.
 

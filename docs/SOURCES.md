@@ -1,5 +1,7 @@
 # Document sources and citations
 
+[User Guide](USER_GUIDE.md) · [Project overview](../README.md)
+
 Wave 6 implements the document portion of F08. New answers can cite uploaded documents
 and an assistant's knowledge base using stable labels such as **[S1]**. Click a citation
 to inspect the captured passage, filename, chunk, character range, and capture time.

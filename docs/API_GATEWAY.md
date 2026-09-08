@@ -1,5 +1,7 @@
 # API Gateway (OpenAI-compatible)
 
+[User Guide](USER_GUIDE.md) · [Project overview](../README.md)
+
 Phlox can be called programmatically as an **authenticated, OpenAI-compatible LLM gateway**:
 one endpoint, all your configured models (Bedrock + any OpenAI-compatible backend), with the
 same per-user / per-department cost accounting as the chat UI. Point any OpenAI SDK or tool

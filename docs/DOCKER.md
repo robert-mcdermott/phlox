@@ -1,5 +1,7 @@
 # Running Phlox in a container (Docker or Podman)
 
+[User Guide](USER_GUIDE.md) · [Project overview](../README.md)
+
 Phlox ships as a **single image** that runs both the FastAPI backend and the built
 React SPA in one process on **one port (8000)**. Persistent state and the runtime
 config live **outside** the image on mounted volumes, so the same image works across
@@ -20,13 +22,15 @@ container config**.
 
 ```bash
 # from the repo root
-cp backend/config.yml.example backend/config.yml   # if you don't already have one
+test -f backend/config.yml || cp backend/config.yml.example backend/config.yml
 $EDITOR backend/config.yml                          # set provider, auth, and sandbox (see below)
 mkdir -p backend/data
 # Linux Docker only, if the bind mount is not writable:
 sudo chown -R 10001:10001 backend/data
 
-export PHLOX_JWT_SECRET=$(openssl rand -hex 32)     # keep this stable across restarts
+# Load your previously generated, securely stored signing secret into this shell.
+# Generate it ONCE with openssl rand -hex 32 if this is a new deployment.
+: "${PHLOX_JWT_SECRET:?Load the stable signing secret before starting}"
 docker compose up -d --build
 docker compose logs -f phlox                        # watch it boot
 ```
@@ -49,7 +53,7 @@ Treat that first-run output as sensitive.
 
 > **`backend/config.yml` must exist before you start** (the compose file bind-mounts it).
 > If it's missing, create it from `config.yml.example` first — otherwise the container
-> boots with no provider profiles.
+> may get a directory mounted at the file path or fail startup. Create and validate the file first.
 
 ---
 
@@ -70,15 +74,16 @@ project's own `backend/` files, bind-mounted into the container:
 
 The container deliberately mounts the project's **own** `backend/config.yml` (and
 `backend/data/`) rather than introducing a separate container-only config. So there's a
-single source of truth: the same file works whether you run Phlox in a container or directly
-on the host. The image's defaults (`PHLOX_CONFIG=/app/backend/config.yml`,
+shared seed/bootstrap file. UI-editable sections can also have database overrides; see
+[configuration precedence](USER_GUIDE.md#how-configuration-works). The image's defaults (`PHLOX_CONFIG=/app/backend/config.yml`,
 `PHLOX_DATA=/app/backend/data`) already match the app's native paths, so the bind mounts line
 up with no env-var overrides.
 
-The **one value that depends on how you run it** is the provider `endpoint`: use
+One common change is the provider `endpoint`: use
 `host.docker.internal` when Phlox is containerized, or `localhost` when running directly on
 the host (see the next section). Secrets stay out of the image because the file is mounted,
-not baked in.
+not baked in. Also review sandbox selection, credential availability, and filesystem paths
+for the new runtime.
 
 > **Don't run a host instance and the container against this same `backend/data/` at the
 > same time** — the SQLite DB and embedded Qdrant lock to a single process. Run one at a time
@@ -120,7 +125,7 @@ Also make sure the server listens on all interfaces, not just loopback — e.g. 
 > **⚠️ Editing `config.yml` may not be enough — the database overlay wins.** Once a provider
 > profile has been saved or edited in the app's **Settings → (Admin) Configuration** panel,
 > Phlox stores it in the database, and that overlay **takes precedence over `config.yml`**.
-> `config.yml` is only the seed for a *fresh* database. So if you change the `endpoint` in
+> File-only options still apply on existing databases; the provider catalog is overridden once saved in the UI. So if you change the `endpoint` in
 > `config.yml` but the app keeps hitting the old address (symptom: **"Model error: Connection
 > error."** because it's still dialing `localhost` from inside the container), fix it in
 > **Settings → (Admin) Configuration → provider profiles** instead — that applies live, no
@@ -138,14 +143,14 @@ Identical flags for both — swap `docker` for `podman`. On **rootless Podman wi
 docker build -t phlox:latest .          # or: podman build -t phlox:latest .
 
 # Config must exist on the host first (it's bind-mounted, not seeded):
-cp backend/config.yml.example backend/config.yml   # if you don't have one
+test -f backend/config.yml || cp backend/config.yml.example backend/config.yml
 $EDITOR backend/config.yml                          # endpoint -> host.docker.internal, set auth
 
 docker run -d --name phlox \
   -p 8000:8000 \
   -v "$PWD/backend/config.yml:/app/backend/config.yml" \
   -v "$PWD/backend/data:/app/backend/data" \
-  -e PHLOX_JWT_SECRET="$(openssl rand -hex 32)" \
+  -e PHLOX_JWT_SECRET="${PHLOX_JWT_SECRET:?Load the stable signing secret first}" \
   --add-host=host.docker.internal:host-gateway \
   phlox:latest
 ```
@@ -157,17 +162,35 @@ podman run -d --name phlox \
   -p 8000:8000 \
   -v "$PWD/backend/config.yml:/app/backend/config.yml:Z" \
   -v "$PWD/backend/data:/app/backend/data:Z" \
-  -e PHLOX_JWT_SECRET="$(openssl rand -hex 32)" \
+  -e PHLOX_JWT_SECRET="${PHLOX_JWT_SECRET:?Load the stable signing secret first}" \
   --add-host=host.docker.internal:host-gateway \
   phlox:latest
 ```
 
 ---
 
+## Reconnectable runs and document citations
+
+Edit the host's mounted `backend/config.yml`:
+
+```yaml
+runs:
+  enabled: true
+```
+
+Then `docker compose restart phlox`. This file-only setting defaults to false; no additional
+worker container is needed. Work continues when the browser disconnects, and the chat's
+**Stop** explicitly requests cancellation. Server restart leaves interrupted work for
+review rather than replaying actions. Use one Phlox container per database/data directory.
+See [RUNS.md](RUNS.md) for limits and recovery. [Document citations](SOURCES.md) work in
+both modes without a separate setting. Back up before the first startup of a new release;
+migrations run even when runs are disabled.
+
 ## Environment variables
 
 | Variable | Default (in image) | Purpose |
 |---|---|---|
+| `PHLOX_ENV` | `production` | Enables production validation; built into the image |
 | `PHLOX_JWT_SECRET` | *(required)* | Strong, stable 32B+ secret; production startup fails if it is missing or a placeholder |
 | `SEARXNG_URL` | — | Optional: use SearXNG for web search instead of the default ddgs |
 | `PHLOX_CONFIG` | `/app/backend/config.yml` | Config path. Left at default so the mounted `backend/config.yml` is used — override only for an unusual layout |
@@ -176,10 +199,30 @@ podman run -d --name phlox \
 
 ---
 
+The supplied Compose file forwards `PHLOX_JWT_SECRET` and `DATABASE_URL`; exporting other
+variables on the host does not automatically inject them. Add the needed environment
+entries or credential mounts explicitly, particularly for AWS AgentCore/Bedrock or SearXNG.
+For example, when using temporary AWS credentials, merge these entries into the existing
+`phlox.environment` mapping (keep its JWT/database entries):
+
+```yaml
+AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:?Load AWS credentials}
+AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:?Load AWS credentials}
+AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:?Load the temporary session token}
+```
+
+For other credential methods, configure the appropriate runtime identity or credential
+mounts and verify them inside the container. The model-provider profile's credentials do
+not automatically configure AgentCore; see [SANDBOX.md](SANDBOX.md). Use deployment-managed
+credentials; do not bake them into the image. The current OpenAI
+adapter takes its API key from the saved provider profile, not automatically from
+`OPENAI_API_KEY`.
+
 ## Optional: Qdrant as a server (instead of embedded)
 
 Embedded Qdrant locks its on-disk directory to a single process, which is fine for one
-single-container instance. To move to a Qdrant **server** (e.g. before scaling out):
+single-container instance. A separately managed Qdrant server is optional; it does not
+make Phlox multi-process capable. To use the bundled server:
 
 ```bash
 docker compose --profile with-qdrant up -d --build
@@ -193,8 +236,8 @@ vector_store:
   collection: doc_chunks
 ```
 
-SQLite remains the source of truth, so you can rebuild the index after switching
-(`reindex_all`). `vector_store` is a bootstrap setting — change it in the file and restart.
+The SQL database remains the source of truth. After restarting, use the admin Documents
+panel’s Reindex action, or the offline operator command from [BACKUP_RESTORE.md](BACKUP_RESTORE.md). `vector_store` is a bootstrap setting — change it in the file and restart.
 
 ## Optional: Postgres (instead of SQLite)
 
@@ -205,6 +248,8 @@ no rebuild is needed to switch.
 A `postgres` service is included behind a profile if you want Compose to run it for you:
 
 ```bash
+# The bundled phlox/phlox credentials are an example. Replace POSTGRES_PASSWORD in
+# the Compose service and use the matching credential in DATABASE_URL before real use.
 export DATABASE_URL="postgresql+psycopg://phlox:phlox@postgres:5432/phlox"
 docker compose --profile with-postgres up -d --build
 ```
@@ -280,7 +325,7 @@ database snapshot alongside files; copying only local paths would miss a Postgre
 Podman is a drop-in for the commands above; these are the only real differences.
 
 - **Compose provider:** `podman compose` ships with Podman 4.x+. On older versions install
-  [`podman-compose`](https://github.com/containers/podman-compose) (`pip install podman-compose`)
+  [`podman-compose`](https://github.com/containers/podman-compose) (`uv tool install podman-compose`)
   and run `podman-compose …`. The `docker-compose.yml` here needs no changes.
 - **SELinux bind mounts (Fedora/RHEL/CentOS):** add **`:Z`** to volumes so the container can
   access them, e.g. `-v "$PWD/backend/data:/app/backend/data:Z"`. With Compose, append it in
@@ -300,5 +345,6 @@ Podman is a drop-in for the commands above; these are the only real differences.
 ## Health check
 
 ```bash
-curl http://localhost:8000/api/health    # -> {"status":"ok","tools":N}
+curl http://localhost:8000/api/health
+curl --fail http://localhost:8000/api/readiness
 ```

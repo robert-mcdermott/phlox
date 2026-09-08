@@ -1,5 +1,7 @@
 # Spend Budgets
 
+[User Guide](USER_GUIDE.md) · [Project overview](../README.md)
+
 Monthly USD spend caps for **users** and **departments**, enforced against the durable
 usage ledger. When a budget's current-month spend crosses its warning threshold (default
 90%) the user sees a banner; when it reaches or exceeds the limit, **priced** models are

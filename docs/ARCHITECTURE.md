@@ -1,6 +1,7 @@
 # Phlox Architecture
 
 > Read this first. It explains how the whole system fits together and where to add things.
+> User setup and configuration: [USER_GUIDE.md](USER_GUIDE.md).
 > Companion guides: [ADDING_A_TOOL.md](ADDING_A_TOOL.md) · [ADDING_A_PROVIDER.md](ADDING_A_PROVIDER.md) · [THEMING.md](THEMING.md) · [MCP.md](MCP.md)
 
 > This page describes the current implementation. The September 2026
@@ -155,10 +156,9 @@ important distinction between snapshot removal and historical transcript retenti
   container runner targets the Docker-compatible CLI, so Podman (incl. Docker-compat mode)
   and Docker both work across Windows/macOS/Linux. All three stream live stdout/stderr back
   as `tool_progress` SSE events while a command runs (instead of only at the end), and all
-  three honor a per-turn `cancel_event`: a timeout or a user's "Stop" click kills the whole
-  process **tree**, not just the immediate child — a shell that forked a build/test process
-  no longer keeps running as an orphan after the tool call is reported as timed
-  out/cancelled. See [SANDBOX.md](SANDBOX.md) §"Live output & cancellation".
+  three accept a per-turn cancellation signal. Local/container execution terminates the
+  process tree; AgentCore cannot guarantee termination of a remote invocation. With runs
+  enabled, browser disconnection only detaches the viewer; explicit Stop requests cancellation. See [SANDBOX.md](SANDBOX.md) §"Live output & cancellation".
   Configured isolation is fail-closed: an unavailable container engine or AgentCore failure
   is an execution/startup error, never a switch to host-local execution. Auth-enabled
   production refuses the local runner. `/api/readiness` and the admin Configuration panel

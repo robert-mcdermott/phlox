@@ -1,5 +1,7 @@
 # Authentication & Multi-User
 
+[User Guide](USER_GUIDE.md) · [Project overview](../README.md)
+
 Phlox supports **local username/password** accounts and a hardened **Microsoft Entra ID
 (Azure AD) OIDC** authorization-code browser flow. Sessions are Phlox-issued JWTs
 regardless of provider, so the rest of the app is auth-method-agnostic.
@@ -106,8 +108,8 @@ there is currently no overlapping old/new verification window.
 
 Self-service registration is disabled by default. If explicitly enabled, every registered
 account receives the `user` role (never first-user/admin promotion) and registration is
-process-limited by source IP. Multi-process deployments should add a shared limit at the
-reverse proxy as well.
+process-limited by source IP. Network-exposed deployments can add rate limiting at the reverse proxy as well; Phlox
+itself supports a single application process.
 
 ### Entra ID setup (production)
 1. Register a single-tenant app in Entra ID; add a Web redirect URI of

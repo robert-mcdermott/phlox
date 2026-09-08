@@ -1,5 +1,7 @@
 # Observability
 
+[User Guide](USER_GUIDE.md) · [Project overview](../README.md)
+
 Phlox exposes three layers of operational visibility, configured under
 `observability:` in `config.yml`.
 

@@ -1,5 +1,7 @@
 # Approval continuity and recovery
 
+[User Guide](USER_GUIDE.md) · [Project overview](../README.md)
+
 Implemented in [Wave 2](IMPLEMENTATION_WAVES.md), with per-call accounting in Wave 3.
 [Wave 5 reconnectable runs](RUNS.md) link new approvals to a server-owned run when enabled.
 This guide describes the underlying approval contract and legacy request-bound behavior.

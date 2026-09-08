@@ -126,5 +126,6 @@ reverse proxy as well.
 ## Notes / next
 - Treat first-run console output as sensitive because it contains the one-time admin
   password. Delete or restrict captured startup logs after the password is changed.
-- Audit logging + secrets management are **Tier 5** (sensitive-data deployment). Postgres
-  is available now (`DATABASE_URL`, see [DOCKER.md](DOCKER.md)) if you want it sooner.
+- Audit logging, secrets management, and regulated-data requirements remain part of the
+  separately gated sensitive-data track in [ROADMAP.md](ROADMAP.md). Postgres is already
+  available (`DATABASE_URL`, see [DOCKER.md](DOCKER.md)); it does not establish data-governance readiness.

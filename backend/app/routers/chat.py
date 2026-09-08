@@ -536,6 +536,7 @@ async def chat(
                 allowed_tools=enabled_tools,
                 fallback_provider=fallback,
                 cancel_event=cancel_event,
+                assistant_id=assistant.id if assistant else None,
             )
             yield from session.run(compacted)
         finally:
@@ -576,11 +577,13 @@ async def approve(
 
             gate = PermissionGate(db, REGISTRY, auto_approve=False)
             allowed_tools = state.get("allowed_tools")
+            assistant = _resolve_assistant(db, conversation.assistant_id, user)
             session = AgentSession(
                 db, conversation, provider, REGISTRY, gate,
                 state.get("params", {}), state["profile"], state.get("model"),
                 allowed_tools=set(allowed_tools) if allowed_tools is not None else None,
                 cancel_event=cancel_event,
+                assistant_id=assistant.id if assistant else None,
             )
             # Consume the pending row before resuming (it's superseded once we continue).
             db.delete(pending)

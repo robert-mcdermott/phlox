@@ -64,13 +64,21 @@ In `backend/app/providers/registry.py`, extend `build_provider`:
 ```python
 ptype = cfg.get("type", "openai")
 if ptype == "bedrock":
-    return BedrockProvider(cfg)
-if ptype == "openai":
-    return OpenAIProvider(cfg)
-if ptype == "myprovider":          # add this
+    provider = BedrockProvider(cfg)
+elif ptype == "openai":
+    provider = OpenAIProvider(cfg)
+elif ptype == "myprovider":        # add this
     from app.providers.my_provider import MyProvider
-    return MyProvider(cfg)
+    provider = MyProvider(cfg)
+else:
+    raise ValueError(f"Unknown provider type: {ptype!r}")
+provider.profile_name = profile_name
+return provider
 ```
+
+Keep the common `profile_name` assignment: the harness uses it to route delegated work
+through the actual resolved profile, including after a fallback. Custom provider instances
+supplied outside this factory should also carry that metadata when used as fallbacks.
 
 ## 3. Add a profile in `config.yml`
 

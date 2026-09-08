@@ -225,8 +225,10 @@ class TwoSubagentsProvider:
             yield StreamDelta(
                 type="tool_calls",
                 tool_calls=[
-                    ToolCall(id="c1", name="spawn_subagent", arguments={"task": "task A"}),
-                    ToolCall(id="c2", name="spawn_subagent", arguments={"task": "task B"}),
+                    ToolCall(id="c1", name="spawn_subagent",
+                             arguments={"task": "task A", "read_only": True}),
+                    ToolCall(id="c2", name="spawn_subagent",
+                             arguments={"task": "task B", "read_only": True}),
                 ],
             )
         else:

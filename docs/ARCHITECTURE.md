@@ -3,6 +3,11 @@
 > Read this first. It explains how the whole system fits together and where to add things.
 > Companion guides: [ADDING_A_TOOL.md](ADDING_A_TOOL.md) · [ADDING_A_PROVIDER.md](ADDING_A_PROVIDER.md) · [THEMING.md](THEMING.md) · [MCP.md](MCP.md)
 
+> This page describes the current implementation. The September 2026
+> [codebase review](CODEBASE_REVIEW.md) records its recovery, accounting, retrieval, and
+> operational limitations. The [active roadmap](ROADMAP.md) describes proposed changes;
+> durable runs, projects, and versioned evidence/artifacts do not yet ship.
+
 Phlox is a feature-rich, ChatGPT-style web app. It does
 chat, an agentic tool-using harness (code execution, filesystem, shell, web), document
 RAG, and MCP integration — over **any** model provider (AWS Bedrock or any
@@ -71,11 +76,12 @@ deals with provider-specific shapes.
 |---|---|---|
 | **Entry** | `main.py` | App, router mounting, startup wiring (DB, tools, MCP), SPA serving |
 | **Config** | `config.py`, `runtime_settings.py`, `app_config.py` | `config.yml` seed (profiles/defaults) + DB-backed per-user settings + admin deployment overrides (live overlay) |
-| **Persistence** | `database.py`, `models.py`, `schemas.py` | SQLite engine, ORM tables, Pydantic I/O |
+| **Persistence** | `database.py`, `models.py`, `schemas.py` | SQLite default / optional Postgres, ORM tables, additive startup DDL, Pydantic I/O |
 | **Providers** | `providers/base.py`, `openai_provider.py`, `bedrock_provider.py`, `registry.py` | Provider abstraction + streaming + embeddings |
 | **Agent** | `agent/harness.py`, `registry.py`, `permissions.py`, `events.py`, `context.py` | The resumable loop, tool registry, permission gate, SSE events, context compaction |
 | **Tools** | `agent/tools/{base,fs,shell,code,docs,web,memory,planning,subagent,checkpoint}.py` | Built-in tools (file/exec/web/RAG + memory, todo planning, sub-agents, checkpoints) |
 | **Assistants** | `routers/assistants.py` | Admin-curated personas (base model + system prompt + shared knowledge base + capability limits); reads for all users, writes admin-gated |
+| **Skills** | `skills.py`, `routers/skills.py`, `agent/tools/skills.py` | Reusable instructions, SKILL.md import/export, explicit invocation and progressive disclosure; see [SKILLS.md](SKILLS.md) |
 | **Memory** | `memory.py`, `routers/memories.py` | Cross-conversation memory: save + semantic retrieval into the system prompt |
 | **Checkpoints** | `workspace/checkpoints.py`, `routers/checkpoints.py` | Git-backed workspace snapshots + restore (auto-snapshot after mutating tools) |
 | **Rerank** | `rag/rerank.py` | Reranker seam (`LexicalReranker` default; cross-encoder-ready) |
@@ -160,19 +166,23 @@ deals with provider-specific shapes.
   `AgentSession` (doesn't persist to the parent conversation) with a scoped toolset in the
   **same workspace**, and returns its report. `AgentSession` gained `ephemeral` +
   `allowed_tools` for this. Recursion is prevented by excluding `spawn_subagent` from the
-  child's tools. It **inherits the parent turn's real approval state** rather than granting
-  itself a bypass (`auto_approve=ctx.auto_approve`, `interactive=False` — see the
-  permission-gate bullet above), and it opens its **own DB session** rather than sharing
-  `ctx.db`, since a SQLAlchemy session isn't safe across threads. That isolation is what
-  lets `AgentSession._run_calls_concurrently` run **multiple `spawn_subagent` calls from
-  the same round in parallel** worker threads instead of one after another — the model
-  decomposing a task into independent chunks actually saves wall-clock time now, not just
-  context budget. Everything else in a round still executes sequentially.
+  child's tools. The child **inherits the resolved parent profile/model, generation
+  parameters, effective tool set, user, verified assistant scope, approval mode, and
+  cancellation**; it never selects global settings. Provider construction records the
+  profile name so children follow an actual fallback route too. Each child opens its
+  **own DB session** and rechecks conversation ownership and assistant visibility.
+  `read_only: true` restricts tools to workspace reads, document search, and web fetch,
+  intersected with the parent's allowed set. Up to **3 read-only children** execute at a
+  time, with at most **8 child requests per round**; queued children skip execution after
+  cancellation. Mutation-capable children (`read_only: false`, the default) execute
+  sequentially within their parent turn. Unattended `ask` tools remain denied unless the
+  parent turn enabled auto-approval. This does not serialize separate top-level runs on
+  the same conversation; durable run ownership is future work.
 - **Checkpoints** (`workspace/checkpoints.py`): each workspace is a git repo; the harness
   auto-snapshots after a successful mutating tool (`MUTATING_TOOLS`), and the user can
   restore any snapshot (current state is snapshotted first, so nothing is lost). A
-  per-workspace `RLock` serializes the actual git operations, since concurrent sub-agents
-  (above) can now mutate + checkpoint the same workspace at the same time.
+  per-workspace `RLock` serializes actual git operations. This lock does not make arbitrary
+  workspace edits transactional; child mutation sequencing is described above.
 - **Multimodal** (`attachments.py`, providers): images attach to a user message (base64
   data URLs), are persisted to `data/attachments/<msg>/` and replayed into the provider as
   image content parts for vision models. The OpenAI provider also surfaces `reasoning`
@@ -267,7 +277,7 @@ in agent-generated pages run, but can't read the parent app's cookies/storage/DO
 html and markdown have a Preview/Source toggle; the panel width is user-resizable via a
 drag handle on its left edge.
 
-## 5. Data model (SQLite, `models.py`)
+## 5. Data model (SQLite / optional Postgres, `models.py`)
 
 - `User` (role, `auth_provider`, bcrypt `password_hash`, `department` for chargeback);
   owns the rows below via `user_id`.
@@ -285,6 +295,8 @@ drag handle on its left edge.
   **`Document`** (KB docs, which are deployment-owned: `user_id=NULL`).
 - `Setting` (key/value), `McpServer`, `ToolPref` (enabled + permission per tool),
   `Memory` (cross-conversation facts), `PendingApproval` (paused-run state for resume).
+- `Skill` — reusable instructions with slug, description, visibility, creator, and
+  auto-activation flag. Resources/scripts are not bundled; see [SKILLS.md](SKILLS.md).
 - `UsageLedger` — append-only, **FK-free** per-turn token/cost rows with a snapshot of the
   billable identity (username/email/department). Deliberately survives user deletion for
   chargeback; see [OBSERVABILITY.md](OBSERVABILITY.md) / [AUTH.md](AUTH.md).
@@ -322,7 +334,8 @@ Three layers, each with a clear job:
 
 > Single-process note: the overlay and `config.yml` are cached in-process and invalidated on
 > write. The app is effectively single-process (embedded Qdrant locks its dir), so
-> cross-process cache invalidation is out of scope; a multi-worker deployment is Tier 5.
+> cross-process cache invalidation is not implemented. Optional Postgres and server-mode
+> Qdrant alone do not make multi-worker operation supported; see [ROADMAP.md](ROADMAP.md).
 
 ## 7. Where to add things (quick index)
 
@@ -338,9 +351,10 @@ Three layers, each with a clear job:
 - **A content filter on model traffic** → add a detector/rule in `guardrails.py` (built-ins
   live in `BUILTIN_PATTERNS`); it is already enforced at both choke points + the harness.
   See [GUARDRAILS.md](GUARDRAILS.md).
-- **Harder code-exec isolation** → implement `DockerRunner` in `sandbox/runner.py`.
-- **Bigger RAG corpus** → replace `rag/retrieve.search_chunks` with a vector index; keep
-  the signature so `search_documents` is unaffected.
+- **Harder code-exec isolation** → extend `SandboxRunner` in `sandbox/runner.py`;
+  `ContainerRunner` and `AgentCoreCodeInterpreterRunner` already exist.
+- **Bigger RAG corpus** → use server-mode Qdrant behind the existing `VectorStore` seam;
+  benchmark ingestion/retrieval and preserve ownership filters. Vector search already exists.
 
 ## 8. Running & verifying
 

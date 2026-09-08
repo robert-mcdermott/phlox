@@ -125,9 +125,14 @@ def _bootstrap() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    _bootstrap()
-    logger.info("Phlox ready — %d tools registered", len(REGISTRY.names()))
-    yield
+    from app.mcp.manager import mcp_manager
+
+    try:
+        _bootstrap()
+        logger.info("Phlox ready — %d tools registered", len(REGISTRY.names()))
+        yield
+    finally:
+        mcp_manager.close()
 
 
 app = FastAPI(title="Phlox", version=get_version(display=False), lifespan=lifespan)

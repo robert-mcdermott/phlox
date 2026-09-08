@@ -38,12 +38,18 @@ class WordCount(Tool):
 - `ctx.conversation_id` — the conversation
 - `ctx.workspace` — `Path` to the per-conversation working dir (sandbox root)
 - `ctx.db` — a SQLAlchemy `Session`
-- `ctx.user_id` — the owning user, or `None` when auth is disabled
+- `ctx.user_id` — the owning user (including the synthetic local identity in no-auth mode)
+- `ctx.assistant_id` — the currently visibility-checked assistant scope; do not recover a
+  wider scope from the conversation's pinned ID. Pass it explicitly to a child session.
 - `ctx.runner` — the `SandboxRunner` (use for executing commands/code)
 - `ctx.auto_approve` — whether the current turn has "Agent mode" on. If your tool
   delegates to a nested `AgentSession` (like `spawn_subagent`), pass this through rather
   than hardcoding a policy — don't let a tool grant itself permissions the user didn't
   give the turn.
+- `ctx.profile`, `ctx.model`, `ctx.params`, `ctx.allowed_tools` — the resolved parent
+  execution snapshot. Delegation must use this profile/model and a copy of the generation
+  parameters, and intersect its tool set with `allowed_tools` and the permission gate.
+  Missing inherited context is an error, not permission to use global settings.
 - `ctx.progress` — `Callable[[str], None] | None`. For a long-running tool, call it with
   each chunk of output as you produce it and it streams to the UI live as a
   `tool_progress` event instead of only appearing when `run` returns. `run_shell` /
@@ -87,12 +93,19 @@ That's it. On next startup the tool is registered, a `ToolPref` row is seeded wi
 ## 3. Permissions
 
 - `auto` tools run without prompting.
-- `ask` tools only run when the turn has `auto_approve` (the composer's **Agent mode**) or
-  the user sets them to `auto` in the Tool Manager; otherwise they're skipped with a note
-  back to the model.
+- `ask` tools pause an interactive run for approval. They run after approval, when the
+  turn has `auto_approve` (the composer's **Agent mode**), or when an admin sets their
+  policy to `auto` in the Tool Manager. Unattended sessions deny unresolved `ask` tools.
 - `deny` tools never run.
 
 Mutating or executing tools should default to `ask`. Read-only tools can be `auto`.
+The permission gate uses the registered default even before preferences have been seeded
+(for example, a newly connected MCP tool); unregistered tools are denied.
+
+`spawn_subagent` defaults to mutation-capable, sequential execution. Set `read_only: true`
+for children that only inspect sources/files; they can run in a pool of up to 3 workers,
+with at most 8 child requests per round. The read-only tool set deliberately excludes
+shell/code execution and plan updates, since those can write to the shared workspace.
 
 If your tool is only ever driven by an unattended nested session (there's no human to
 answer an approval pause — `spawn_subagent` is the only current example), build its

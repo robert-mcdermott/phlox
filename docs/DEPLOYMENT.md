@@ -296,9 +296,9 @@ resource-limited **podman** containers (recommended for untrusted/multi-user use
    ```
 5. Set `sandbox.runner: container` in `config.yml` and `sudo systemctl restart phlox`.
 
-If no engine is reachable, Phlox logs a warning and falls back to the `local` runner, so the
-app keeps working. For a single-user/trusted box, the default `local` runner is fine and needs
-none of the above.
+If no engine is reachable, the configured container runner fails readiness/startup; Phlox
+does not fall back to host-local execution. The `local` runner is for explicitly trusted
+development. This guide's auth-enabled production configuration requires isolation.
 
 ## 9. Updating
 
@@ -310,10 +310,17 @@ sudo -u phlox sh -c 'cd frontend && npm ci && npm run build'     # rebuild SPA
 sudo systemctl restart phlox
 ```
 
-The schema migrates on startup on either backend; `backend/data/` persists across upgrades.
-Back it up by copying `backend/config.yml` + `backend/data/` while the service is stopped (or
-snapshot the DB file) — or, on Postgres, back up the database itself (`pg_dump` et al.) instead
-of `backend/data/`.
+Startup creates missing tables and applies a limited set of additive column changes on
+either backend; this is not a general versioned migration system. Versioned migrations and
+tested upgrade/restore tooling are planned in [ROADMAP.md](ROADMAP.md), M1.3.
+
+Before upgrading, stop writes and back up `backend/config.yml`, the deployment environment/
+secret configuration, and all of `backend/data/`. With Postgres, **also** back up the database
+(`pg_dump` or your managed backup mechanism): uploads, attachments, workspaces, and checkpoints
+still live in the data directory. DB-backed configuration overrides are in the database.
+Coordinate database and file snapshots, protect backups like the source data, and rehearse
+restoring the complete set into a separate instance. Copying only the SQLite file or only
+the Postgres database does not preserve the complete application.
 
 ---
 
@@ -328,13 +335,12 @@ of `backend/data/`.
 
 ## Production checklist
 
-- [ ] Changed the seeded `admin`/`admin` password
+- [ ] Replaced the random one-time administrator password through the required setup flow
 - [ ] Strong, stable `PHLOX_JWT_SECRET` in `/etc/phlox/phlox.env` (mode 640, `root:phlox`)
 - [ ] `auth.enabled: true` (default) — don't disable auth for shared/production use
 - [ ] TLS reverse proxy in front; app bound to `127.0.0.1`
 - [ ] Provider `endpoint` set to `localhost` and a real `model:` pulled
-- [ ] Decided sandbox mode (`local` for trusted single-user, `container` for untrusted)
+- [ ] Configured and verified an isolated runner (`container` or `agentcore`) for auth-enabled production
 - [ ] Decided database: SQLite (default) or Postgres (`DATABASE_URL`) — see §5d
-- [ ] `backend/data/` (or the Postgres database, if used) backed up on a schedule
+- [ ] Config/secret configuration and `backend/data/`, plus the Postgres database if used, backed up together; restore rehearsed
 - [ ] Single process only (no `--workers`, one instance per data dir)
-```

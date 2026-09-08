@@ -61,6 +61,8 @@ class LLMProvider(ABC):
 
     #: human-friendly model id currently selected
     model: str
+    #: Set by build_provider so delegation can follow a fallback's actual route.
+    profile_name: str | None = None
     #: whether the model/endpoint supports function/tool calling
     supports_tools: bool = True
 

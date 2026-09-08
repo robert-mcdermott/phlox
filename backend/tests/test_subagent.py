@@ -58,8 +58,10 @@ def _run_subagent(db, monkeypatch, *, auto_approve: bool) -> str:
         workspace=workspace_dir(conv.id),
         db=db,
         runner=get_runner(),
-        user_id=None,
+        user_id=conv.user_id,
         auto_approve=auto_approve,
+        profile="test", model="scripted-sub", params={"max_tool_rounds": 4},
+        allowed_tools=frozenset(REGISTRY.names()),
     )
     result = SpawnSubagent().run(ctx, task="run a shell command")
     return result.content

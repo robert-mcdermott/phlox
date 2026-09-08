@@ -7,9 +7,9 @@ at `<phlox>/v1` and it works unmodified.
 
 > **Status — Phase 1 (raw passthrough).** Implements `POST /v1/chat/completions` and
 > `GET /v1/models`: **exactly one model call per request**, so cost is predictable. The
-> agentic pipeline (`POST /v1/agent/completions`, RAG + tools + MCP, fan-out usage grouped
-> by `parent_request_id`) is **Phase 2** — the auth + accounting layer below is already
-> built to absorb it (see [ROADMAP.md](ROADMAP.md) and issue #5).
+> agentic pipeline is **deferred until the durable run, policy, and accounting foundations
+> in [ROADMAP.md](ROADMAP.md) are complete** (M4.3). The proposed
+> `POST /v1/agent/completions` shape remains subject to that API design; it is not implemented.
 
 ## 1. API keys
 

@@ -102,7 +102,10 @@ models).
 | Doc | What it covers |
 |---|---|
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System map, request lifecycle, module guide — **start here** |
-| [docs/ROADMAP.md](docs/ROADMAP.md) | What's done and what's next (Tiers 1–5) |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | Active improvement plan: reliable runs, cited research, projects, artifacts, and controlled autonomy |
+| [docs/CODEBASE_REVIEW.md](docs/CODEBASE_REVIEW.md) | September 2026 review: implementation findings, verification, and roadmap rationale |
+| [docs/IMPLEMENTATION_WAVES.md](docs/IMPLEMENTATION_WAVES.md) | Completed implementation waves, verification, and next work |
+| [docs/ROADMAP_LEGACY.md](docs/ROADMAP_LEGACY.md) | Archived original roadmap and delivery history (Tiers 1–5) |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Production deployment on Linux (Ubuntu/RHEL) under **systemd** |
 | [docs/DOCKER.md](docs/DOCKER.md) | Running Phlox in a container (**Docker or Podman**) |
 | [docs/AUTH.md](docs/AUTH.md) | Local accounts, roles, multi-user isolation, **Entra ID SSO** setup |
@@ -319,8 +322,8 @@ cd backend && uv run python -m evals.run_evals
 - **Database:** SQLite by default; set `DATABASE_URL` to deploy against Postgres instead
   ([docs/DOCKER.md](docs/DOCKER.md)).
 - **Sensitive data (PHI):** audit logging, secrets management, and data governance are
-  tracked as **Tier 5** in the [roadmap](docs/ROADMAP.md) and are required before any
-  deployment touching sensitive data.
+  tracked as a separate gated deployment track in the [roadmap](docs/ROADMAP.md) and
+  are required before any deployment touching sensitive data.
 
 ## License
 

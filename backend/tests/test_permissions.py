@@ -49,10 +49,23 @@ def test_decide_deny_policy_always_denies(db):
     assert gate.decide(tool.name) == "deny"
 
 
-def test_decide_unregistered_tool_defaults_to_allow(db):
-    # No ToolPref row and not in this registry: decide() falls back to policy "auto".
+def test_decide_unregistered_tool_is_denied(db):
     gate, _ = _seeded_gate(db, [])
-    assert gate.decide("nonexistent_tool") == "allow"
+    assert gate.decide("nonexistent_tool") == "deny"
+
+
+def test_unseeded_tools_use_registered_defaults(db):
+    # MCP tools connected after startup have no ToolPref until the next seeding pass.
+    reg = ToolRegistry()
+    ask, deny, auto = _tool("ask"), _tool("deny"), _tool("auto")
+    for tool in (ask, deny, auto):
+        reg.register(tool)
+    gate = PermissionGate(db, reg)
+    assert gate.decide(ask.name) == "ask"
+    assert gate.decide(deny.name) == "deny"
+    assert gate.decide(auto.name) == "allow"
+    assert gate.enabled_names() == {ask.name, auto.name}
+    assert PermissionGate(db, reg, interactive=False).decide(ask.name) == "deny"
 
 
 def test_decide_ask_policy_pauses_when_interactive_and_not_auto_approved(db):

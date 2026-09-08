@@ -263,9 +263,17 @@ docker compose restart phlox      # restart (e.g. after editing config.yml)
 docker compose down               # stop & remove container (backend/config.yml + backend/data persist)
 docker compose up -d --build      # rebuild after pulling new code
 
-# Back up everything: just copy the host files
+# Stop application writes before copying its local data
+docker compose stop phlox
 tar czf phlox-backup.tgz backend/config.yml backend/data
+docker compose start phlox
 ```
+
+This archive covers the listed local paths. Also preserve the deployment environment/
+secret configuration and, when configured, a coordinated Postgres database backup before
+restarting writes. Postgres does not replace the uploads, attachments, and workspaces in
+`backend/data/`. See [DEPLOYMENT.md](DEPLOYMENT.md#9-updating) for complete backup scope;
+rehearse restoring into a separate instance.
 
 ## Podman notes
 

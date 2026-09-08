@@ -295,9 +295,13 @@ def test_tool_context_carries_assistant_id(db):
 
     gate = PermissionGate(db, REGISTRY, auto_approve=True)
     session = AgentSession(db, conv, provider=None, registry=REGISTRY, gate=gate,
-                           params={}, profile="test", model=None)
+                           params={}, profile="test", model=None, assistant_id="a1")
     assert session.ctx.assistant_id == "a1"
     assert session.ctx.user_id == "u1"
+    # A pinned reference alone cannot widen retrieval; the caller must resolve visibility.
+    without_scope = AgentSession(db, conv, provider=None, registry=REGISTRY, gate=gate,
+                                params={}, profile="test", model=None)
+    assert without_scope.ctx.assistant_id is None
 
     db.delete(conv)
     db.commit()

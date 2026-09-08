@@ -18,6 +18,7 @@ import logging
 import queue
 import threading
 from collections.abc import Iterator
+from copy import deepcopy
 from dataclasses import replace
 from typing import Any
 
@@ -33,6 +34,9 @@ from app.sandbox.runner import get_runner
 from app.workspace.manager import workspace_dir
 
 logger = logging.getLogger(__name__)
+
+MAX_CONCURRENT_SUBAGENTS = 3
+MAX_SUBAGENTS_PER_ROUND = 8
 
 
 class AgentSession:
@@ -50,6 +54,7 @@ class AgentSession:
         allowed_tools: set[str] | None = None,
         fallback_provider: LLMProvider | None = None,
         cancel_event: threading.Event | None = None,
+        assistant_id: str | None = None,
     ):
         self.db = db
         self.conversation = conversation
@@ -57,12 +62,14 @@ class AgentSession:
         self.fallback_provider = fallback_provider
         self.registry = registry
         self.gate = gate
-        self.params = params
-        self.profile = profile
-        self.model = model
+        self.params = deepcopy(params)
+        self.profile = getattr(provider, "profile_name", None) or profile
+        self.model = getattr(provider, "model", model)
         # ephemeral sessions (sub-agents) don't persist messages; they expose final_text.
         self.ephemeral = ephemeral
-        self.allowed_tools = allowed_tools
+        self.allowed_tools = set(gate.enabled_names())
+        if allowed_tools is not None:
+            self.allowed_tools &= allowed_tools
         self.final_text = ""
         # Set by the caller (e.g. the chat router, watching for a client disconnect) so a
         # user's "Stop" click can actually halt an in-flight turn — kill any running
@@ -78,9 +85,13 @@ class AgentSession:
             db=db,
             runner=get_runner(),
             user_id=getattr(conversation, "user_id", None),
-            assistant_id=getattr(conversation, "assistant_id", None),
+            assistant_id=assistant_id,
             auto_approve=gate.auto_approve,
             cancel_event=cancel_event,
+            profile=self.profile,
+            model=self.model,
+            params=deepcopy(self.params),
+            allowed_tools=frozenset(self.allowed_tools),
         )
 
     def _cancelled(self) -> bool:
@@ -201,6 +212,10 @@ class AgentSession:
                             f"Primary model unavailable — switching to fallback ({self.fallback_provider.model})…"
                         )
                         self.provider = self.fallback_provider
+                        self.profile = getattr(self.provider, "profile_name", None)
+                        self.model = self.provider.model
+                        self.ctx.profile = self.profile
+                        self.ctx.model = self.model
                         used_fallback = True
                         round_text, pending_calls, stop_reason = "", [], None
                         continue  # retry the round with the fallback
@@ -283,10 +298,22 @@ class AgentSession:
         value) if the turn paused awaiting approval."""
         ask_batch: list[ToolCall] = []
         to_run: list[ToolCall] = []
+        child_count = 0
 
         for call in calls:
             if self._cancelled():
                 break
+            if call.name == "spawn_subagent":
+                child_count += 1
+                if child_count > MAX_SUBAGENTS_PER_ROUND:
+                    yield events.tool_call(call.id, call.name, call.arguments)
+                    yield from self._emit_result(
+                        call, ToolResult(
+                            content=f"Sub-agent limit ({MAX_SUBAGENTS_PER_ROUND} per round) "
+                            "reached. Not executed.", is_error=True,
+                        ), tool_steps, all_artifacts, messages,
+                    )
+                    continue
             if self.allowed_tools is not None and call.name not in self.allowed_tools:
                 decision = "not_enabled"
             elif decisions is not None and call.id in decisions:
@@ -311,24 +338,28 @@ class AgentSession:
             else:
                 to_run.append(call)
 
-        # spawn_subagent calls requested together in the same round are the model
-        # explicitly decomposing a task into independent chunks — run those in parallel.
-        # Everything else runs sequentially, as before (most tools mutate the same
-        # workspace files directly and aren't safe to run concurrently).
+        # Only explicitly read-only children can run concurrently. Mutation-capable
+        # children run one at a time so they cannot race on this turn's shared files.
         subagent_calls = [c for c in to_run if c.name == "spawn_subagent"]
         other_calls = [c for c in to_run if c.name != "spawn_subagent"]
+        readonly = [c for c in subagent_calls if c.arguments.get("read_only") is True]
+        mutating = [c for c in subagent_calls if c.arguments.get("read_only") is not True]
 
         yield from self._run_sequential(other_calls, tool_steps, all_artifacts, messages)
+        yield from self._run_sequential(mutating, tool_steps, all_artifacts, messages)
 
-        if len(subagent_calls) >= 2:
-            yield events.status(f"Running {len(subagent_calls)} sub-agents…")
-            results = yield from self._run_calls_concurrently(subagent_calls)
-            for call, result in zip(subagent_calls, results, strict=True):
+        if len(readonly) >= 2:
+            yield events.status(
+                f"Running {len(readonly)} read-only sub-agents "
+                f"(up to {MAX_CONCURRENT_SUBAGENTS} at once)…"
+            )
+            results = yield from self._run_calls_concurrently(readonly)
+            for call, result in zip(readonly, results, strict=True):
                 if not result.is_error:
                     self._maybe_checkpoint(call.name)
                 yield from self._emit_result(call, result, tool_steps, all_artifacts, messages)
         else:
-            yield from self._run_sequential(subagent_calls, tool_steps, all_artifacts, messages)
+            yield from self._run_sequential(readonly, tool_steps, all_artifacts, messages)
 
         if ask_batch:
             return (yield from self._pause(messages, ask_batch, tool_steps, all_artifacts))
@@ -369,13 +400,22 @@ class AgentSession:
         holders: dict[str, dict[str, Any]] = {c.id: {} for c in calls}
         names_by_id = {c.id: c.name for c in calls}
 
-        def worker(call: ToolCall) -> None:
+        def execute(call: ToolCall) -> None:
+            if self._cancelled():
+                holders[call.id]["result"] = ToolResult(
+                    content="Sub-agent cancelled before dispatch. Not executed.", is_error=True
+                )
+                progress_q.put((call.id, None))
+                return
             tool = self.registry.get(call.name)
             if tool is None:
                 holders[call.id]["result"] = ToolResult(content=f"Unknown tool: {call.name}", is_error=True)
                 progress_q.put((call.id, None))
                 return
-            call_ctx = replace(self.ctx, progress=lambda chunk, cid=call.id: progress_q.put((cid, chunk)))
+            call_ctx = replace(
+                self.ctx, params=deepcopy(self.ctx.params),
+                progress=lambda chunk, cid=call.id: progress_q.put((cid, chunk)),
+            )
             try:
                 holders[call.id]["result"] = tool.run(call_ctx, **call.arguments)
             except Exception as e:  # noqa: BLE001
@@ -384,7 +424,20 @@ class AgentSession:
             finally:
                 progress_q.put((call.id, None))
 
-        threads = [threading.Thread(target=worker, args=(c,), daemon=True) for c in calls]
+        work: queue.Queue[ToolCall] = queue.Queue()
+        for call in calls:
+            work.put(call)
+
+        def worker() -> None:
+            while True:
+                try:
+                    call = work.get_nowait()
+                except queue.Empty:
+                    return
+                execute(call)
+
+        threads = [threading.Thread(target=worker, daemon=True)
+                   for _ in range(min(MAX_CONCURRENT_SUBAGENTS, len(calls)))]
         for t in threads:
             t.start()
 

@@ -1,103 +1,128 @@
-/* Phlox product site — main.js
-   Mobile nav, scroll-reveal, copy-to-clipboard, header link highlighting. */
+/* Phlox product site: progressive navigation, palette preview, and code copying. */
 (function () {
-  'use strict';
+  "use strict";
+  document.documentElement.classList.add("js");
 
-  /* Mark that JS is active so CSS can apply the hidden-until-revealed state.
-     Without JS the .reveal content stays fully visible. */
-  document.documentElement.classList.add('js');
-
-  /* ---- Mobile nav toggle ---- */
-  var toggle = document.getElementById('navToggle');
-  var nav = document.getElementById('nav');
+  const toggle = document.getElementById("navToggle");
+  const nav = document.getElementById("nav");
+  const mobile = window.matchMedia("(max-width: 900px)");
+  function setMenu(open) {
+    nav.classList.toggle("open", open);
+    toggle.setAttribute("aria-expanded", String(open));
+    nav.inert = mobile.matches && !open;
+  }
   if (toggle && nav) {
-    toggle.addEventListener('click', function () {
-      var open = nav.classList.toggle('open');
-      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    setMenu(false);
+    toggle.addEventListener("click", () => setMenu(!nav.classList.contains("open")));
+    nav.addEventListener("click", (event) => {
+      if (event.target.closest("a")) setMenu(false);
     });
-    nav.addEventListener('click', function (e) {
-      if (e.target.tagName === 'A') {
-        nav.classList.remove('open');
-        toggle.setAttribute('aria-expanded', 'false');
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && nav.classList.contains("open")) {
+        setMenu(false);
+        toggle.focus();
       }
     });
+    document.addEventListener("click", (event) => {
+      if (!event.target.closest(".site-header")) setMenu(false);
+    });
+    mobile.addEventListener("change", () => setMenu(false));
   }
 
-  /* ---- Scroll reveal ---- */
-  var reveals = document.querySelectorAll('.reveal');
-  if ('IntersectionObserver' in window) {
-    var io = new IntersectionObserver(function (entries) {
-      entries.forEach(function (entry) {
-        if (entry.isIntersecting) {
-          entry.target.classList.add('in');
-          io.unobserve(entry.target);
-        }
-      });
-    }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
-    reveals.forEach(function (el) { io.observe(el); });
-    /* Safety net: if anything hasn't revealed shortly after load
-       (e.g. very tall viewport, print, or odd scroll state), show it. */
-    window.addEventListener('load', function () {
-      setTimeout(function () {
-        reveals.forEach(function (el) {
-          var r = el.getBoundingClientRect();
-          if (r.top < window.innerHeight) el.classList.add('in');
+  // Only animate after an observer is available; content stays visible without JS.
+  const reveals = document.querySelectorAll(".reveal");
+  if (
+    "IntersectionObserver" in window &&
+    !window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  ) {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add("in");
+            observer.unobserve(entry.target);
+          }
         });
-      }, 400);
+      },
+      { threshold: 0.05 },
+    );
+    reveals.forEach((element) => {
+      element.classList.add("will-reveal");
+      observer.observe(element);
     });
-  } else {
-    reveals.forEach(function (el) { el.classList.add('in'); });
   }
 
-  /* ---- Copy to clipboard for code blocks ---- */
-  document.querySelectorAll('.copy-btn').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      var target = document.getElementById(btn.getAttribute('data-copy-target'));
+  const status = document.createElement("p");
+  status.className = "sr-only";
+  status.setAttribute("role", "status");
+  document.body.appendChild(status);
+  document.querySelectorAll(".copy-btn").forEach((button) => {
+    let timer;
+    button.addEventListener("click", async () => {
+      const target = document.getElementById(button.dataset.copyTarget);
       if (!target) return;
-      var text = target.innerText;
-      var done = function () {
-        var original = btn.textContent;
-        btn.textContent = 'Copied!';
-        btn.classList.add('copied');
-        setTimeout(function () { btn.textContent = original; btn.classList.remove('copied'); }, 1600);
-      };
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(text).then(done).catch(fallback);
-      } else {
-        fallback();
+      const text = target.textContent;
+      let copied = false;
+      try {
+        await navigator.clipboard.writeText(text);
+        copied = true;
+      } catch {
+        const input = document.createElement("textarea");
+        input.value = text;
+        input.className = "sr-only";
+        document.body.appendChild(input);
+        input.select();
+        try {
+          copied = document.execCommand("copy");
+        } catch {
+          /* Show manual-copy guidance below. */
+        }
+        input.remove();
+        button.focus();
       }
-      function fallback() {
-        var ta = document.createElement('textarea');
-        ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
-        document.body.appendChild(ta); ta.select();
-        try { document.execCommand('copy'); done(); } catch (e) {}
-        document.body.removeChild(ta);
-      }
+      clearTimeout(timer);
+      button.textContent = copied ? "Copied" : "Select code";
+      button.classList.toggle("copied", copied);
+      status.textContent = copied
+        ? `${button.getAttribute("aria-label")}: copied.`
+        : "Copy unavailable. Select the code and copy it manually.";
+      timer = setTimeout(() => {
+        button.textContent = "Copy";
+        button.classList.remove("copied");
+      }, 1800);
     });
   });
 
-  /* ---- Active nav link on scroll ---- */
-  var sections = ['features', 'agent', 'knowledge', 'security', 'architecture', 'quickstart']
-    .map(function (id) { return document.getElementById(id); })
-    .filter(Boolean);
-  var navLinks = {};
-  document.querySelectorAll('.nav a').forEach(function (a) {
-    navLinks[a.getAttribute('href').replace('#', '')] = a;
+  const demo = document.getElementById("theme-demo");
+  const previewName = document.getElementById("preview-name");
+  const choices = document.querySelectorAll("[data-preview]");
+  choices.forEach((button) => {
+    button.disabled = false;
+    button.addEventListener("click", () => {
+      demo.dataset.previewTheme = button.dataset.preview;
+      previewName.textContent = button.lastElementChild.textContent;
+      choices.forEach((choice) => choice.setAttribute("aria-pressed", String(choice === button)));
+    });
   });
-  if ('IntersectionObserver' in window && sections.length) {
-    var spy = new IntersectionObserver(function (entries) {
-      entries.forEach(function (entry) {
-        if (entry.isIntersecting) {
-          Object.values(navLinks).forEach(function (a) { a.style.color = ''; });
-          var active = navLinks[entry.target.id];
-          if (active) active.style.color = 'var(--text)';
-        }
-      });
-    }, { rootMargin: '-45% 0px -50% 0px' });
-    sections.forEach(function (s) { spy.observe(s); });
-  }
 
-  /* ---- Footer year (keep current) ---- */
-  var yearNode = document.querySelector('[data-year]');
-  if (yearNode) yearNode.textContent = new Date().getFullYear();
+  // Derive sections from the actual navigation so added links remain supported.
+  if (nav && "IntersectionObserver" in window) {
+    const links = [...nav.querySelectorAll('a[href^="#"]')];
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) return;
+          links.forEach((link) => {
+            if (link.hash === `#${entry.target.id}`) link.setAttribute("aria-current", "location");
+            else link.removeAttribute("aria-current");
+          });
+        });
+      },
+      { rootMargin: "-20% 0px -65% 0px" },
+    );
+    links.forEach((link) => {
+      const section = document.querySelector(link.hash);
+      if (section) observer.observe(section);
+    });
+  }
 })();

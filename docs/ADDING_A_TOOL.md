@@ -130,3 +130,13 @@ curl -N -X POST localhost:8000/api/chat -H 'content-type: application/json' \
   -d '{"message":"use word_count on notes.txt","auto_approve":true}'
 ```
 Watch for a `tool_call` / `tool_result` for your tool in the SSE stream.
+
+## Document evidence
+
+Tools that supply document passages should use `app.sources.capture` with the conversation,
+owner, `ctx.accounting.turn_id`, document/chunk identity, and pinned assistant ID. Supply
+only the returned block to the model; an unavailable/over-limit result must not fall back
+to vector payload text. The harness automatically emits the shared turn catalog after tool
+results, including evidence registered by children. Do not generate local source numbers
+or accept model-authored source IDs as authority. See [SOURCES.md](SOURCES.md) for the
+snapshot, access, retention and export contract. Web tools require a future capture path.

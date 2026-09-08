@@ -10,9 +10,9 @@ import sqlalchemy as sa
 SCHEMA = json.loads(Path(__file__).with_name('schema_v1.json').read_text())
 
 
-def metadata():
+def metadata(schema=None):
     result = sa.MetaData()
-    for name, spec in SCHEMA['tables'].items():
+    for name, spec in (SCHEMA if schema is None else schema)['tables'].items():
         columns = []
         for c in spec['columns']:
             kind, _, length = c['type'].partition('(')

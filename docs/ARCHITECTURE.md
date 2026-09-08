@@ -6,8 +6,8 @@
 > This page describes the current implementation. The September 2026
 > [codebase review](CODEBASE_REVIEW.md) records its recovery, accounting, retrieval, and
 > operational limitations. The [active roadmap](ROADMAP.md) describes proposed changes;
-> opt-in [reconnectable runs](RUNS.md) now ship. Projects and versioned evidence/artifacts
-> remain proposed.
+> opt-in [reconnectable runs](RUNS.md) and [document source citations](SOURCES.md) now ship.
+> Projects, web evidence capture, and artifact versioning remain proposed.
 
 Phlox is a feature-rich, ChatGPT-style web app. It does
 chat, an agentic tool-using harness (code execution, filesystem, shell, web), document
@@ -72,7 +72,7 @@ A chat turn flows through these pieces:
    `GET /api/chat/approvals/{conversation_id}`. Claims are never automatically replayed.
    See [APPROVALS.md](APPROVALS.md) for expiry, terminal states, and crash boundaries.
 5. When the model answers with no tool calls, the loop ends. The assistant `Message`
-   (final text + structured tool steps + artifacts) is **persisted**, and a `done`
+   (final text + structured tool steps + artifacts + typed citation bindings) is **persisted**, and a `done`
    event with the message id is emitted.
 6. The frontend store (`useStore._onEvent`) assembles a **live** assistant message from
    the event stream; on `done` it re-fetches the conversation to reconcile with the
@@ -81,6 +81,18 @@ A chat turn flows through these pieces:
 The **canonical message format** (provider-neutral) is documented at the top of
 `providers/base.py`. Providers translate it to/from their wire formats; the harness never
 deals with provider-specific shapes.
+
+### Document evidence seam
+
+`app/sources.py` captures authorized SQL passages for direct document references and
+`search_documents`, using conversation-stable `Source` records and accounting-turn
+`SourceUse` links. Registration commits before the model sees its S-label. The harness
+emits `sources` catalogs and binds final citations into `Message.citations`; approvals
+and run-event replay carry the same catalog. `routers/sources.py` rechecks ownership and
+current document/assistant access for the source panel and Markdown export. A Document
+ORM deletion hook purges retained source content in the deletion transaction. Startup
+and worker maintenance expire snapshots. See [SOURCES.md](SOURCES.md) for limits and the
+important distinction between snapshot removal and historical transcript retention.
 
 ## 3. Backend module map (`backend/app/`)
 

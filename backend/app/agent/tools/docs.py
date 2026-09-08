@@ -46,9 +46,22 @@ class SearchDocuments(Tool):
         )
         if not hits:
             return ToolResult(content="No relevant passages found in uploaded documents.")
-        blocks = ["Cite sources as [n] using the numbers below.\n"]
-        for i, h in enumerate(hits, 1):
-            blocks.append(
-                f"[{i}] {h['filename']} (chunk {h['ordinal']}):\n{h['text']}"
+        from app import sources
+        import uuid
+
+        turn_id = ctx.accounting.turn_id if ctx.accounting else uuid.uuid4().hex
+        blocks = [sources.INSTRUCTIONS]
+        omitted = False
+        for hit in hits:
+            captured = sources.capture(
+                ctx.db, conversation_id=ctx.conversation_id, user_id=ctx.user_id,
+                turn_id=turn_id, document_id=hit.get('document_id'), chunk_id=hit.get('chunk_id'),
+                ordinal=hit.get('ordinal'), assistant_id=ctx.assistant_id, query=query,
             )
+            if captured:
+                blocks.append(captured[1])
+            else:
+                omitted = True
+        if omitted:
+            blocks.append('[Some evidence was omitted because it is unavailable or the source limit was reached.]')
         return ToolResult(content="\n\n".join(blocks))

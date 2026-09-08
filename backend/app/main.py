@@ -46,6 +46,7 @@ from app.routers import (
     runs,
     settings,
     skills,
+    sources,
     tools,
     usage,
 )
@@ -160,7 +161,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-for r in (runs, auth, chat, conversations, providers, settings, documents, assistants, mcp,
+for r in (sources, runs, auth, chat, conversations, providers, settings, documents, assistants, mcp,
           tools, files, memories, checkpoints, attachments, usage, admin_config, api_keys,
           gateway, budgets, skills):
     app.include_router(r.router)

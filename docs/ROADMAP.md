@@ -192,20 +192,28 @@ stop startup with actionable guidance. CI exercises the browser journey, not jus
 
 ### M2.1 — Make citations real data
 
-Existing document citations are prompt-generated numbers; they restart on each retrieval.
-Create a source registry with stable IDs across a run and versioned references across runs.
+**Wave 6 delivers the document foundation:** a private source registry, conversation-stable
+S-labels, typed message references, and clickable retained excerpts for uploaded documents
+and assistant knowledge bases. See [SOURCES.md](SOURCES.md). Web evidence and artifact-version
+citations remain below; historical answers are not retroactively converted.
+
+Extend the source registry with web evidence and richer ingestion locations.
 Store document/version, page or section and offsets, passage, retrieval query, URL/title,
 fetch time, and content hash as applicable. Distinguish discovery snippets from fetched
 evidence. Give citations typed message metadata instead of relying on Markdown parsing.
 
 - [ ] Render inline citation chips and a source drawer with the exact supporting passage;
   support both uploaded files and fetched pages. Deduplicate sources without losing passages.
-- [ ] Validate citation IDs and evidence locations. Mark unsupported references and omitted
+  **Document delivery complete in Wave 6; fetched pages remain.**
+- [x] Validate document citation IDs and chunk-relative evidence locations. Mark unsupported references and omitted
   evidence; a valid source ID alone does not prove that a claim is supported.
+  **Wave 6 marks unknown labels and omitted/truncated passages; semantic claim verification remains later.**
 - [ ] Preserve citations in exports and artifact versions. Source access must be rechecked
   on every read. Deletion removes retained content or leaves an explicit unavailable marker.
+  **Wave 6 delivers conversation Markdown export and document access/deletion checks; artifact versions remain.**
 - [ ] Keep source snapshots private, bounded, and subject to retention policy. Record
   fetch failures/paywalls instead of inventing source content.
+  **Wave 6 bounds document snapshots and applies 30-day expiry; web capture remains.**
 
 **Acceptance:** repeated searches cannot make `[1]` refer to different documents; all
 citations in the fixture suite resolve to the intended accessible passage. A second user
@@ -441,7 +449,7 @@ Start here; do not open every milestone simultaneously. Sizes are relative:
 | 5 / F05 | Browser test harness and state isolation | M | **Started, Waves 2–3:** isolated Chromium approval/accounting scenarios in CI; extend to full-stack and further user journeys |
 | 6 / F06 | Migration baseline plus backup/restore fixture | L | **Complete, Wave 4:** checked migrations, offline bundles, SQLite/Postgres restore with checkpoint/index recovery |
 | 7 / F07 | Durable run/event service plus reconnect UI, behind a flag | L, then re-estimate | **Delivered, Wave 5 (opt-in):** one bounded worker, persistent progress, reconnect/Stop UI, approval and conservative interruption recovery; see [RUNS.md](RUNS.md) |
-| 8 / F08 | Source registry and clickable citations prototype | M | Two retrieval calls and direct refs render unambiguous accessible sources |
+| 8 / F08 | Source registry and clickable citations prototype | M | **Delivered, Wave 6 (documents):** stable references across direct refs/searches, source panel, private snapshots, recovery and Markdown exports; see [SOURCES.md](SOURCES.md) |
 | 9 / F09 | Embedding identity and ingestion consistency | M–L | Same-dimension model change, outage, deletion, and retry fixtures pass |
 | 10 / F10 | First five core-journey evals and pilot scripts | M | Explicit pass rubrics, provider metadata, costs, and failure examples recorded |
 

@@ -12,6 +12,7 @@ class MessageOut(BaseModel):
     id: str
     role: str
     content: str
+    citations: list[dict] | None = None
     tool_calls: list[dict] | None = None
     artifacts: list[dict] | None = None
     attachments: list[dict] | None = None

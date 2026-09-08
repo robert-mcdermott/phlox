@@ -46,6 +46,7 @@ async function openBlob(path, filename, newTab = false) {
 }
 
 export const api = {
+  exportConversation: (id) => req('GET', `/api/conversations/${id}/export`),
   getBlob,
   downloadFile: (path, filename) => openBlob(path, filename, false),
   openFile: (path) => openBlob(path, null, true),

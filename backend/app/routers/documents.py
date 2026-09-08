@@ -114,18 +114,21 @@ def reindex(db: Session = Depends(get_db), _: User = Depends(require_admin)):
 def delete_document(
     document_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)
 ):
-    doc = db.get(Document, document_id)
-    if not doc or doc.user_id != user.id:
-        raise HTTPException(404, "Document not found")
-    db.delete(doc)
-    db.commit()
-    for p in UPLOADS_DIR.glob(f"{document_id}_*"):
-        p.unlink(missing_ok=True)
-    # Remove the document's vectors from the index.
-    try:
-        from app.rag.store import get_vector_store
+    from app.runs import LOCK
 
-        get_vector_store().delete_by_document(document_id)
-    except Exception:  # noqa: BLE001
-        pass
-    return {"deleted": document_id}
+    with LOCK:
+        doc = db.get(Document, document_id)
+        if not doc or doc.user_id != user.id:
+            raise HTTPException(404, "Document not found")
+        db.delete(doc)
+        db.commit()
+        for p in UPLOADS_DIR.glob(f"{document_id}_*"):
+            p.unlink(missing_ok=True)
+        # Remove the document's vectors from the index.
+        try:
+            from app.rag.store import get_vector_store
+
+            get_vector_store().delete_by_document(document_id)
+        except Exception:  # noqa: BLE001
+            pass
+        return {"deleted": document_id}

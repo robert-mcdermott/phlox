@@ -147,6 +147,8 @@ class Conversation(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
 
+    sources: Mapped[list["Source"]] = relationship(cascade="all, delete-orphan")
+
     runs: Mapped[list["Run"]] = relationship(cascade="all, delete-orphan")
 
     approvals: Mapped[list["PendingApproval"]] = relationship(cascade="all, delete-orphan")
@@ -168,6 +170,8 @@ class Message(Base):
     # role: user | assistant | system | tool
     role: Mapped[str] = mapped_column(String(20))
     content: Mapped[str] = mapped_column(Text, default="")
+    # Validated label -> source ID bindings; no excerpt/title copied into message metadata.
+    citations: Mapped[list | None] = mapped_column(JSON, nullable=True)
     # Structured tool-call steps the assistant took this turn (list of dicts).
     tool_calls: Mapped[list | None] = mapped_column(JSON, nullable=True)
     # Artifacts produced this turn (images/files): [{name, mime, path, kind}].
@@ -499,3 +503,55 @@ class ToolExecution(Base):
     status: Mapped[str] = mapped_column(String(24), default="started")
     # Arguments and results are in the bounded private event log / final transcript.
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
+class Source(Base):
+    """Conversation-private captured evidence. Tombstones keep labels unambiguous."""
+
+    __tablename__ = "sources"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    conversation_id: Mapped[str] = mapped_column(ForeignKey("conversations.id", ondelete="CASCADE"), index=True)
+    number: Mapped[int] = mapped_column(Integer)
+    fingerprint: Mapped[str] = mapped_column(String(64))
+    kind: Mapped[str] = mapped_column(String(20), default="document")
+    document_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    chunk_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    title: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    excerpt: Mapped[str | None] = mapped_column(Text, nullable=True)
+    content_hash: Mapped[str] = mapped_column(String(64))
+    location: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    captured_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    uses: Mapped[list["SourceUse"]] = relationship(cascade="all, delete-orphan")
+    __table_args__ = (
+        UniqueConstraint("conversation_id", "number", name="uq_source_number"),
+        UniqueConstraint("conversation_id", "fingerprint", name="uq_source_fingerprint"),
+    )
+
+
+class SourceUse(Base):
+    """Evidence actually supplied within an accounting turn, including its children."""
+
+    __tablename__ = "source_uses"
+    turn_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    source_id: Mapped[str] = mapped_column(ForeignKey("sources.id", ondelete="CASCADE"), primary_key=True)
+    query: Mapped[str] = mapped_column(String(500), default="")
+
+
+# All application document deletion paths use ORM deletion, including assistant KBs and
+# account purges. Remove retained source content in the same transaction as the document.
+from sqlalchemy import event, update  # noqa: E402
+from sqlalchemy.orm import Session  # noqa: E402
+
+
+@event.listens_for(Session, "before_flush")
+def _purge_deleted_source_content(session, flush_context, instances):
+    ids = [row.id for row in session.deleted if isinstance(row, Document)]
+    if ids:
+        session.execute(update(SourceUse).where(SourceUse.source_id.in_(
+            session.query(Source.id).filter(Source.document_id.in_(ids))
+        )).values(query='').execution_options(synchronize_session=False))
+        session.execute(update(Source).where(Source.document_id.in_(ids)).values(
+            document_id=None, chunk_id=None, title=None, url=None, excerpt=None, location=None,
+        ).execution_options(synchronize_session=False))

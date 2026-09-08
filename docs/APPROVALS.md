@@ -3,6 +3,9 @@
 Implemented in [Wave 2](IMPLEMENTATION_WAVES.md), with per-call accounting in Wave 3.
 [Wave 5 reconnectable runs](RUNS.md) link new approvals to a server-owned run when enabled.
 This guide describes the underlying approval contract and legacy request-bound behavior.
+[Wave 6 document citations](SOURCES.md) add source catalogs to snapshots and recovery
+responses. Resuming retains the accounting turn and its source bindings; source-panel and
+export reads still recheck current access independently of the saved approval context.
 
 ## User journey
 

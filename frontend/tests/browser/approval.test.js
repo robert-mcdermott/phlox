@@ -38,6 +38,7 @@ async function fixture(t, { approval = null, auth = false, durable = false } = {
   const page = await context.newPage()
   page.setDefaultTimeout(8000)
   const state = {
+    sources: {}, sourceReads: [], exportReads: 0, exportMarkdown: '',
     approval, decisions: [], reject: false, authenticated: false, setup: true,
     run: null, events: [], cursors: [], cancellations: 0, creates: [], loseAcceptance: false,
     config: { providers: [], pricing: {}, resilience: {}, generation: {}, suggestions: [],
@@ -64,6 +65,15 @@ async function fixture(t, { approval = null, auth = false, durable = false } = {
     }
     if (path === '/api/auth/change-password') { state.setup = false; return json({ ...user, must_change_password: false }) }
     if (path === '/api/conversations') return json([{ id: 'alpha', title: 'Approval chat' }, { id: 'beta', title: 'Other chat' }])
+    if (path.startsWith('/api/conversations/alpha/sources/')) {
+      const id = path.split('/').at(-1)
+      state.sourceReads.push(id)
+      return state.sources[id] ? json(state.sources[id]) : json({ detail: 'Source not found' }, 404)
+    }
+    if (path === '/api/conversations/alpha/export') {
+      state.exportReads++
+      return json({ markdown: state.exportMarkdown })
+    }
     if (path === '/api/conversations/alpha') return json({ id: 'alpha', title: 'Approval chat', messages: state.messages })
     if (path === '/api/conversations/beta') return json({ id: 'beta', title: 'Other chat', messages: [{ id: 'b', role: 'user', content: 'Only the other conversation' }] })
     if (path === '/api/chat/approvals/alpha') return json(state.approval ? [state.approval] : [])
@@ -381,4 +391,80 @@ test('interrupted progress stays visible until acknowledged and logout detaches 
   await login()
   await page.getByText('Approval chat', { exact: true }).click()
   await page.getByText('Still running.', { exact: true }).waitFor()
+})
+
+const sourceRef = { label: 'S1', source_id: 'source-1' }
+const sourceFixture = () => ({
+  id: 'source-1', label: 'S1', available: true, title: 'Evidence.txt',
+  excerpt: 'Retain the original evidence. <script>untrusted()</script>',
+  location: { chunk: 2, start: 0, end: 63, truncated: true },
+  captured_at: '2026-09-07T00:00:00Z', changed: true,
+})
+
+test('saved citations inspect exact evidence, preserve code, reload and recheck revoked access', async (t) => {
+  const { page, state } = await fixture(t)
+  state.sources['source-1'] = sourceFixture()
+  state.messages.push({ id: 'cited', role: 'assistant',
+    content: 'Evidence [S1]. Unknown [S99]. Inline `[S1]`.\n\n```text\n[S1]\n```',
+    citations: [sourceRef, { label: 'S99', source_id: null }],
+  })
+  await page.getByText('Approval chat', { exact: true }).click()
+  const chip = page.getByRole('button', { name: 'View source S1', exact: true })
+  await chip.waitFor()
+  assert.equal(await chip.count(), 1)
+  assert.equal(await page.getByRole('button', { name: 'Unverified source S99' }).isDisabled(), true)
+  assert.equal(await page.locator('code').filter({ hasText: '[S1]' }).count(), 2)
+  await chip.click()
+  await page.getByRole('dialog').getByText(state.sources['source-1'].excerpt, { exact: true }).waitFor()
+  await page.getByText('Chunk 3 · Characters 1–63', { exact: true }).waitFor()
+  await page.getByText('The document has changed since this excerpt was captured.', { exact: true }).waitFor()
+  await page.keyboard.press('Escape')
+  await page.getByRole('dialog').waitFor({ state: 'hidden' })
+  assert.equal(await chip.evaluate((el) => el === document.activeElement), true)
+  await page.reload()
+  await page.getByText('Approval chat', { exact: true }).click()
+  state.sources['source-1'] = { id: 'source-1', label: 'S1', available: false, reason: 'Source unavailable after deletion.' }
+  await chip.click()
+  await page.getByText('Source unavailable after deletion.', { exact: true }).waitFor()
+  assert.equal(await page.getByText('Evidence.txt', { exact: true }).count(), 0)
+  assert.equal(await page.getByRole('dialog').locator('blockquote').count(), 0)
+  assert.ok(state.sourceReads.length >= 2 && state.sourceReads.every((id) => id === 'source-1'))
+  await page.getByRole('button', { name: 'Close source' }).click()
+  state.exportMarkdown = '# Approval chat\n\nEvidence [S1].\n\n## Sources\n\n[S1] Source unavailable.'
+  const downloaded = page.waitForEvent('download')
+  await page.evaluate(async () => { const { useStore } = await import('/src/store/useStore.js'); await useStore.getState().exportConversation('alpha') })
+  const stream = await (await downloaded).createReadStream()
+  const chunks = []
+  for await (const chunk of stream) chunks.push(chunk)
+  assert.equal(Buffer.concat(chunks).toString(), state.exportMarkdown)
+  assert.equal(state.exportReads, 1)
+})
+
+test('approval snapshots and durable event replay keep citation identity in new tabs', async (t) => {
+  const approval = { ...pending(), content: 'Evidence [S1].', sources: [sourceRef] }
+  const { page, state, context } = await fixture(t, { durable: true, approval })
+  state.sources['source-1'] = sourceFixture()
+  state.run = { id: 'run-1', conversation_id: 'alpha', status: 'awaiting_approval', pending_id: 'approval-1' }
+  state.events = [{ type: 'sources', sources: [sourceRef] }, { type: 'token', content: 'Evidence [S1].' }]
+  await openApproval(page)
+  await page.getByRole('button', { name: 'View source S1', exact: true }).click()
+  await page.getByRole('dialog').getByText('Evidence.txt', { exact: true }).waitFor()
+  await page.keyboard.press('Escape')
+  await page.reload()
+  await openApproval(page)
+  await page.getByRole('button', { name: 'View source S1', exact: true }).waitFor()
+  const other = await context.newPage()
+  await other.goto(baseURL)
+  await openApproval(other)
+  await other.getByRole('button', { name: 'View source S1', exact: true }).click()
+  await other.getByRole('dialog').getByText('Evidence.txt', { exact: true }).waitFor()
+  assert.ok(state.sourceReads.length >= 2 && state.sourceReads.every((id) => id === 'source-1'))
+  await other.close()
+  // A running subscription rebuilds the same catalog from persisted events alone.
+  state.approval = null
+  state.run.status = 'running'
+  await page.reload()
+  await page.getByText('Approval chat', { exact: true }).click()
+  await page.getByRole('button', { name: 'View source S1', exact: true }).click()
+  await page.getByRole('dialog').getByText('Evidence.txt', { exact: true }).waitFor()
 })

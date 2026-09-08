@@ -104,25 +104,28 @@ def update_assistant(
 def delete_assistant(
     assistant_id: str, db: Session = Depends(get_db), user: User = Depends(require_admin)
 ):
-    a = _manageable(db, assistant_id, user)
-    # Cascade the knowledge base: rows (chunks cascade via ORM), upload files, vectors.
-    docs = db.query(Document).filter(Document.assistant_id == assistant_id).all()
-    doc_ids = [d.id for d in docs]
-    for doc in docs:
-        db.delete(doc)
-    db.delete(a)
-    db.commit()
-    for doc_id in doc_ids:
-        for p in UPLOADS_DIR.glob(f"{doc_id}_*"):
-            p.unlink(missing_ok=True)
-        try:
-            from app.rag.store import get_vector_store
+    from app.runs import LOCK
 
-            get_vector_store().delete_by_document(doc_id)
-        except Exception:  # noqa: BLE001
-            pass
-    # Conversations keep their dangling assistant_id and degrade to the snapshot.
-    return {"deleted": assistant_id, "documents_deleted": len(doc_ids)}
+    with LOCK:
+        a = _manageable(db, assistant_id, user)
+        # Cascade the knowledge base: rows (chunks cascade via ORM), upload files, vectors.
+        docs = db.query(Document).filter(Document.assistant_id == assistant_id).all()
+        doc_ids = [d.id for d in docs]
+        for doc in docs:
+            db.delete(doc)
+        db.delete(a)
+        db.commit()
+        for doc_id in doc_ids:
+            for p in UPLOADS_DIR.glob(f"{doc_id}_*"):
+                p.unlink(missing_ok=True)
+            try:
+                from app.rag.store import get_vector_store
+
+                get_vector_store().delete_by_document(doc_id)
+            except Exception:  # noqa: BLE001
+                pass
+        # Conversations keep their dangling assistant_id and degrade to the snapshot.
+        return {"deleted": assistant_id, "documents_deleted": len(doc_ids)}
 
 
 # -- knowledge base ----------------------------------------------------------
@@ -177,18 +180,21 @@ def delete_assistant_document(
     db: Session = Depends(get_db),
     user: User = Depends(require_admin),
 ):
-    _manageable(db, assistant_id, user)
-    doc = db.get(Document, document_id)
-    if not doc or doc.assistant_id != assistant_id:
-        raise HTTPException(404, "Document not found")
-    db.delete(doc)
-    db.commit()
-    for p in UPLOADS_DIR.glob(f"{document_id}_*"):
-        p.unlink(missing_ok=True)
-    try:
-        from app.rag.store import get_vector_store
+    from app.runs import LOCK
 
-        get_vector_store().delete_by_document(document_id)
-    except Exception:  # noqa: BLE001
-        pass
-    return {"deleted": document_id}
+    with LOCK:
+        _manageable(db, assistant_id, user)
+        doc = db.get(Document, document_id)
+        if not doc or doc.assistant_id != assistant_id:
+            raise HTTPException(404, "Document not found")
+        db.delete(doc)
+        db.commit()
+        for p in UPLOADS_DIR.glob(f"{document_id}_*"):
+            p.unlink(missing_ok=True)
+        try:
+            from app.rag.store import get_vector_store
+
+            get_vector_store().delete_by_document(document_id)
+        except Exception:  # noqa: BLE001
+            pass
+        return {"deleted": document_id}

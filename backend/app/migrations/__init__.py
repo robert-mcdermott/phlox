@@ -38,6 +38,11 @@ def expected_metadata(revision):
     if revision in {None, '0001_wave3', '0002_ledger_width'}:
         from app.migrations.baseline import metadata
         return metadata()
+    if revision == '0003_runs':
+        import json
+        from app.migrations.baseline import SCHEMA, metadata
+        additions = json.loads(Path(__file__).with_name('schema_v3_additions.json').read_text())
+        return metadata({'tables': {**SCHEMA['tables'], **additions}})
     from app.models import Base
     return Base.metadata
 

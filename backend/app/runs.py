@@ -217,6 +217,8 @@ def cleanup(db, now=None):
         row.events_expired = True
         row.payload = {}
     db.commit()
+    from app.sources import cleanup as cleanup_sources
+    cleanup_sources(db, now)
 
 
 class EventLimit(RuntimeError):

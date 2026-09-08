@@ -8,6 +8,7 @@ import os
 import subprocess
 import sys
 import uuid
+from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
@@ -61,8 +62,11 @@ def populate(engine):
         db.add(User(id='owner', username='owner', password_hash='test-hash', department='Science'))
         db.add(Conversation(id='conversation', user_id='owner', title='Restored chat'))
         db.flush()
-        db.add(Message(id='message', conversation_id='conversation', role='user', content='Keep this text',
-                       attachments=[{'type': 'image', 'idx': 0, 'ext': 'png'}]))
+        # Populate historical schemas through their frozen shape, before new columns exist.
+        db.execute(metadata().tables['messages'].insert().values(
+            id='message', conversation_id='conversation', role='user', content='Keep this text',
+            attachments=[{'type': 'image', 'idx': 0, 'ext': 'png'}], created_at=datetime.now(timezone.utc),
+        ))
         db.add(Document(id='document', user_id='owner', filename='source.txt', status='ready'))
         db.flush()
         db.add(DocChunk(id='a'*32, document_id='document', ordinal=0, text='Source passage', embedding=[0.1, 0.2]))
@@ -77,7 +81,7 @@ def populate(engine):
 def assert_content(engine):
     with Session(engine) as db:
         assert db.get(User, 'owner').department == 'Science'
-        assert db.get(Message, 'message').content == 'Keep this text'
+        assert db.scalar(sa.select(Message.content).where(Message.id == 'message')) == 'Keep this text'
         assert db.get(Document, 'document').user_id == 'owner'
         assert db.get(DocChunk, 'a'*32).embedding == [0.1, 0.2]
         assert db.get(ToolPref, 'write_file').permission == 'ask'
@@ -90,7 +94,7 @@ def test_fresh_and_repeated_upgrade_match_models(engines):
     engine = engines()
     upgrade(engine)
     upgrade(engine)
-    assert status(engine) == {'current': '0003_runs', 'head': '0003_runs'}
+    assert status(engine) == {'current': '0004_sources', 'head': '0004_sources'}
     assert check(engine)['compatible']
     with engine.connect() as conn:
         validate(conn, expected=Base.metadata)
@@ -163,7 +167,7 @@ def test_concurrent_upgrade_serializes(engines):
     engine = engines()
     with ThreadPoolExecutor(max_workers=2) as pool:
         list(pool.map(lambda _: upgrade(engine), range(2)))
-    assert status(engine)['current'] == '0003_runs'
+    assert status(engine)['current'] == '0004_sources'
 
 
 def test_different_databases_do_not_share_alembic_context(engines):
@@ -214,7 +218,7 @@ def test_backup_restore_populated_instance(engines, tmp_path, monkeypatch):
     restored = pg_target or sa.create_engine(f'sqlite:///{target / "data/phlox.db"}')
     try:
         assert_content(restored)
-        assert status(restored)['current'] == '0003_runs'
+        assert status(restored)['current'] == '0004_sources'
         for name, content in files.items():
             assert (target / 'data' / name).read_bytes() == content
         restored_workspace = target / 'data/workspaces/conversation'
@@ -396,7 +400,7 @@ def test_lifespan_failure_releases_lock_and_readiness_checks_schema(client, monk
         pass
     with maintenance_lock(DATA_DIR, ENGINE):
         pass
-    monkeypatch.setattr('app.migrations.status', lambda _: {'current': None, 'head': '0003_runs'})
+    monkeypatch.setattr('app.migrations.status', lambda _: {'current': None, 'head': '0004_sources'})
     response = client.get('/api/readiness')
     assert response.status_code == 503 and response.json()['database']['ready'] is False
 
@@ -496,7 +500,7 @@ def test_wave4_revision_can_be_checked_backed_up_and_upgraded(engines, tmp_path)
                   pg_bin_dir=os.environ.get('PHLOX_TEST_PG_BIN_DIR'))
     upgrade(engine)
     assert_content(engine)
-    assert status(engine)['current'] == '0003_runs'
+    assert status(engine)['current'] == '0004_sources'
 
 
 def test_run_evidence_survives_restore_without_replaying(engines, tmp_path):
@@ -593,3 +597,52 @@ def test_worker_persists_execution_and_accounting_on_both_engines(engines, monke
         assert db.get(Message, row.message_id).content == 'Durable answer'
         assert db.query(RunEvent).filter_by(run_id=run_id).count() >= 3
         assert db.query(UsageLedger).filter_by(turn_id=run_id).one().total_tokens == 5
+
+
+def test_wave5_upgrade_and_source_backup_restore(engines, tmp_path):
+    from app.migrations import expected_metadata
+    from app.sources import capture, inspect_source
+    from app.models import Source, SourceUse
+
+    engine = engines()
+    expected_metadata('0003_runs').create_all(engine)
+    with engine.begin() as conn:
+        conn.exec_driver_sql('CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL PRIMARY KEY)')
+        conn.exec_driver_sql("INSERT INTO alembic_version VALUES ('0003_runs')")
+    populate(engine)
+    assert check(engine)['compatible']
+    data = tmp_path / 'data'
+    data.mkdir()
+    config = tmp_path / 'config.yml'
+    config.write_text('{}')
+    pg_bin = os.environ.get('PHLOX_TEST_PG_BIN_DIR')
+    create_backup(engine, data, config, tmp_path / 'before', stopped=True, pg_bin_dir=pg_bin)
+    upgrade(engine)
+    assert_content(engine)
+    with Session(engine) as db:
+        assert db.get(Message, 'message').citations is None
+        ref, _ = capture(db, conversation_id='conversation', user_id='owner', turn_id='source-turn',
+                         document_id='document', chunk_id='a'*32, query='find passage')
+        db.get(Message, 'message').citations = [ref]
+        db.commit()
+    bundle = tmp_path / 'after'
+    create_backup(engine, data, config, bundle, stopped=True, pg_bin_dir=pg_bin)
+    target = tmp_path / 'restored'
+    pg_target = engines() if engine.dialect.name == 'postgresql' else None
+    restore_backup(bundle, target, database_url=pg_target.url if pg_target is not None else None,
+                   stopped=True, pg_bin_dir=pg_bin)
+    restored = pg_target or sa.create_engine(f'sqlite:///{target / "data/phlox.db"}')
+    try:
+        assert_content(restored)
+        with Session(restored) as db:
+            conv = db.get(Conversation, 'conversation')
+            assert db.get(Message, 'message').citations == [ref]
+            assert inspect_source(db, conv, ref['source_id'])['excerpt'] == 'Source passage'
+            assert db.get(SourceUse, ('source-turn', ref['source_id'])).query == 'find passage'
+            db.delete(db.get(Document, 'document'))
+            db.commit()
+            assert not inspect_source(db, conv, ref['source_id'])['available']
+            assert db.get(Source, ref['source_id']).excerpt is None
+            assert db.get(SourceUse, ('source-turn', ref['source_id'])).query == ''
+    finally:
+        restored.dispose()

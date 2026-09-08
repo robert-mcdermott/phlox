@@ -209,8 +209,40 @@ automatic continuation after worker death, or automatic retry of uncertain tool 
 Keep the existing provider/tool interfaces and permission gate. The OpenAI gateway remains
 its current completion API. This wave delivers the reconnect journey, not all of M1.2.
 
-## Following wave — Sources and clickable citations
+## Wave 6 — Document sources and clickable citations
 
-F08 should follow this bounded run foundation: stable source identity across retrievals,
-clickable citations, and source inspection. Deliver that visible research improvement before
-expanding background autonomy, scheduling, or distributed workers.
+**Status:** implemented and verified, 2026-09-07. **Scope:** the document portion of F08,
+with upload/assistant-KB evidence and recovery coverage from F05. Web evidence remains later.
+
+**User outcome:** inspect the exact retained passage behind an answer, across repeated
+searches, direct references, approval pauses, reloads, and Markdown exports. This feature
+works in both chat modes without an additional flag or service. See [SOURCES.md](SOURCES.md)
+for usage, APIs, retention, and deletion boundaries.
+
+| Task | Deliverable | Acceptance |
+|---|---|---|
+| W6.1 — Register evidence | Add private `Source`/`SourceUse` records and message citation metadata in `0004_sources`. Use stable conversation labels and canonical SQL chunks; associate captures with the shared accounting turn. | Repeated searches and concurrent children reuse the same identity; changed evidence receives a new label. Foreign or stale vector payloads cannot become evidence. |
+| W6.2 — Connect chat paths | Register direct references and document-search results before supplying their labels. Emit source catalogs and preserve them through approvals and durable replay. | A scripted turn directly references one document, searches twice, pauses for approval, and finishes with correct S1/S2 bindings in both chat modes. Unknown labels stay unverified. |
+| W6.3 — Inspect and export | Render citation buttons and an accessible source panel with the captured excerpt, location, date, truncation and changed-document notices. Add a reauthorized Markdown source appendix. | Browser reload/new-tab/replay preserve identity; code remains unchanged; Escape restores focus. Export and panel reads hide unavailable source content. |
+| W6.4 — Bound and protect snapshots | Enforce ownership/assistant visibility at capture and read, bounded excerpts/source counts, 30-day expiry, document-deletion purges, and conversation/owner cascades. | Copied IDs return 404 across users, including admins. Revocation hides snapshots; document and assistant deletion clear excerpt/query content; account deletion removes source rows. |
+| W6.5 — Verify upgrades and recovery | Freeze the Wave-5 schema additions for pre-upgrade checks/backups; upgrade populated SQLite/Postgres instances and restore citation-bearing backups. Update architecture, operator, and extension guides. | Prior messages remain intact and nullable citations stay compatible; restored references resolve the same passage and still honor deletion. |
+
+Verification: **363 backend tests passed, 1 non-applicable SQLite case skipped**, with
+Postgres 16 enabled (**15 new cases**). **11 Chromium scenarios**, Ruff, frontend production
+build, documentation link checks, and `git diff --check` pass. Scripted providers and isolated
+fixtures require no model credentials. Existing nine backend deprecation warnings and the
+diagram chunk-size build warning remain. No live-model citation-quality certification is claimed.
+
+Boundaries: uploaded/assistant documents only; chunk-relative locations, not PDF page
+coordinates. Valid references do not prove claim support. Snapshot removal does not rewrite
+historical answer/tool text, pending context, exported files, or backups. Retention is bounded
+in code; worker-off deployments physically purge expired snapshots at startup and deny them
+on every read. Web capture, artifact-version references, richer ingestion provenance, and
+semantic citation evaluation remain future work.
+
+## Following wave — Retrieval and ingestion quality
+
+Build on these inspectable sources by preserving parser/page/section provenance and
+embedding identity, then making ingestion/reindex progress and failures explicit (M2.2).
+Use the citation fixtures to measure retrieval improvements before expanding autonomous
+research or adding more retrieval machinery.

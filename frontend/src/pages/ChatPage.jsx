@@ -211,6 +211,7 @@ export default function ChatPage() {
                     thinking: live.thinking,
                     toolCalls: live.toolCalls,
                     artifacts: live.artifacts,
+                    sources: live.sources,
                   }}
                   conversationId={activeId}
                 />

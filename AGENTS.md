@@ -98,6 +98,10 @@ initial F05) is implemented:** atomic approval claims, cumulative counters, curr
 checks, UI recovery, and browser regression tests. **Wave 3 (F04) is implemented:**
 per-call usage, price snapshots, unknown-cost reporting, and bounded context checks.
 **Wave 4 (F06) is implemented:** checked Alembic adoption, offline backup/restore, and
-SQLite/Postgres recovery drills. M1 remains in progress; durable worker recovery is next. Consult the wave log
+SQLite/Postgres recovery drills. **Wave 5 (F07) is implemented:** opt-in reconnectable runs,
+explicit Stop, and conservative interruption recovery. **Wave 6 (document F08) is implemented:**
+private source snapshots, stable citations, source inspection and reauthorized Markdown exports
+(see [docs/SOURCES.md](docs/SOURCES.md)). M1/M2 remain in progress; ingestion quality and web
+evidence are still roadmap work. Consult the wave log
 for verification and remaining boundaries. Sensitive-data/PHI governance remains a separate
 deployment gate. Extend along the documented seams above.

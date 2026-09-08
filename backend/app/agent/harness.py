@@ -26,6 +26,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app import sources
 from app.agent import events
 from app.agent.permissions import PermissionGate
 from app.agent.registry import ToolRegistry
@@ -148,12 +149,21 @@ class AgentSession:
             self.tool_observer({"type": kind, "id": f"{self.journal_prefix}:{call.id}",
                                 "name": call.name, **data})
 
+    def _source_refs(self):
+        return sources.catalog(self.db, self.accounting.turn_id, self.conversation.id)
+
+    def _source_events(self):
+        refs = self._source_refs()
+        if refs and not self.ephemeral:
+            yield events.sse("sources", sources=refs)
+
     def _cancelled(self) -> bool:
         return self.cancel_event is not None and self.cancel_event.is_set()
 
     # -- public entry points ------------------------------------------------
     def run(self, messages: list[dict]) -> Iterator[str]:
         """Start a fresh turn. ``messages`` is the canonical history incl. the new user msg."""
+        yield from self._source_events()
         yield from self._loop(messages, tool_steps=[], all_artifacts=[])
 
     def resume(self, state: dict, decisions: dict[str, str]) -> Iterator[str]:
@@ -165,6 +175,7 @@ class AgentSession:
         tool_steps = state.get("tool_steps", [])
         all_artifacts = state.get("all_artifacts", [])
         pending = [ToolCall(c["id"], c["name"], c["arguments"]) for c in state.get("pending_calls", [])]
+        yield from self._source_events()
         yield from self._loop(
             messages, tool_steps, all_artifacts, initial_calls=pending, initial_decisions=decisions
         )
@@ -570,6 +581,7 @@ class AgentSession:
         totals = turn_usage(self.accounting)
         self.turn_usage = {k: totals[k] for k in ("input", "output", "total")}
         state = {
+            "sources": self._source_refs(),
             "version": 3,
             "turn_id": self.accounting.turn_id,
             "usage_summary": turn_usage(self.accounting),
@@ -620,6 +632,7 @@ class AgentSession:
             yield events.artifact(art["name"], art["path"], art.get("ext", ""), url)
 
         yield events.tool_result(call.id, call.name, result.content, result.is_error, result.artifacts)
+        yield from self._source_events()
 
         tool_steps.append(
             {
@@ -724,6 +737,7 @@ class AgentSession:
             artifacts=all_artifacts or None,
             usage=usage,
             model=self.provider.model,
+            citations=sources.bind(final_text, self._source_refs()),
         )
         self.db.add(msg)
         self.db.commit()

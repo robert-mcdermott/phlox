@@ -8,7 +8,7 @@ import { canvasKind } from '../utils/canvas'
 
 // Shape of the in-progress assistant turn assembled from SSE events.
 function emptyLive() {
-  return { content: '', thinking: '', toolCalls: [], artifacts: [], status: '', pendingApproval: null }
+  return { sources: [], content: '', thinking: '', toolCalls: [], artifacts: [], status: '', pendingApproval: null }
 }
 
 export const useStore = create((set, get) => ({
@@ -251,7 +251,7 @@ export const useStore = create((set, get) => ({
       const p = approvals[0]
       set({ live: p ? {
         ...emptyLive(), content: p.content || '', toolCalls: p.tool_steps || [],
-        artifacts: p.artifacts || [], usage: p.usage,
+        artifacts: p.artifacts || [], usage: p.usage, sources: p.sources || [],
         pendingApproval: { pendingId: p.pending_id, calls: p.calls, status: p.status, expiresAt: p.expires_at },
       } : null })
     } catch (err) {
@@ -295,18 +295,7 @@ export const useStore = create((set, get) => ({
   // Export a conversation as a Markdown file (downloaded client-side).
   async exportConversation(id) {
     const conv = await api.getConversation(id)
-    let md = `# ${conv.title}\n\n_Exported ${new Date().toLocaleString()}_\n\n`
-    for (const m of conv.messages) {
-      if (m.role === 'user') {
-        md += `### You\n\n${m.content}\n\n`
-      } else if (m.role === 'assistant') {
-        md += `### Assistant${m.model ? ` · ${m.model}` : ''}\n\n`
-        for (const tc of m.tool_calls || []) {
-          md += `> 🔧 **${tc.name}**(${JSON.stringify(tc.arguments)})\n>\n`
-        }
-        md += `${m.content || ''}\n\n`
-      }
-    }
+    const { markdown: md } = await api.exportConversation(id)
     const blob = new Blob([md], { type: 'text/markdown' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -435,6 +424,9 @@ export const useStore = create((set, get) => ({
 
         case 'conversation':
           return { activeId: ev.id }
+        case 'sources':
+          live.sources = ev.sources || []
+          break
         case 'token':
           live.content += ev.content
           live.status = ''

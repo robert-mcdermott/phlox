@@ -88,6 +88,7 @@ def public_snapshot(pending: PendingApproval) -> dict:
     content = next((m.get("content", "") for m in reversed(state.get("messages", []))
                     if m.get("role") == "assistant"), "")
     return {
+        "sources": state.get("sources") or [],
         "pending_id": pending.id,
         "status": status,
         "expires_at": expires_at(pending).isoformat(),

@@ -34,6 +34,7 @@ def build_provider(profile_name: str, model: str | None = None) -> LLMProvider:
     else:
         raise ValueError(f"Unknown provider type: {ptype!r}")
     provider.profile_name = profile_name
+    provider.context_window = cfg.get("context_window")
     return provider
 
 

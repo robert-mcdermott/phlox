@@ -62,7 +62,7 @@ regardless of provider, so the rest of the app is auth-method-agnostic.
   downgraded at runtime. Bootstrap/security-sensitive settings — `auth.*` (incl. `jwt_secret`
   and `enabled`), `vector_store`, and OTel/request-logging — stay **file-only**.
 - **One deliberate exception — the usage ledger.** For departmental **chargeback**, an
-  append-only `UsageLedger` records per-turn token usage + cost with the user's identity
+  `UsageLedger` records per-call token usage + cost (plus historical turn entries) with the user's identity
   (username/email/department) **snapshotted at write time**, and is **not** purged on
   deletion. This lets a departing user's department still be billed for the month. The
   ledger holds usage **metadata only — never message content** — so it does not expose

@@ -132,6 +132,7 @@ function ProvidersCard({ cfg, onSaved }) {
         name: r.name.trim(), type: r.type, label: r.label || null, model: r.model || null,
         models: (r.modelsText || '').split(',').map((s) => s.trim()).filter(Boolean),
         supports_tools: !!r.supports_tools,
+        context_window: r.context_window || null,
       }
       if (r.type === 'openai') {
         p.endpoint = r.endpoint || null
@@ -303,6 +304,7 @@ function normalizeProfile(p) {
     aws_secret_access_key: '', aws_session_token: '', aws_bedrock_api_key: '',
     modelsText: (p.models || []).join(', '),
     supports_tools: p.supports_tools !== false,
+    context_window: p.context_window || null,
   }
 }
 
@@ -314,38 +316,52 @@ function PricingCard({ cfg, onSaved }) {
 
   const update = (i, patch) => setRows((rs) => rs.map((r, j) => (j === i ? { ...r, ...patch } : r)))
   const remove = (i) => setRows((rs) => rs.filter((_, j) => j !== i))
-  const add = () => setRows((rs) => [...rs, { model: '', input: '', output: '' }])
+  const add = () => setRows((rs) => [...rs, { model: '', input: '', output: '', cache_read: '', cache_write: '' }])
 
   const submit = () => {
     const pricing = {}
     for (const r of rows) {
       if (!r.model.trim()) continue
-      pricing[r.model.trim()] = { input: Number(r.input) || 0, output: Number(r.output) || 0 }
+      pricing[r.model.trim()] = Object.fromEntries(
+        ['input', 'output', 'cache_read', 'cache_write'].map((key) => [key,
+          r[key] === '' || r[key] == null ? null : Number(r[key]),
+        ]),
+      )
     }
     save('pricing', { pricing })
   }
 
   return (
     <Card icon={DollarSign} title="Model pricing"
-      desc="USD per 1,000,000 tokens, used for per-message cost and chargeback. Applies live to new turns.">
+      desc="USD per 1,000,000 tokens, captured per model call. Blank rates mean unknown; enter 0 for an explicit zero price.">
       <div className="space-y-2">
         <div className="grid grid-cols-[1fr_7rem_7rem_2rem] gap-2 text-[10px] uppercase tracking-wide text-muted">
           <div>Model id</div><div className="text-right">Input $/1M</div><div className="text-right">Output $/1M</div><div />
         </div>
         {rows.map((r, i) => (
-          <div key={i} className="grid grid-cols-[1fr_7rem_7rem_2rem] items-center gap-2">
-            <input placeholder="model id" value={r.model}
-              onChange={(e) => update(i, { model: e.target.value })} className={`${inputCls} font-mono`} />
-            <input type="number" step="0.01" min="0" value={r.input}
-              onChange={(e) => update(i, { input: e.target.value })} className={`${inputCls} text-right`} />
-            <input type="number" step="0.01" min="0" value={r.output}
-              onChange={(e) => update(i, { output: e.target.value })} className={`${inputCls} text-right`} />
-            <button onClick={() => remove(i)} className="rounded p-1.5 text-muted hover:text-red-600" title="Remove">
-              <Trash2 size={14} />
-            </button>
+          <div key={i} className="space-y-2 rounded-lg border border-border p-2">
+            <div className="grid grid-cols-[1fr_7rem_7rem_2rem] items-center gap-2">
+              <input placeholder="model id" value={r.model}
+                onChange={(e) => update(i, { model: e.target.value })} className={`${inputCls} font-mono`} />
+              <input aria-label="Input $/1M" type="number" step="0.01" min="0" value={r.input}
+                onChange={(e) => update(i, { input: e.target.value })} className={`${inputCls} text-right`} />
+              <input aria-label="Output $/1M" type="number" step="0.01" min="0" value={r.output}
+                onChange={(e) => update(i, { output: e.target.value })} className={`${inputCls} text-right`} />
+              <button onClick={() => remove(i)} className="rounded p-1.5 text-muted hover:text-red-600" title="Remove">
+                <Trash2 size={14} />
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-3 text-xs text-muted">
+              {['cache_read', 'cache_write'].map((key) => <label key={key}>
+                {key === 'cache_read' ? 'Cached input $/1M' : 'Cache write $/1M'}
+                <input type="number" min="0" step="0.01" value={r[key] ?? ''}
+                  onChange={(e) => update(i, { [key]: e.target.value })}
+                  className={`${inputCls} ml-2 w-24 text-right`} placeholder="Unknown" />
+              </label>)}
+            </div>
           </div>
         ))}
-        {rows.length === 0 && <p className="text-xs text-muted">No pricing set — models will show tokens but $0.</p>}
+        {rows.length === 0 && <p className="text-xs text-muted">No pricing set — model costs are unknown.</p>}
       </div>
       <div className="mt-3 flex items-center gap-2">
         <button onClick={add} className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm text-content hover:border-accent">
@@ -362,6 +378,7 @@ function PricingCard({ cfg, onSaved }) {
 function pricingToRows(pricing) {
   return Object.entries(pricing || {}).map(([model, rate]) => ({
     model, input: rate.input ?? '', output: rate.output ?? '',
+    cache_read: rate.cache_read ?? '', cache_write: rate.cache_write ?? '',
   }))
 }
 

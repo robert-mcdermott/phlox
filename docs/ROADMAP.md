@@ -3,9 +3,8 @@
 Reviewed **2026-09-07** against commit `e07ddc7d`. This is the active product and
 engineering plan. The [codebase review](CODEBASE_REVIEW.md) records evidence, limitations,
 and verification; the [original roadmap](ROADMAP_LEGACY.md) preserves the delivery history.
-**M1 is in progress:** [Waves 1–2](IMPLEMENTATION_WAVES.md) implement F01–F03, permission
-defaults, and the initial F05 browser harness. Verification: 246 backend tests and 4 browser
-scenarios pass. M2–M5 remain proposed. Existing features and
+**M1 is in progress:** [Waves 1–3](IMPLEMENTATION_WAVES.md) implement F01–F04, permission
+defaults, and the initial F05 browser harness. See the wave log for current verification. M2–M5 remain proposed. Existing features and
 completed work are identified explicitly; unchecked entries do not yet ship.
 
 ## 1. Product direction
@@ -107,14 +106,17 @@ cards alongside the persistence work. Avoid a long stretch of backend-only chang
   pauses. Consume approvals atomically; reject duplicate decisions; enforce expiry and
   current account/tool/budget policy at resume. Expose pending approvals after reload.
   Implemented in Wave 2; see [approval semantics and limits](APPROVALS.md). Durable
-  worker/crash reconciliation and full model-call accounting remain below. See **R1–R2**.
-- [ ] Count every model invocation, including compaction, children, retries when usage is
+  worker/crash reconciliation remains below. See **R1–R2**.
+- [x] Count every application generation invocation, including compaction, children, retries when usage is
   available, fallback, and paused work. Price each invocation using its actual model and
   a rate snapshot. Label unavailable usage/pricing explicitly; do not equate unknown with
   free. Reconcile to the existing metadata-only usage ledger without double-counting.
-- [ ] Add a last-resort context fit check before each model round, including tool schemas,
+  Implemented in Wave 3; [scope and limits](MODEL_CALLS.md) include opaque SDK retries
+  and embeddings outside this seam.
+- [x] Add a last-resort context fit check before each model round, including tool schemas,
   tool output, image estimates, and reserved output tokens. Bound a single oversized turn;
-  compaction must not silently return an over-budget request. See **R5**.
+  compaction must not silently return an over-budget request. Wave 3 uses a bounded
+  heuristic with configurable profile caps; exact provider tokenizers remain future work. See **R5**.
 - [ ] Validate tool arguments against their schemas before dispatch. Return actionable
   errors for malformed calls; do not convert invalid JSON into a valid-looking empty call.
   Resolve missing preferences from the registered tool's default policy, and reject unknown
@@ -396,7 +398,7 @@ the three core journeys. The rest are conditional bets; measure use before expan
 ## 10. Quality targets and measurement
 
 These are **proposed release targets**, not current measurements. The initial review
-baseline was 179 passing backend tests; Wave 2 raises that to 246, plus 4 browser scenarios
+baseline was 179 passing backend tests; Wave 3 raises that to 278, plus accounting browser coverage
 and a successful build.
 Live answer quality and browser performance have not been measured. Use synthetic fixtures and opt-in, locally
 stored pilot feedback; raw user content must not become default telemetry or eval data.
@@ -427,8 +429,8 @@ Start here; do not open every milestone simultaneously. Sizes are relative:
 | 1 / F01 | MCP reconnect and cancellation cleanup | S–M | **Complete, Wave 1:** reconnect, failed init, cancellation, slow teardown, shutdown, and real stdio tests |
 | 2 / F02 | Parent execution-context inheritance and child concurrency limit | M | **Complete, Wave 1:** two-user/fallback models, scope inheritance, bounded read-only fan-out, sequential mutations |
 | 3 / F03 | Resume state/accounting, atomic approval claim, cumulative limits | M | **Complete, Wave 2:** cumulative counters, atomic claim, current policy, expiry, recovery, terminal outcomes |
-| 4 / F04 | Per-model-call usage records and context fit enforcement | L | Compaction/child/fallback fixtures reconcile; oversized turns handled visibly |
-| 5 / F05 | Browser test harness and state isolation | M | **Started, Wave 2:** 4 isolated Chromium scenarios in CI; extend to full-stack and further user journeys |
+| 4 / F04 | Per-model-call usage records and context fit enforcement | L | **Complete, Wave 3:** call attribution, partial usage, price snapshots, approval reconciliation, bounded context |
+| 5 / F05 | Browser test harness and state isolation | M | **Started, Waves 2–3:** isolated Chromium approval/accounting scenarios in CI; extend to full-stack and further user journeys |
 | 6 / F06 | Migration baseline plus backup/restore fixture | L | Populated SQLite and Postgres fixtures upgrade and restore |
 | 7 / F07 | Durable run/event service plus reconnect UI, behind a flag | L, then re-estimate | Disconnect and restart scenarios pass with stable run/event IDs |
 | 8 / F08 | Source registry and clickable citations prototype | M | Two retrieval calls and direct refs render unambiguous accessible sources |

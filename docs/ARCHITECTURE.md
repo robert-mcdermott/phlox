@@ -93,9 +93,9 @@ deals with provider-specific shapes.
 | **Workspace** | `workspace/manager.py` | Per-conversation working dir + path-traversal guard |
 | **RAG** | `rag/ingest.py`, `embed.py`, `retrieve.py`, `store.py` | Parse → chunk → embed → **Qdrant** vector search (`VectorStore` seam) |
 | **MCP** | `mcp/manager.py` | Connect MCP servers, proxy their tools into the registry |
-| **Observability** | `observability.py`, `usage_ledger.py`, `routers/usage.py` | Per-request logging, OTel seam, per-turn token/cost capture + durable chargeback ledger. See [OBSERVABILITY.md](OBSERVABILITY.md) |
+| **Observability** | `observability.py`, `model_calls.py`, `usage_ledger.py`, `routers/usage.py` | Per-request logging, OTel seam, per-call token/cost capture + durable chargeback ledger. See [OBSERVABILITY.md](OBSERVABILITY.md) |
 | **Budgets** | `budgets.py`, `routers/budgets.py` | Monthly USD spend caps per user/department: current-month spend (from the ledger), warn/block status, and `enforce_budget` applied at the chat + gateway choke points. See [BUDGETS.md](BUDGETS.md) |
-| **API gateway** | `api_keys.py`, `routers/api_keys.py`, `routers/gateway.py` | Per-user API keys (SHA-256 hashed) + OpenAI-compatible `/v1/chat/completions` & `/v1/models`; usage flows through `usage_ledger`. See [API_GATEWAY.md](API_GATEWAY.md) |
+| **API gateway** | `api_keys.py`, `routers/api_keys.py`, `routers/gateway.py` | Per-user API keys (SHA-256 hashed) + OpenAI-compatible `/v1/chat/completions` & `/v1/models`; usage flows through `model_calls`. See [API_GATEWAY.md](API_GATEWAY.md) |
 | **Guardrails** | `guardrails.py` | PII/custom-pattern **redaction & blocking** (input + output, streaming-safe `StreamRedactor`), enforced in `routers/{chat,gateway}.py` + `agent/harness.py`. See [GUARDRAILS.md](GUARDRAILS.md) |
 | **Routers** | `routers/*.py` | `auth, chat, conversations, providers, settings, documents, assistants, mcp, tools, files, memories, checkpoints, attachments, usage, admin_config, api_keys, gateway, budgets` |
 
@@ -157,7 +157,9 @@ deals with provider-specific shapes.
   to one process — don't open a second client against the same path.)
 - **Long conversations are compacted** (`agent/context.py`): once the replayed transcript
   exceeds `max_context_tokens` (config default), older turns are summarized into a system
-  message; recent turns stay verbatim.
+  message; recent turns stay verbatim. The shared call seam also applies a final bounded
+  request check with schemas, image estimates, tool results, and output reservation; see
+  [MODEL_CALLS.md](MODEL_CALLS.md) for the heuristic and profile context caps.
 - **RAG is hybrid + reranked** (`rag/`): each chunk has a named **dense** (semantic) and
   **sparse** (lexical) vector in Qdrant; retrieval queries both, fuses with RRF in Python
   (robust on embedded mode), then reranks. Sparse vectors + the default reranker are
@@ -227,13 +229,14 @@ deals with provider-specific shapes.
   to the profile's configured model so stale settings don't override config.
 - **Spend budgets enforce at the model-call choke points** (`budgets.py`). Admin-set monthly
   USD caps (`Budget`, scoped to a user or department) are checked by `enforce_budget` in
-  *both* `routers/chat.py` and `routers/gateway.py`, so interactive chat and API-key traffic
-  are gated identically. "Spend this month" is a live, date-bounded sum over `UsageLedger`
+  `routers/chat.py`, `routers/gateway.py`, and the shared `model_calls.py` seam, including
+  subsequent rounds, children, and compaction. "Spend this month" is a live, date-bounded sum over `UsageLedger`
   (no counter to reset — the window rolls forward), so budgets reuse the chargeback ledger
   rather than adding new accounting. Enforcement is **most-restrictive-wins** (a user's own
   budget and their department budget both apply) and only blocks **priced** models (those in
-  `observability.pricing`); free/local models stay usable. Because cost is known only after a
-  turn finishes, it blocks the *next* turn once at/over budget rather than mid-turn. See
+  `observability.pricing`). Known usage is recorded as provider snapshots arrive; later
+  calls are gated without terminating an in-flight stream. Missing prices/usage are unknown,
+  not proof of free execution. See [MODEL_CALLS.md](MODEL_CALLS.md) and
   [BUDGETS.md](BUDGETS.md).
 - **Guardrails enforce at the same choke points** (`guardrails.py`). The admin policy
   redacts or blocks PII/custom-pattern matches in content sent to providers (checked in
@@ -301,7 +304,7 @@ drag handle on its left edge.
   claim/outcome status, ORM-cascaded with its conversation).
 - `Skill` — reusable instructions with slug, description, visibility, creator, and
   auto-activation flag. Resources/scripts are not bundled; see [SKILLS.md](SKILLS.md).
-- `UsageLedger` — append-only, **FK-free** per-turn token/cost rows with a snapshot of the
+- `UsageLedger` — **FK-free** per-call token/cost rows and historical turn entries with a snapshot of the
   billable identity (username/email/department). Deliberately survives user deletion for
   chargeback; see [OBSERVABILITY.md](OBSERVABILITY.md) / [AUTH.md](AUTH.md).
 - `Budget` — a monthly USD spend cap scoped to a user (`scope_value` = `User.id`) or a

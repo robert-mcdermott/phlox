@@ -15,7 +15,8 @@ from sqlalchemy.orm import Session
 
 from app.auth.deps import get_current_user, require_admin
 from app.database import get_db
-from app.models import Conversation, Message, UsageLedger, User
+from app.models import UsageLedger, User
+from app.model_calls import summarize_rows
 
 router = APIRouter(prefix="/api/usage", tags=["usage"])
 
@@ -30,36 +31,31 @@ def _parse_date(s: str | None) -> datetime | None:
         return None
 
 
+def _summary(rows):
+    summary = summarize_rows(rows)
+    return {
+        "input_tokens": summary["input"], "output_tokens": summary["output"],
+        "total_tokens": summary["total"], "cost_usd": summary["cost"],
+        "known_cost_usd": summary["known_cost"],
+        "unknown_usage_calls": summary["unknown_usage_calls"],
+        "unknown_cost_calls": summary["unknown_cost_calls"], "calls": len(rows),
+        "turns": len({r.turn_id or r.message_id or r.id for r in rows}),
+    }
+
+
 @router.get("")
 def usage_summary(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    """Aggregate token usage + cost across the user's conversations."""
-    rows = (
-        db.query(Message)
-        .join(Conversation, Conversation.id == Message.conversation_id)
-        .filter(Conversation.user_id == user.id, Message.usage.isnot(None))
-        .all()
-    )
-    total_in = total_out = 0
-    total_cost = 0.0
-    by_model: dict[str, dict] = {}
-    for m in rows:
-        u = m.usage or {}
-        total_in += int(u.get("input", 0) or 0)
-        total_out += int(u.get("output", 0) or 0)
-        total_cost += float(u.get("cost") or 0.0)
-        b = by_model.setdefault(m.model or "?", {"input": 0, "output": 0, "cost": 0.0, "turns": 0})
-        b["input"] += int(u.get("input", 0) or 0)
-        b["output"] += int(u.get("output", 0) or 0)
-        b["cost"] += float(u.get("cost") or 0.0)
-        b["turns"] += 1
-    return {
-        "input_tokens": total_in,
-        "output_tokens": total_out,
-        "total_tokens": total_in + total_out,
-        "cost_usd": round(total_cost, 4),
-        "turns": len(rows),
-        "by_model": by_model,
-    }
+    """Use the same metadata ledger as budgets/chargeback, including paused calls."""
+    rows = db.query(UsageLedger).filter_by(user_id=user.id).all()
+    grouped = {}
+    for row in rows:
+        grouped.setdefault(row.model or "?", []).append(row)
+    by_model = {}
+    for model, entries in grouped.items():
+        summary = _summary(entries)
+        by_model[model] = {**summary, "input": summary["input_tokens"],
+                           "output": summary["output_tokens"], "cost": summary["cost_usd"]}
+    return {**_summary(rows), "by_model": by_model}
 
 
 @router.get("/budget")
@@ -98,56 +94,19 @@ def usage_by_user(
     if hi is not None:
         q = q.filter(UsageLedger.created_at < hi)
 
-    # Aggregate in Python (portable across SQLite/Postgres; the ledger is already flat).
-    agg: dict[tuple, dict] = {}
-    tot_in = tot_out = 0
-    tot_cost = 0.0
-    for row in q.all():
-        month = row.created_at.strftime("%Y-%m") if row.created_at else "?"
-        uid = row.user_id or "(unassigned)"
-        dept = row.department or "(unassigned)"
-        model = row.model or "?"
-        cost = float(row.cost_usd or 0.0)
-        cell = agg.setdefault(
-            (month, uid, dept, model),
-            {"username": row.username or "(deleted user)", "email": row.email,
-             "input": 0, "output": 0, "cost": 0.0, "turns": 0},
-        )
-        cell["input"] += row.input_tokens or 0
-        cell["output"] += row.output_tokens or 0
-        cell["cost"] += cost
-        cell["turns"] += 1
-        tot_in += row.input_tokens or 0
-        tot_out += row.output_tokens or 0
-        tot_cost += cost
-
+    # Aggregate metadata only; never load conversations or prompt content.
+    entries = q.all()
+    groups = {}
+    for row in entries:
+        key = (row.created_at.strftime("%Y-%m"), row.user_id or "(unassigned)",
+               row.department or "(unassigned)", row.model or "?")
+        groups.setdefault(key, []).append(row)
     rows = [
-        {
-            "month": month,
-            "user_id": uid,
-            "username": cell["username"],
-            "email": cell["email"],
-            "department": dept,
-            "model": model,
-            "input_tokens": cell["input"],
-            "output_tokens": cell["output"],
-            "total_tokens": cell["input"] + cell["output"],
-            "cost_usd": round(cell["cost"], 4),
-            "turns": cell["turns"],
-        }
-        for (month, uid, dept, model), cell in agg.items()
+        {"month": month, "user_id": uid, "department": dept, "model": model,
+         "username": cells[0].username or "(deleted user)", "email": cells[0].email,
+         **_summary(cells)}
+        for (month, uid, dept, model), cells in groups.items()
     ]
-    # Stable, report-friendly ordering: newest month first, then department, user, model.
     rows.sort(key=lambda r: (r["department"], r["username"], r["model"]))
     rows.sort(key=lambda r: r["month"], reverse=True)
-
-    return {
-        "rows": rows,
-        "totals": {
-            "input_tokens": tot_in,
-            "output_tokens": tot_out,
-            "total_tokens": tot_in + tot_out,
-            "cost_usd": round(tot_cost, 4),
-            "turns": sum(r["turns"] for r in rows),
-        },
-    }
+    return {"rows": rows, "totals": _summary(entries)}

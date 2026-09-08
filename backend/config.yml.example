@@ -64,6 +64,8 @@ suggestions:
 # install has a working model on first boot. After that, admins can add/edit/remove profiles
 # live in Settings → Admin → Configuration (API keys there are write-only/masked) — those
 # overrides replace this list. `default_profile` above picks the one active on first launch.
+# Profiles may set context_window to cap requests below the user's context setting.
+# See docs/MODEL_CALLS.md; leave headroom for provider-specific tokenization.
 profiles:
   local-ollama:
     type: openai
@@ -155,7 +157,8 @@ embeddings:
 # optional OpenTelemetry exporter. See docs/OBSERVABILITY.md.
 observability:
   request_logging: true          # file-only (wired at startup)
-  # Per-model pricing (USD per 1,000,000 tokens) to compute per-turn cost. Optional.
+  # Per-model pricing (USD per 1,000,000 tokens), snapshotted per call. Blank means unknown.
+  # Optional cache_read/cache_write rates are required to price reported cached tokens.
   # SEED ONLY — also editable live in Settings → Admin → Configuration ("Model pricing").
   pricing:
     us.anthropic.claude-sonnet-4-6: { input: 3.0, output: 15.0 }

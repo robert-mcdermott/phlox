@@ -39,10 +39,15 @@ async function fixture(t, { approval = null, auth = false } = {}) {
   page.setDefaultTimeout(8000)
   const state = {
     approval, decisions: [], reject: false, authenticated: false, setup: true,
+    config: { providers: [], pricing: {}, resilience: {}, generation: {}, suggestions: [],
+      sandbox: { runner: 'local', container: {} } },
     messages: [{ id: 'user-1', role: 'user', content: 'Save the plan', created_at: '2026-09-07T00:00:00Z' }],
   }
   const errors = []
   page.on('pageerror', (e) => errors.push(String(e)))
+  page.on('console', (msg) => {
+    if (msg.type() === 'error' && !msg.text().includes('Failed to load resource')) errors.push(msg.text())
+  })
   t.after(() => assert.deepEqual(errors, [], 'no browser runtime errors'))
   await context.route('**/*', (route) => new URL(route.request().url()).origin === baseURL ? route.continue() : route.abort())
   await page.route(`${baseURL}/api/**`, async (route) => {
@@ -65,8 +70,20 @@ async function fixture(t, { approval = null, auth = false } = {}) {
     if (path === '/api/chat/approvals/approval-1' && method === 'DELETE') { state.approval = null; return json({ status: 'dismissed' }) }
     if (path === '/api/settings') return json({ active_profile: 'test', model: 'test-model', theme: 'phlox-dark', max_tokens: 1000, max_tool_rounds: 3 })
     if (path === '/api/providers') return json({ profiles: [{ name: 'test', label: 'Test', model: 'test-model' }] })
+    if (path === '/api/providers/test/models') return json({ profile: 'test', models: ['test-model'] })
     if (path === '/api/settings/suggestions') return json({ suggestions: [] })
     if (path === '/api/usage/budget') return json({ budgets: [] })
+    if (path === '/api/admin/config') return json(state.config)
+    if (path === '/api/admin/config/pricing' && method === 'PUT') {
+      state.config.pricing = route.request().postDataJSON().pricing
+      return json(state.config)
+    }
+    if (path === '/api/usage/by-user') return json({ rows: [{
+      month: '2026-09', department: 'Research', username: 'tester', email: '', user_id: 'local',
+      model: 'test-model', input_tokens: 7, output_tokens: 3, total_tokens: 10,
+      cost_usd: null, known_cost_usd: 0.5, unknown_usage_calls: 1, unknown_cost_calls: 1,
+      calls: 2, turns: 1,
+    }] })
     if (['/api/assistants', '/api/skills', '/api/documents'].includes(path)) return json([])
     if (path === '/api/chat') {
       state.approval = pending()
@@ -98,6 +115,46 @@ async function openApproval(page) {
   await page.getByText('Approval chat', { exact: true }).click()
   await page.getByText('Approval needed', { exact: true }).waitFor()
 }
+
+test('partial call usage stays visibly unknown in message receipts and chargeback', async (t) => {
+  const { page, state } = await fixture(t)
+  state.messages.push({ id: 'partial', role: 'assistant', content: 'Partial result.', usage: {
+    accounting: 'model_calls', input: 7, output: 3, total: 10, cost: null,
+    known_cost: 0.5, unknown_usage_calls: 1, unknown_cost_calls: 1,
+  } })
+  await page.getByText('Approval chat', { exact: true }).click()
+  await page.getByText(/10 tok \(partial \/ unknown\).*cost unknown/).waitFor()
+  await page.getByTitle('Settings', { exact: true }).click()
+  await page.getByRole('button', { name: 'Usage & Cost', exact: true }).click()
+  await page.getByText('$0.50 + unknown', { exact: true }).first().waitFor()
+  await page.getByText('Calls / legacy entries', { exact: true }).waitFor()
+  const downloadPromise = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'Export CSV' }).click()
+  const download = await downloadPromise
+  const stream = await download.createReadStream()
+  const chunks = []
+  for await (const chunk of stream) chunks.push(chunk)
+  const csv = Buffer.concat(chunks).toString()
+  assert.match(csv, /cost_usd,known_cost_usd,unknown_usage_calls,unknown_cost_calls,calls,turns/)
+  assert.match(csv, /7,3,10,,0.5,1,1,2,1/)
+})
+
+test('pricing keeps blank rates unknown and saves explicit zero and cache rates', async (t) => {
+  const { page, state } = await fixture(t)
+  await page.getByTitle('Settings', { exact: true }).click()
+  await page.getByRole('button', { name: 'Configuration', exact: true }).click()
+  await page.getByRole('button', { name: 'Add model', exact: true }).click()
+  await page.getByPlaceholder('model id', { exact: true }).fill('local-model')
+  const pricing = page.getByRole('heading', { name: 'Model pricing', exact: true }).locator('../..')
+  await pricing.getByLabel('Input $/1M', { exact: true }).fill('0')
+  await pricing.getByLabel('Cached input $/1M', { exact: true }).fill('0.1')
+  await page.getByRole('button', { name: 'Save pricing', exact: true }).click()
+  await pricing.getByText('Saved — applied live.', { exact: true }).waitFor()
+  assert.deepEqual(state.config.pricing['local-model'], {
+    input: 0, output: null, cache_read: 0.1, cache_write: null,
+  })
+  assert.equal(await pricing.getByLabel('Output $/1M', { exact: true }).inputValue(), '')
+})
 
 test('login and password setup lead to a streamed approval that survives reload', async (t) => {
   const { page, state } = await fixture(t, { auth: true })

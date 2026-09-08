@@ -1,12 +1,12 @@
 # Approval continuity and recovery
 
-Implemented in [Wave 2](IMPLEMENTATION_WAVES.md). This guide covers interactive approval
+Implemented in [Wave 2](IMPLEMENTATION_WAVES.md), with per-call accounting in Wave 3. This guide covers interactive approval
 snapshots, not the future durable worker/run service.
 
 ## User journey
 
 When a tool needs approval, Phlox saves the pending calls, conversation context, effective
-model/settings/tools, consumed rounds, and accumulated top-level token usage. Open the
+model/settings/tools, consumed rounds, and a summary of the turn’s recorded model calls. Open the
 conversation again after a reload or app restart to recover the approval card. Review the
 arguments, then **Approve & run**, **Deny**, or **Dismiss**. Approve and Deny continue the
 same turn; Dismiss closes the pending turn without running its waiting tools.
@@ -65,17 +65,18 @@ round consumes one round before streaming. A pending action from the last allowe
 can finish, but no further provider round starts. If a newly lowered limit is below the
 already-consumed count, even those pending actions are skipped.
 
-Top-level usage survives every pause and is recorded once when the turn finalizes. Resume
-budget checks include the paused turn's known cost in addition to finalized ledger spend.
-Dismissing a still-pending turn records its known cumulative usage with an idempotent
-`approval-dismiss:<id>` ledger key, in the same transaction as dismissal. Dismissing an
-already-finalized failure does not bill its snapshot again. The ledger remains metadata
-only; dismissal does not create a completed assistant answer in the transcript.
+Version-3 snapshots carry the ledger turn ID. Calls (including children and compaction)
+are already recorded, so resume checks ledger spend without adding the snapshot again.
+Dismissal creates no additional charge. Version-2 snapshots remain resumable: their known
+historical top-level counters are imported once after the atomic claim; subsequent pauses
+use version 3. Legacy dismissal retains its atomic, idempotent accounting path. Version-1
+snapshots still require dismissal. Current context limits also constrain resumed calls.
 
-This is not a cost reservation system. Other pending/in-flight turns, children, compaction,
-unknown provider usage, and mixed-model/rate-snapshot attribution still require F04.
-Failed or interrupted execution before finalization may contain unrecorded usage after
-its last snapshot. A turn can still exceed a monthly cap while running.
+Received usage is committed before it is streamed to the client; incomplete or missing
+provider reports remain explicitly partial/unknown. Full call attribution and the limits
+of budget enforcement are documented in [MODEL_CALLS.md](MODEL_CALLS.md). No funds are
+reserved, and concurrent calls can exceed a monthly cap. Dismissal does not create a
+completed assistant answer in the transcript.
 
 ## API and data ownership
 

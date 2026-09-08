@@ -80,7 +80,7 @@ def submit(client, pending, decisions=None):
         }})
 
 
-def test_two_pauses_keep_usage_rounds_and_one_final_ledger_entry(client, db, approval):
+def test_two_pauses_keep_usage_rounds_without_duplicate_ledger_entries(client, db, approval):
     p = approval["pending"]
     assert p.state["rounds_used"] == 1 and p.state["turn_usage"]["total"] == 10
     response = submit(client, p)
@@ -95,7 +95,8 @@ def test_two_pauses_keep_usage_rounds_and_one_final_ledger_entry(client, db, app
     messages = db.query(Message).filter_by(conversation_id=approval["conv"].id).all()
     assert len(messages) == 1 and messages[0].usage["total"] == 30
     ledger = db.query(UsageLedger).filter_by(conversation_id=approval["conv"].id).all()
-    assert len(ledger) == 1 and ledger[0].total_tokens == 30
+    assert len(ledger) == 3 and sum(row.total_tokens for row in ledger) == 30
+    assert len({row.turn_id for row in ledger}) == 1
     assert approval["executed"] == [1, 2]
     assert p.status == "paused" and second.status == "completed"
     assert client.get(f'/api/chat/approvals/{approval["conv"].id}').json() == []
@@ -237,7 +238,7 @@ def test_resume_checks_current_budget_including_paused_usage(client, db, approva
     monkeypatch.setattr(budgets, "enforce_budget", block)
     monkeypatch.setattr(observability, "compute_cost", lambda *a: 0.5)
     assert submit(client, approval["pending"]).status_code == 402
-    assert checked == [("local", "wave2-model", 0.5)]
+    assert checked == [("local", "wave2-model", 0.0)]  # usage is already in the ledger
     db.refresh(approval["pending"])
     assert approval["pending"].status == "pending" and not approval["executed"]
 
@@ -388,6 +389,9 @@ def test_dismissal_rolls_back_if_usage_cannot_be_recorded(client, db, approval, 
     from app.main import app
     from app import usage_ledger
 
+    approval["pending"].state = {**approval["pending"].state, "version": 2}
+    db.commit()
+
     def fail(*a, **kw):
         raise RuntimeError("ledger unavailable")
 
@@ -431,4 +435,24 @@ def test_dismissal_cannot_charge_a_stale_snapshot_after_another_request_finishes
 
     monkeypatch.setattr(approvals, "owned_approval", transition)
     assert client.delete(f'/api/chat/approvals/{approval["pending"].id}').status_code == 409
-    assert not db.query(UsageLedger).filter_by(conversation_id=approval["conv"].id).all()
+    rows = db.query(UsageLedger).filter_by(conversation_id=approval["conv"].id).all()
+    assert len(rows) == 1 and rows[0].total_tokens == 10
+
+
+def test_wave2_snapshot_import_preserves_usage_once(client, db, approval):
+    p = approval["pending"]
+    state = dict(p.state)
+    state["version"] = 2
+    state.pop("turn_id")
+    state.pop("usage_summary")
+    p.state = state
+    db.query(UsageLedger).filter_by(conversation_id=approval["conv"].id).delete()
+    db.commit()
+    response = submit(client, p)
+    second_id = next(e["pending_id"] for e in frames(response) if e["type"] == "paused")
+    second = db.get(PendingApproval, second_id)
+    assert second.state["version"] == 3 and second.state["usage_summary"]["total"] == 20
+    assert submit(client, second).status_code == 200
+    ledger = db.query(UsageLedger).filter_by(conversation_id=approval["conv"].id).all()
+    assert len(ledger) == 3 and sum(r.total_tokens for r in ledger) == 30
+    assert sum(r.call_kind == "legacy_resume" for r in ledger) == 1

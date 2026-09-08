@@ -500,6 +500,10 @@ async def chat(
         ),
     }
 
+    from app.model_calls import CallScope, ScopedProvider
+    from dataclasses import replace
+
+    accounting = CallScope.new(conversation.id, user.id)
     cancel_event = threading.Event()
 
     def stream():
@@ -517,7 +521,10 @@ async def chat(
             fallback = _build_fallback(profile)
 
             # Compact long histories to stay within the per-user context budget.
-            compacted, did = compact_history(provider, history, int(settings["max_context_tokens"]))
+            compacted, did = compact_history(
+                ScopedProvider(provider, replace(accounting, kind="compaction"), cancel_event=cancel_event),
+                history, int(settings["max_context_tokens"]),
+            )
             if did:
                 yield events.status("Summarizing earlier context…")
 
@@ -541,6 +548,7 @@ async def chat(
                 fallback_provider=fallback,
                 cancel_event=cancel_event,
                 assistant_id=assistant.id if assistant else None,
+                accounting=accounting,
             )
             yield from session.run(compacted)
         finally:
@@ -590,7 +598,7 @@ def dismiss_approval(
     # usage once, in the same transaction as dismissal. Failed finalized turns already
     # have a message/ledger entry and must not be billed again here.
     usage = pending.state.get("turn_usage") or {}
-    if pending.status == "pending" and usage.get("total"):
+    if pending.status == "pending" and pending.state.get("version") != 3 and usage.get("total"):
         from app.observability import compute_cost
         from app.usage_ledger import record_usage
 
@@ -631,10 +639,11 @@ async def approve(
     from app.budgets import enforce_budget
     from app.observability import compute_cost
 
-    # This paused turn is not in the finalized ledger yet. Include its known usage in
-    # this resume's cap check, without writing a second chargeback entry.
+    # Version-2 usage is not in the ledger yet; version-3 calls are already recorded.
+    # Never add an already-recorded snapshot to the budget a second time.
     enforce_budget(db, user, provider.model,
-                   additional_spend=compute_cost(provider.model, state["turn_usage"]) or 0.0)
+                   additional_spend=(compute_cost(provider.model, state["turn_usage"]) or 0.0)
+                   if state.get("version") == 2 else 0.0)
     gate = PermissionGate(db, REGISTRY, auto_approve=False)
     allowed_tools = set(state.get("allowed_tools") or []) & gate.enabled_names()
     caps = (assistant.capabilities or {}) if assistant else {}
@@ -646,16 +655,37 @@ async def approve(
         allowed_tools &= {"web_search", "search_documents"}
     # A newly lowered per-user round limit can restrict a paused run, never extend it.
     params = dict(state.get("params", {}))
-    params["max_tool_rounds"] = min(
-        int(params.get("max_tool_rounds", 12)), int(get_settings(db, user.id)["max_tool_rounds"])
+    current_settings = get_settings(db, user.id)
+    params["max_context_tokens"] = min(
+        int(params.get("max_context_tokens", current_settings.get("max_context_tokens", 16000))),
+        int(current_settings.get("max_context_tokens", 16000)),
     )
+    params["max_tool_rounds"] = min(
+        int(params.get("max_tool_rounds", 12)), int(current_settings["max_tool_rounds"])
+    )
+    from app.model_calls import CallScope
+
+    accounting = CallScope(state.get("turn_id") or pending.id, conversation.id, user.id)
     cancel_event = threading.Event()
     session = AgentSession(
         db, conversation, provider, REGISTRY, gate, params, state["profile"], state.get("model"),
         allowed_tools=allowed_tools, cancel_event=cancel_event,
-        assistant_id=assistant.id if assistant else None,
+        assistant_id=assistant.id if assistant else None, accounting=accounting,
     )
     approvals.claim(db, pending.id)
+    if state.get("version") == 2 and state.get("turn_usage", {}).get("total"):
+        from app.usage_ledger import record_usage
+
+        record_usage(db, message_id=f"legacy-approval:{pending.id}",
+                     conversation_id=conversation.id, user_id=user.id, model=state.get("model"),
+                     usage={**state["turn_usage"], "cost": compute_cost(state.get("model"), state["turn_usage"])})
+        from app.models import UsageLedger
+
+        row = db.query(UsageLedger).filter_by(message_id=f"legacy-approval:{pending.id}").one()
+        row.turn_id = accounting.turn_id
+        row.call_kind = "legacy_resume"
+        row.usage_status = "reported"
+        db.commit()
 
     def stream():
         terminal = "interrupted"

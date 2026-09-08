@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 
 # -- conversations / messages ---------------------------------------------
@@ -330,6 +330,7 @@ class ProfileIn(BaseModel):
     model: str | None = None
     models: list[str] | None = None
     supports_tools: bool = True
+    context_window: int | None = Field(default=None, gt=0)
     # openai
     endpoint: str | None = None
     api_key: str | None = None      # write-only; omitted/empty => keep existing
@@ -348,8 +349,10 @@ class ProfilesUpdate(BaseModel):
 
 
 class PriceRate(BaseModel):
-    input: float = 0.0             # USD per 1,000,000 input tokens
-    output: float = 0.0            # USD per 1,000,000 output tokens
+    input: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    output: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    cache_read: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    cache_write: float | None = Field(default=None, ge=0, allow_inf_nan=False)
 
 
 class PricingUpdate(BaseModel):

@@ -46,6 +46,9 @@ class WordCount(Tool):
   delegates to a nested `AgentSession` (like `spawn_subagent`), pass this through rather
   than hardcoding a policy — don't let a tool grant itself permissions the user didn't
   give the turn.
+- `ctx.accounting`, `ctx.parent_call_id` — inherited model-call attribution. Child sessions
+  receive `ctx.accounting.child(ctx.parent_call_id)` and an independent DB session; new
+  generation paths must use the shared accounting seam in [MODEL_CALLS.md](MODEL_CALLS.md).
 - `ctx.profile`, `ctx.model`, `ctx.params`, `ctx.allowed_tools` — the resolved parent
   execution snapshot. Delegation must use this profile/model and a copy of the generation
   parameters, and intersect its tool set with `allowed_tools` and the permission gate.

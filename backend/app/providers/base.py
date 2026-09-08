@@ -54,6 +54,7 @@ class StreamDelta:
     tool_calls: list[ToolCall] = field(default_factory=list)
     stop_reason: str | None = None
     usage: dict[str, Any] | None = None
+    call_id: str | None = None
 
 
 class LLMProvider(ABC):

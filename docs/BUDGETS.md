@@ -13,7 +13,7 @@ blocked.
   **Settings → Admin → Budgets**.
 - **Priced model** — a model that has a per-million-token entry in
   `observability.pricing` (the same table that drives cost accounting). Only priced models
-  count toward spend and only priced models are blocked. Free/local models stay usable.
+  count toward spend and only priced models are blocked. Unconfigured models stay usable; an explicit zero-price entry is still a configured model.
 - **Most-restrictive-wins** — a user may be covered by both their own user budget and their
   department budget. A turn is blocked if **either** is at/over its limit; the warning fires
   for whichever applicable budget is closest to its limit.
@@ -23,19 +23,23 @@ blocked.
 
 ## Enforcement points
 
-Usage reaches the durable ledger when a turn finalizes or a pending approval is dismissed.
-Enforcement gates new turns and approval resumes; it does not reserve funds or cut off a
-model stream mid-call:
+Usage snapshots reach the durable ledger during each model call, including paused work,
+children, compaction, fallback, and gateway traffic. Enforcement gates new turns, approval
+resumes, and each subsequent application generation call:
 
-- Interactive chat — `POST /api/chat` returns **HTTP 402** before the turn runs.
-- Approval resume — `POST /api/chat/approve` returns **HTTP 402** before tools run if
-  current ledger spend plus this paused turn's known cost reaches the cap. The approval
-  remains pending. See [APPROVALS.md](APPROVALS.md) for accounting boundaries.
-- Gateway — `POST /v1/chat/completions` returns an OpenAI-shaped 402 error; `GET /v1/models`
-  annotates priced models with `phlox_blocked: true` when the caller is over budget.
+- Interactive chat — `POST /api/chat` returns **HTTP 402** at the initial budget gate.
+- Approval resume — `POST /api/chat/approve` checks current spend before tools run. A
+  rejection leaves the approval pending. Version-3 snapshots are already charged; version-2
+  snapshots retain a legacy additional-spend check before import.
+- Gateway — `POST /v1/chat/completions` returns an OpenAI-shaped 402 error at preflight;
+  `GET /v1/models` annotates configured models with `phlox_blocked: true` over budget.
+- Later calls — the shared model-call seam rechecks the ledger before dispatch. Failures
+  after an HTTP stream has opened are reported through that stream, not a new HTTP status.
 
-A single in-flight turn can overshoot the cap slightly (the turn that crosses the line is
-allowed to finish). That is acceptable for a guardrail; it is not a hard pre-authorization.
+This is not pre-authorization: there are no reservations and an in-flight stream is not
+cut off. Parallel calls can overshoot. Unknown provider usage/prices are not treated as
+proven zero cost; the budget sum includes only known cost. Models absent from the pricing
+map remain allowed by the existing policy. See [MODEL_CALLS.md](MODEL_CALLS.md).
 
 ## Data model
 

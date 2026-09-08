@@ -48,6 +48,9 @@ class ToolContext:
     model: str | None = None
     params: dict[str, Any] = field(default_factory=dict)
     allowed_tools: frozenset[str] | None = None
+    #: Immutable accounting scope shared with child calls; never a DB session.
+    accounting: Any = None
+    parent_call_id: str | None = None
 
 
 @dataclass

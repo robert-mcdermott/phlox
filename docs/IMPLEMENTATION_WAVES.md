@@ -86,15 +86,36 @@ initial sends or add worker leases/replay. Cost reservations, full model-call at
 child/compaction usage, interrupted usage after the last snapshot, and Postgres integration
 verification remain later work. Pre-Wave-2 approvals must be dismissed and requested again.
 
-## Wave 3 — Model-call accounting and context fit (proposed next)
+## Wave 3 — Model-call accounting and context fit
 
-F04: capture usage at each model-call seam, attribute it to the actual model and parent
-turn, preserve known partial usage, snapshot prices, distinguish unknown from free, and
-reconcile without double-counting. Include compaction and children. Add a final context-fit
-check that accounts for tool schemas, tool output, images, and reserved output tokens.
-Expand the browser harness only for affected user-visible flows.
+**Status:** implemented and verified, 2026-09-07. **Scope:** F04 plus affected F05 browser
+coverage. Adds nullable usage-ledger columns through the existing startup upgrade.
+See [MODEL_CALLS.md](MODEL_CALLS.md) for the data contract and operating limits.
 
-## Later waves (re-estimate after Wave 3)
+- [x] Record top-level, compaction, child, fallback, gateway, and probe generation calls
+  before dispatch; retain reported usage on error, Stop, and closed streams.
+- [x] Attribute actual models and parent turns with independent child sessions; record
+  explicit compatibility retries separately and avoid adding cumulative snapshots twice.
+- [x] Snapshot standard/cache rates; show unknown usage/pricing distinctly from zero
+  in message receipts, chargeback, and CSV. Reconcile both usage APIs with the ledger.
+- [x] Carry ledger turn IDs through version-3 approvals; import version-2 counters once;
+  avoid duplicate charges on resume, dismissal, finalization, and startup backfill.
+- [x] Check current budgets at the call seam; check context including schemas, images,
+  tool results, and reserved output. Bound compaction; visibly shorten provider-bound
+  tool results or reject requests that cannot fit before dispatch.
+
+Verification: **278 backend tests** (32 new cases), Ruff lint, **6 Chromium scenarios**
+(two new accounting/pricing journeys), production frontend build, documentation link checks,
+and `git diff --check` pass. Backend providers and browser API fixtures are synthetic; no
+live cloud calls or user-configured integrations were exercised. Existing nine backend
+deprecation warnings and the large diagram-chunk build warning remain.
+
+Remaining boundaries: tokenizer estimates need headroom; SDK-internal retries and embedding
+usage remain outside this seam. Unknown usage cannot be reconstructed after process death.
+Budget reservations, worker recovery, provider invoice reconciliation, and migration tooling
+remain later work. New metadata does not add administrator access to private content.
+
+## Wave 4 — Migration and restore baseline (proposed next)
 
 F06 migration/restore baseline; then F07 durable runs and F08 source citations. Ship the
 first research improvement before expanding into the project's longer-term autonomy features.

@@ -169,6 +169,10 @@ export default function Message({ message, conversationId, isLast }) {
                   (message.usage.cost != null ? ` · $${message.usage.cost.toFixed(4)}` : '')}
               >
                 · {(message.usage.total || 0).toLocaleString()} tok
+                {message.usage.unknown_usage_calls > 0 ? ' (partial / unknown)' : ''}
+                {message.usage.accounting === 'model_calls' && message.usage.cost == null
+                  ? ` · ${message.usage.known_cost > 0 ? `$${message.usage.known_cost.toFixed(4)} + ` : ''}cost unknown`
+                  : ''}
                 {message.usage.cost != null && message.usage.cost > 0 ? ` · $${message.usage.cost.toFixed(4)}` : ''}
               </span>
             )}

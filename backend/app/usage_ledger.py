@@ -1,12 +1,13 @@
 """The durable usage ledger: write + backfill helpers.
 
-The ledger (``models.UsageLedger``) is an append-only, FK-free record of per-turn token
-usage and cost, with the billable user's identity **snapshotted** at write time. It outlives
+The ledger (``models.UsageLedger``) stores FK-free model-call records and historical turn
+entries, with the billable user's identity **snapshotted** at write time. It outlives
 user/conversation deletion so departmental chargebacks survive a user leaving mid-month.
 See the ``UsageLedger`` docstring and docs/AUTH.md for the privacy rationale (metadata only).
 
 Two entry points:
-- ``record_usage`` — called by the harness when a turn's usage is finalized.
+- ``record_usage`` — legacy approval import/dismissal helper. New generation calls
+  are recorded through ``model_calls.stream_model``.
 - ``backfill_usage_ledger`` — one-time/idempotent import of pre-existing ``Message.usage``
   rows, run at startup so historical cost isn't lost when this feature ships.
 """
@@ -123,7 +124,7 @@ def backfill_usage_ledger(db: Session) -> int:
         if msg.id in existing:
             continue
         u = msg.usage or {}
-        if not u.get("total"):
+        if u.get("accounting") == "model_calls" or not u.get("total"):
             continue
         if msg.conversation_id not in owner_of:
             conv = db.get(Conversation, msg.conversation_id)

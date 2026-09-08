@@ -36,7 +36,7 @@ def validate_resume(pending: PendingApproval, decisions: dict[str, str]) -> None
     if expires_at(pending) <= datetime.now(timezone.utc):
         raise HTTPException(409, "Approval expired. Dismiss it and start a new turn.")
     state = pending.state
-    if state.get("version") != 2:
+    if state.get("version") not in {2, 3}:
         raise HTTPException(409, "This older approval lacks execution counters. Dismiss it and start a new turn.")
     expected = [call["id"] for call in state.get("pending_calls", [])]
     if len(expected) != len(set(expected)) or set(decisions) != set(expected):
@@ -80,7 +80,7 @@ def public_snapshot(pending: PendingApproval) -> dict:
     state = pending.state
     status = pending.status
     if status == "pending":
-        if state.get("version") != 2:
+        if state.get("version") not in {2, 3}:
             status = "legacy"
         elif expires_at(pending) <= datetime.now(timezone.utc):
             status = "expired"
@@ -95,6 +95,6 @@ def public_snapshot(pending: PendingApproval) -> dict:
         "content": content,
         "tool_steps": state.get("tool_steps", []),
         "artifacts": state.get("all_artifacts", []),
-        "usage": state.get("turn_usage"),
+        "usage": state.get("usage_summary") or state.get("turn_usage"),
         "rounds_used": state.get("rounds_used"),
     }

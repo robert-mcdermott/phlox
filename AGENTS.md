@@ -13,6 +13,7 @@ including local models like Ollama).
 lifecycle. Then the focused guides:
 - [docs/ROADMAP.md](docs/ROADMAP.md) — active improvement plan and milestone acceptance criteria
 - [docs/CODEBASE_REVIEW.md](docs/CODEBASE_REVIEW.md) — implementation findings behind the plan
+- [docs/MODEL_CALLS.md](docs/MODEL_CALLS.md) — call accounting, prices, and context fit
 - [docs/APPROVALS.md](docs/APPROVALS.md) — claims, recovery, counters, expiry, and interruption
 - [docs/IMPLEMENTATION_WAVES.md](docs/IMPLEMENTATION_WAVES.md) — delivered work and next wave
 - [docs/ADDING_A_TOOL.md](docs/ADDING_A_TOOL.md)
@@ -53,7 +54,7 @@ uv run ruff check app tests        # lint
 uv run pytest                      # unit + API + scripted-provider agent-loop tests
 cd ../frontend && npm run build
 npx playwright install chromium   # once per Playwright browser version
-npm run test:browser               # isolated Chromium approval/isolation tests
+npm run test:browser               # isolated Chromium approval/accounting/isolation tests
 ```
 Tests run with `auth.enabled` off and a scripted **test** provider — no creds/network
 needed. CI (`.github/workflows/ci.yml`) runs the same. Live-model checks (real provider)
@@ -90,7 +91,8 @@ research, projects/artifact editing, controlled autonomy, and self-hosted releas
 **Wave 1 (F01/F02) is implemented:** MCP lifecycle/cancellation, permission defaults, inherited
 child context, bounded read-only children, and sequential child mutation. **Wave 2 (F03 +
 initial F05) is implemented:** atomic approval claims, cumulative counters, current-policy
-checks, UI recovery, and browser regression tests. M1 remains in progress; full model-call
-accounting and durable worker recovery are still planned. Consult the wave log
+checks, UI recovery, and browser regression tests. **Wave 3 (F04) is implemented:**
+per-call usage, price snapshots, unknown-cost reporting, and bounded context checks.
+M1 remains in progress; migration/restore and durable worker recovery are still planned. Consult the wave log
 for verification and remaining boundaries. Sensitive-data/PHI governance remains a separate
 deployment gate. Extend along the documented seams above.

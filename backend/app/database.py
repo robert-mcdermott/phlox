@@ -40,6 +40,11 @@ def get_db() -> Iterator[Session]:
 # either backend, so we add any missing columns idempotently at startup. (A real migration
 # tool like Alembic is the Tier-3 upgrade; this keeps dev data intact in the meantime.)
 _ADDED_COLUMNS: dict[str, dict[str, str]] = {
+    "usage_ledger": {
+        "turn_id": "VARCHAR(64)", "parent_call_id": "VARCHAR(64)", "profile": "VARCHAR(100)",
+        "call_kind": "VARCHAR(32)", "status": "VARCHAR(24)", "usage_status": "VARCHAR(24)",
+        "rate_snapshot": "JSON", "usage_details": "JSON",
+    },
     "pending_approvals": {"status": "VARCHAR(20) NOT NULL DEFAULT 'pending'"},
     "messages": {"attachments": "JSON", "usage": "JSON"},
     "documents": {

@@ -19,6 +19,7 @@ import queue
 import threading
 from collections.abc import Iterator
 from copy import deepcopy
+from contextlib import closing
 from dataclasses import replace
 from typing import Any
 
@@ -55,7 +56,11 @@ class AgentSession:
         fallback_provider: LLMProvider | None = None,
         cancel_event: threading.Event | None = None,
         assistant_id: str | None = None,
+        accounting=None,
     ):
+        from app.model_calls import CallScope
+
+        self.accounting = accounting or CallScope.new(conversation.id, conversation.user_id)
         self.db = db
         self.conversation = conversation
         self.provider = provider
@@ -94,6 +99,7 @@ class AgentSession:
             model=self.model,
             params=deepcopy(self.params),
             allowed_tools=frozenset(self.allowed_tools),
+            accounting=self.accounting,
         )
 
     def _cancelled(self) -> bool:
@@ -179,48 +185,64 @@ class AgentSession:
                     scrub_messages(messages, guardrails_in)[0] if guardrails_in else messages
                 )
                 try:
-                    for delta in self.provider.stream(provider_messages, tools, self.params):
-                        if self._cancelled():
-                            # Best-effort: stop consuming further streamed tokens/tool
-                            # calls as soon as we notice — the provider call itself may
-                            # not be interruptible mid-flight, but we stop paying
-                            # attention (and stop acting on it) immediately.
-                            break
-                        if delta.type == "text":
-                            streamed_any = True
-                            chunk = delta.text or ""
-                            if redactor is not None:
-                                chunk = redactor.feed(chunk)
-                                if redactor.blocked:
-                                    blocked = True
-                                    break
-                            if chunk:
-                                round_text += chunk
-                                yield events.token(chunk)
-                        elif delta.type == "reasoning":
-                            streamed_any = True
-                            chunk = delta.text or ""
-                            if thinking_redactor is not None:
-                                chunk = thinking_redactor.feed(chunk)
-                                if thinking_redactor.blocked:
-                                    blocked = True
-                                    break
-                            if chunk:
-                                yield events.thinking(chunk)
-                        elif delta.type == "usage":
-                            u = delta.usage or {}
-                            for k in ("input", "output", "total"):
-                                self.turn_usage[k] += int(u.get(k, 0) or 0)
-                            yield events.usage(u)
-                        elif delta.type == "tool_calls":
-                            pending_calls = delta.tool_calls
-                        elif delta.type == "done":
-                            stop_reason = delta.stop_reason
+                    from app.model_calls import stream_model
+
+                    model_stream = stream_model(
+                        self.provider, provider_messages, tools, self.params,
+                        replace(self.accounting, kind="fallback") if used_fallback else self.accounting,
+                        cancel_event=self.cancel_event,
+                    )
+                    with closing(model_stream):
+                        for delta in model_stream:
+                            self.ctx.parent_call_id = delta.call_id
+                            if self._cancelled():
+                                # Best-effort: stop consuming further streamed tokens/tool
+                                # calls as soon as we notice — the provider call itself may
+                                # not be interruptible mid-flight, but we stop paying
+                                # attention (and stop acting on it) immediately.
+                                break
+                            if delta.type == "status":
+                                yield events.status(delta.text or "")
+                            elif delta.type == "text":
+                                streamed_any = True
+                                chunk = delta.text or ""
+                                if redactor is not None:
+                                    chunk = redactor.feed(chunk)
+                                    if redactor.blocked:
+                                        blocked = True
+                                        break
+                                if chunk:
+                                    round_text += chunk
+                                    yield events.token(chunk)
+                            elif delta.type == "reasoning":
+                                streamed_any = True
+                                chunk = delta.text or ""
+                                if thinking_redactor is not None:
+                                    chunk = thinking_redactor.feed(chunk)
+                                    if thinking_redactor.blocked:
+                                        blocked = True
+                                        break
+                                if chunk:
+                                    yield events.thinking(chunk)
+                            elif delta.type == "usage":
+                                u = delta.usage or {}
+                                from app.model_calls import turn_usage
+
+                                totals = turn_usage(self.accounting)
+                                self.turn_usage = {k: totals[k] for k in ("input", "output", "total")}
+                                yield events.usage(u)
+                            elif delta.type == "tool_calls":
+                                pending_calls = delta.tool_calls
+                            elif delta.type == "done":
+                                stop_reason = delta.stop_reason
                     break  # round streamed successfully
                 except Exception as e:  # noqa: BLE001
                     # Fall back to a secondary provider if one is configured and we failed
                     # before producing any output this round (so we don't duplicate tokens).
-                    if self.fallback_provider and not used_fallback and not streamed_any and not round_text:
+                    from app.agent.context import ContextLimitError
+
+                    if (self.fallback_provider and not used_fallback and not streamed_any
+                            and not round_text and not isinstance(e, ContextLimitError)):
                         logger.warning("Provider failed (%s); switching to fallback %s",
                                        e, self.fallback_provider.model)
                         yield events.status(
@@ -486,8 +508,14 @@ class AgentSession:
         all_artifacts: list[dict],
     ) -> Iterator[str]:
         self.outcome = "paused"
+        from app.model_calls import turn_usage
+
+        totals = turn_usage(self.accounting)
+        self.turn_usage = {k: totals[k] for k in ("input", "output", "total")}
         state = {
-            "version": 2,
+            "version": 3,
+            "turn_id": self.accounting.turn_id,
+            "usage_summary": turn_usage(self.accounting),
             "rounds_used": self.rounds_used,
             "turn_usage": dict(self.turn_usage),
             "assistant_id": self.ctx.assistant_id,
@@ -612,12 +640,9 @@ class AgentSession:
             yield events.done("")
             return
 
-        usage = None
-        if self.turn_usage.get("total"):
-            from app.observability import compute_cost
+        from app.model_calls import turn_usage
 
-            usage = dict(self.turn_usage)
-            usage["cost"] = compute_cost(self.provider.model, usage)
+        usage = turn_usage(self.accounting)
 
         msg = Message(
             conversation_id=self.conversation.id,
@@ -631,23 +656,6 @@ class AgentSession:
         self.db.add(msg)
         self.db.commit()
         self.db.refresh(msg)
-
-        # Append to the durable usage ledger (chargeback accounting that survives user
-        # deletion). Best-effort: never let a ledger failure break the turn.
-        if usage:
-            try:
-                from app.usage_ledger import record_usage
-
-                record_usage(
-                    self.db,
-                    message_id=msg.id,
-                    conversation_id=self.conversation.id,
-                    user_id=self.conversation.user_id,
-                    model=self.provider.model,
-                    usage=usage,
-                )
-            except Exception:  # noqa: BLE001
-                logger.exception("Usage ledger write failed (continuing)")
 
         yield events.done(msg.id, outcome=self.outcome)
 

@@ -53,6 +53,15 @@ then **exactly one terminal delta** — `tool_calls` if the model wants tools th
 otherwise `done`. Tool-call arguments must be parsed into a `dict`. The harness handles
 the loop, permissions, execution, and persistence; your job is only translation.
 
+Yield `usage` deltas as soon as the provider reports them, including before terminal deltas
+when available. Counters are cumulative snapshots: `input`, `output`, `total`, optional
+`cache_read`/`cache_write`; canonical input includes cached input. Preserve missing counters
+as absent/None rather than inventing zero. Implement streams as generators and close SDK
+transports in `finally`, including on consumer closure. Call `model_calls.note_retry()`
+before an explicit compatibility retry. Shared `stream_model`/`ScopedProvider` handles
+accounting and context checks; new generation entry points must use it. Embeddings remain
+outside this seam. See [MODEL_CALLS.md](MODEL_CALLS.md).
+
 Study `openai_provider.py` (tool-call delta accumulation by index) and
 `bedrock_provider.py` (`toolUse` block accumulation) — they are the reference
 implementations.

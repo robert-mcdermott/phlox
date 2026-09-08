@@ -3,8 +3,8 @@ import { Loader2, Download, BarChart3, ChevronRight, Building2 } from 'lucide-re
 import { api } from '../../api/client'
 
 const fmtTok = (n) => (n || 0).toLocaleString()
-const fmtCost = (n) =>
-  (n || 0).toLocaleString(undefined, {
+const fmtCost = (n, unknown = 0) =>
+  unknown ? ((n || 0) > 0 ? `${fmtCost(n)} + unknown` : 'Unknown') : (n || 0).toLocaleString(undefined, {
     style: 'currency',
     currency: 'USD',
     minimumFractionDigits: 2,
@@ -20,13 +20,15 @@ function csvField(v) {
 function downloadCsv(rows) {
   const header = [
     'month', 'department', 'username', 'email', 'user_id', 'model',
-    'input_tokens', 'output_tokens', 'total_tokens', 'cost_usd', 'turns',
+    'input_tokens', 'output_tokens', 'total_tokens', 'cost_usd', 'known_cost_usd',
+    'unknown_usage_calls', 'unknown_cost_calls', 'calls', 'turns',
   ]
   const lines = [header.join(',')]
   for (const r of rows) {
     lines.push([
       r.month, r.department, r.username, r.email, r.user_id, r.model,
-      r.input_tokens, r.output_tokens, r.total_tokens, r.cost_usd, r.turns,
+      r.input_tokens, r.output_tokens, r.total_tokens, r.cost_usd, r.known_cost_usd,
+      r.unknown_usage_calls, r.unknown_cost_calls, r.calls, r.turns,
     ].map(csvField).join(','))
   }
   const blob = new Blob([lines.join('\n')], { type: 'text/csv' })
@@ -71,19 +73,19 @@ export default function UsagePanel() {
       const dKey = `${r.month}|${r.department}`
       let d = byDept.get(dKey)
       if (!d) {
-        d = { month: r.month, department: r.department, cost: 0, total: 0, turns: 0, users: new Map() }
+        d = { month: r.month, department: r.department, cost: 0, unknown: 0, total: 0, turns: 0, users: new Map() }
         byDept.set(dKey, d)
       }
-      d.cost += r.cost_usd; d.total += r.total_tokens; d.turns += r.turns
+      d.cost += r.known_cost_usd ?? r.cost_usd ?? 0; d.unknown += r.unknown_cost_calls || 0; d.total += r.total_tokens; d.turns += r.calls ?? r.turns
 
       let u = d.users.get(r.user_id)
       if (!u) {
         u = { user_id: r.user_id, username: r.username, email: r.email,
-          input: 0, output: 0, total: 0, cost: 0, turns: 0, models: [] }
+          input: 0, output: 0, total: 0, cost: 0, unknown: 0, turns: 0, models: [] }
         d.users.set(r.user_id, u)
       }
       u.input += r.input_tokens; u.output += r.output_tokens; u.total += r.total_tokens
-      u.cost += r.cost_usd; u.turns += r.turns
+      u.cost += r.known_cost_usd ?? r.cost_usd ?? 0; u.unknown += r.unknown_cost_calls || 0; u.turns += r.calls ?? r.turns
       u.models.push(r)
     }
     const out = [...byDept.values()].map((d) => ({
@@ -103,10 +105,10 @@ export default function UsagePanel() {
     () => rows.reduce(
       (t, r) => {
         t.input += r.input_tokens; t.output += r.output_tokens
-        t.total += r.total_tokens; t.cost += r.cost_usd; t.turns += r.turns
+        t.total += r.total_tokens; t.cost += r.known_cost_usd ?? r.cost_usd ?? 0; t.unknown += r.unknown_cost_calls || 0; t.turns += r.calls ?? r.turns
         return t
       },
-      { input: 0, output: 0, total: 0, cost: 0, turns: 0 },
+      { input: 0, output: 0, total: 0, cost: 0, unknown: 0, turns: 0 },
     ),
     [rows],
   )
@@ -123,7 +125,9 @@ export default function UsagePanel() {
         never message content), so usage of <b>deleted users still appears</b> under the
         department they belonged to. Cost is computed from the per-model <code>pricing</code>{' '}
         (set in <b>Admin → Configuration</b> or seeded from <code>config.yml</code>); models
-        without a configured price show tokens but <b>$0</b>.
+        without a configured price show <b>Unknown</b>. Known costs are subtotals when usage or
+        pricing is incomplete. Rates are captured when each new call starts; historical
+        rows retain their original costs.
       </p>
 
       {loading && (
@@ -158,10 +162,10 @@ export default function UsagePanel() {
 
           {/* Grand totals for the current filter. */}
           <div className="mb-4 grid grid-cols-3 gap-2 sm:grid-cols-4">
-            <Stat label="Cost" value={fmtCost(totals.cost)} accent />
+            <Stat label="Cost" value={fmtCost(totals.cost, totals.unknown)} accent />
             <Stat label="Total tokens" value={fmtTok(totals.total)} />
             <Stat label="In / Out" value={`${fmtTok(totals.input)} / ${fmtTok(totals.output)}`} />
-            <Stat label="Turns" value={fmtTok(totals.turns)} />
+            <Stat label="Calls / legacy entries" value={fmtTok(totals.turns)} />
           </div>
 
           {!rows.length ? (
@@ -210,7 +214,7 @@ function DeptBlock({ d }) {
           </div>
         </div>
         <div className="text-right">
-          <div className="text-sm font-semibold text-accent">{fmtCost(d.cost)}</div>
+          <div className="text-sm font-semibold text-accent">{fmtCost(d.cost, d.unknown)}</div>
           <div className="text-[11px] text-muted">{fmtTok(d.total)} tok</div>
         </div>
       </button>
@@ -238,7 +242,7 @@ function UserRow({ u }) {
           <div className="text-[10px] text-muted">{u.turns} turns · {u.models.length} model{u.models.length === 1 ? '' : 's'}</div>
         </div>
         <div className="text-right">
-          <div className="text-[13px] font-medium text-content">{fmtCost(u.cost)}</div>
+          <div className="text-[13px] font-medium text-content">{fmtCost(u.cost, u.unknown)}</div>
           <div className="text-[10px] text-muted">{fmtTok(u.total)} tok</div>
         </div>
       </button>
@@ -250,7 +254,7 @@ function UserRow({ u }) {
                 <th className="py-1 text-left font-medium">Model</th>
                 <th className="py-1 text-right font-medium">In</th>
                 <th className="py-1 text-right font-medium">Out</th>
-                <th className="py-1 text-right font-medium">Turns</th>
+                <th className="py-1 text-right font-medium">Calls / legacy entries</th>
                 <th className="py-1 text-right font-medium">Cost</th>
               </tr>
             </thead>
@@ -261,7 +265,7 @@ function UserRow({ u }) {
                   <td className="py-1 text-right">{fmtTok(m.input_tokens)}</td>
                   <td className="py-1 text-right">{fmtTok(m.output_tokens)}</td>
                   <td className="py-1 text-right">{m.turns}</td>
-                  <td className="py-1 text-right">{fmtCost(m.cost_usd)}</td>
+                  <td className="py-1 text-right">{fmtCost(m.known_cost_usd ?? m.cost_usd, m.unknown_cost_calls)}</td>
                 </tr>
               ))}
             </tbody>

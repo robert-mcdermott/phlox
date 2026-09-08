@@ -210,7 +210,9 @@ def test_chat_resolves_assistant_model_before_budget(client, capture, monkeypatc
     a = _make_assistant(client, name="Priced", profile="test", model="expensive-model")
     r = client.post("/api/chat", json={"message": "hi", "assistant_id": a["id"]})
     assert r.status_code == 200
-    assert seen_models[-1] == "expensive-model"
+    assert seen_models[0] == "expensive-model"
+    # The common call seam also gates the actual constructed provider.
+    assert seen_models[-1] == "capture"
     client.delete(f"/api/assistants/{a['id']}")
 
 

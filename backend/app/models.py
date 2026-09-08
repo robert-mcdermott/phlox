@@ -273,8 +273,8 @@ class Memory(Base):
 
 
 class UsageLedger(Base):
-    """Durable, append-only record of token usage + cost per assistant turn, for
-    chargeback accounting.
+    """Durable token usage + cost per application model call, plus historical turn
+    entries. Calls are inserted before dispatch and updated as usage arrives.
 
     **Deliberately decoupled from the live data model:** it has *no foreign keys* to
     ``users``/``conversations`` and is excluded from ``delete_user_data``, so it survives
@@ -288,7 +288,7 @@ class UsageLedger(Base):
     __tablename__ = "usage_ledger"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
-    # The assistant Message this row was derived from; unique so backfill is idempotent.
+    # Unique call ID (or historical Message ID); makes legacy backfill idempotent.
     # Not a ForeignKey: the source message may be deleted while this row must persist. Wider
     # than the usual id column: the gateway path stores a synthetic "chatcmpl-<uuid32>" id
     # (41 chars) here instead of a Message.id. SQLite ignores the declared VARCHAR length
@@ -300,6 +300,15 @@ class UsageLedger(Base):
     username: Mapped[str | None] = mapped_column(String(150), nullable=True)
     email: Mapped[str | None] = mapped_column(String(300), nullable=True)
     department: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    # Model-call metadata; null means a legacy per-message/gateway ledger row.
+    turn_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    parent_call_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    profile: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    call_kind: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    status: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    usage_status: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    rate_snapshot: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    usage_details: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     # Usage metadata.
     model: Mapped[str | None] = mapped_column(String(200), nullable=True)
     input_tokens: Mapped[int] = mapped_column(Integer, default=0)

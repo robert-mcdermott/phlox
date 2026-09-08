@@ -187,38 +187,48 @@ class BedrockProvider(LLMProvider):
         tool_blocks: dict[int, dict[str, str]] = {}
         stop_reason: str | None = None
 
-        for event in resp.get("stream", []):
-            if "contentBlockStart" in event:
-                start = event["contentBlockStart"]
-                idx = start.get("contentBlockIndex", 0)
-                tu = start.get("start", {}).get("toolUse")
-                if tu:
-                    tool_blocks[idx] = {"id": tu.get("toolUseId", ""), "name": tu.get("name", ""), "args": ""}
-            elif "contentBlockDelta" in event:
-                cbd = event["contentBlockDelta"]
-                idx = cbd.get("contentBlockIndex", 0)
-                d = cbd.get("delta", {})
-                if "text" in d:
-                    yield StreamDelta(type="text", text=d["text"])
-                elif "reasoningContent" in d:
-                    rc = d["reasoningContent"]
-                    if rc.get("text"):
-                        yield StreamDelta(type="reasoning", text=rc["text"])
-                elif "toolUse" in d and idx in tool_blocks:
-                    tool_blocks[idx]["args"] += d["toolUse"].get("input", "")
-            elif "messageStop" in event:
-                stop_reason = event["messageStop"].get("stopReason")
-            elif "metadata" in event:
-                usage = event["metadata"].get("usage")
-                if usage:
-                    yield StreamDelta(
-                        type="usage",
-                        usage={
-                            "input": usage.get("inputTokens", 0),
-                            "output": usage.get("outputTokens", 0),
-                            "total": usage.get("totalTokens", 0),
-                        },
-                    )
+        stream = resp.get("stream", [])
+        try:
+            for event in stream:
+                if "contentBlockStart" in event:
+                    start = event["contentBlockStart"]
+                    idx = start.get("contentBlockIndex", 0)
+                    tu = start.get("start", {}).get("toolUse")
+                    if tu:
+                        tool_blocks[idx] = {"id": tu.get("toolUseId", ""), "name": tu.get("name", ""), "args": ""}
+                elif "contentBlockDelta" in event:
+                    cbd = event["contentBlockDelta"]
+                    idx = cbd.get("contentBlockIndex", 0)
+                    d = cbd.get("delta", {})
+                    if "text" in d:
+                        yield StreamDelta(type="text", text=d["text"])
+                    elif "reasoningContent" in d:
+                        rc = d["reasoningContent"]
+                        if rc.get("text"):
+                            yield StreamDelta(type="reasoning", text=rc["text"])
+                    elif "toolUse" in d and idx in tool_blocks:
+                        tool_blocks[idx]["args"] += d["toolUse"].get("input", "")
+                elif "messageStop" in event:
+                    stop_reason = event["messageStop"].get("stopReason")
+                elif "metadata" in event:
+                    usage = event["metadata"].get("usage")
+                    if usage:
+                        yield StreamDelta(
+                            type="usage",
+                            usage={
+                                "input": (usage["inputTokens"] + (usage.get("cacheReadInputTokens") or 0)
+                                          + (usage.get("cacheWriteInputTokens") or 0))
+                                    if usage.get("inputTokens") is not None else None,
+                                "output": usage.get("outputTokens"),
+                                "total": None,  # canonical total includes input + cache + output
+                                "cache_read": usage.get("cacheReadInputTokens"),
+                                "cache_write": usage.get("cacheWriteInputTokens"),
+                            },
+                        )
+        finally:
+            close = getattr(stream, "close", None)
+            if close:
+                close()
 
         if tool_blocks:
             calls: list[ToolCall] = []

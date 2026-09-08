@@ -20,23 +20,36 @@ everyday use, upgrades, and troubleshooting.
 
 ![Phlox chat interface](docs/phlox-screenshot.png)
 
-## What you can do
+## Features
 
-- **Chat and create:** streaming answers, image input, Markdown, code, math, diagrams,
-  editable messages, conversation search and export.
-- **Work with tools:** code execution, files, shell, plans, sub-agents, and workspace
-  checkpoints, with per-tool permissions and human approvals.
-- **Return to running work:** opt-in [reconnectable runs](docs/RUNS.md) keep working across
-  browser refreshes and chat switches, with explicit Stop and interruption recovery.
-- **Research documents:** [track processing and retry uploads](docs/INGESTION.md), search
-  documents and tables, and inspect [clickable citations](docs/SOURCES.md) with page/section locations.
-- **Research the web:** discover pages with built-in search or SearXNG, then inspect
-  [captured web citations](docs/WEB_SOURCES.md) with retained passages, URLs, and fetch times.
-- **Reuse workflows:** custom assistants, private/shared skills, memory, and MCP tools.
-- **Inspect outputs:** browse workspace files and preview HTML/Markdown in the artifact canvas.
-- **Operate your own deployment:** accounts and Entra ID SSO, isolated execution options,
-  usage/cost reporting, budgets, guardrails, live admin configuration, and an
-  [OpenAI-compatible API gateway](docs/API_GATEWAY.md).
+- **Local and cloud models** — connect Ollama, LM Studio, vLLM, OpenAI-compatible services,
+  or AWS Bedrock. Switch provider profiles without leaving the app; use local inference
+  and embeddings without a cloud API key.
+- **Agentic workflows** — planning, delegated sub-agents, filesystem and shell tools, with
+  per-tool permissions, human approvals, and Git-backed workspace checkpoints.
+- **Code execution and artifacts** — run Python and JavaScript, inspect generated files,
+  charts, and captured output, and preview HTML/Markdown in a resizable artifact canvas.
+  Choose local execution, isolated Docker/Podman containers, or AWS AgentCore microVMs.
+- **Document and web research with citations** — search PDFs, Word documents, Markdown,
+  and code, or discover and read web pages. Inspect the retained passage behind each
+  [citation](docs/SOURCES.md), including document locations or web URLs and fetch times.
+- **Reconnectable runs** — optional [persistent execution](docs/RUNS.md) continues across
+  browser refreshes and chat switches, with explicit Stop, saved approvals, and recovery.
+- **Custom assistants and skills** — create specialized assistants with their own prompts,
+  knowledge bases, and capabilities. Invoke reusable [skills](docs/SKILLS.md) with slash
+  commands or let the agent discover relevant workflows.
+- **Cross-conversation memory** — save useful facts and preferences for recall in future
+  chats, with a Memory panel to review and manage them.
+- **MCP and API integration** — connect external tools through the Model Context Protocol,
+  or use Phlox's [OpenAI-compatible API gateway](docs/API_GATEWAY.md) with per-user API keys.
+- **Multi-user access and controls** — private user data, local accounts or Entra ID SSO,
+  role-based administration, and configurable PII redaction and blocking.
+- **Usage, budgets, and administration** — inspect token usage and known/unknown costs,
+  track spending by user, department, and model, set monthly budgets, and edit provider
+  profiles and supported configuration live.
+- **Rich chat and personalization** — image input for vision models, highlighted code,
+  LaTeX math, Mermaid diagrams, editable messages, conversation search/export, and
+  [18 color themes](docs/THEMING.md), from Phlox Dark to Outrun, Blade Runner 2049, and Nord.
 
 ## Quick start
 

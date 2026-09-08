@@ -13,6 +13,7 @@ specialized deployment guides when making it available to others.
 - [First-time setup](#first-time-setup)
 - [Configure model providers](#configure-model-providers)
 - [How configuration works](#how-configuration-works)
+- [Appearance](#appearance)
 - [Reconnectable runs and Stop](#reconnectable-runs-and-stop)
 - [Chat and everyday use](#chat-and-everyday-use)
 - [Documents, search, and citations](#documents-search-and-citations)
@@ -277,6 +278,16 @@ context limits cover input/history and need room for output and tool schemas. Co
 summarizes older history, and estimated fit checks can reject oversized requests before
 sending. Round limits are cumulative across approval resumes. [MODEL_CALLS.md](MODEL_CALLS.md)
 explains estimation, provider ceilings, retries, fallback, and accounting boundaries.
+
+## Appearance
+
+Open **Settings → Appearance** to choose from 18 color themes. Each card previews
+the theme's chat, sidebar, and accent colors. Choices range from Phlox Dark and Light
+to Outrun, Blade Runner 2049, Chaos Theory, Cyberpunk, Synthwave, and softer palettes
+such as Catppuccin Mocha and Nord. Themes apply immediately and are remembered in
+your user settings and browser; Phlox Dark remains the default.
+
+See [Theming](THEMING.md) for the full catalog and custom-theme instructions.
 
 ## Reconnectable runs and Stop
 

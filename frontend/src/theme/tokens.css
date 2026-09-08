@@ -165,3 +165,206 @@
   --color-sidebar: #1b365d;
   --color-sidebar-fg: #f0e9da;
 }
+
+/* Collomia-inspired palettes, extended for web surfaces and readable text.
+ * Provenance and adaptation notes: docs/THEMING.md. */
+
+/* Outrun — sunset orange, cyan and violet. */
+[data-theme='outrun'] {
+  color-scheme: dark;
+  --color-bg: #1a0e31;
+  --color-surface: #261447;
+  --color-surface-2: #311d55;
+  --color-surface-3: #39265c;
+  --color-border: #552e85;
+  --color-text: #fff1e7;
+  --color-text-muted: #b8a6cc;
+  --color-accent: #ff6c11;
+  --color-accent-fg: #1a0e31;
+  --color-user-bubble: #ff3864;
+  --color-user-bubble-fg: #1a0e31;
+  --color-header: #130a25;
+  --color-header-border: #2de2e6;
+  --color-sidebar: #130a25;
+  --color-sidebar-fg: #f3e5ff;
+}
+
+/* Blade Runner 2049 — deep teal and electric amber. */
+[data-theme='blade-runner-2049'] {
+  color-scheme: dark;
+  --color-bg: #001f1f;
+  --color-surface: #002a28;
+  --color-surface-2: #00332f;
+  --color-surface-3: #073c38;
+  --color-border: #087a6b;
+  --color-text: #dcfff4;
+  --color-text-muted: #82c5bb;
+  --color-accent: #00ffe5;
+  --color-accent-fg: #001a1a;
+  --color-user-bubble: #ffb74d;
+  --color-user-bubble-fg: #241708;
+  --color-header: #001a1a;
+  --color-header-border: #1affa3;
+  --color-sidebar: #001a1a;
+  --color-sidebar-fg: #c7f5e9;
+}
+
+/* Chaos Theory — carbon, acid green and ice blue. */
+[data-theme='chaos-theory'] {
+  color-scheme: dark;
+  --color-bg: #0d0d0d;
+  --color-surface: #181d16;
+  --color-surface-2: #20261d;
+  --color-surface-3: #2b3424;
+  --color-border: #495945;
+  --color-text: #edf2df;
+  --color-text-muted: #adb89b;
+  --color-accent: #61f21d;
+  --color-accent-fg: #102006;
+  --color-user-bubble: #0fc9f2;
+  --color-user-bubble-fg: #071d22;
+  --color-header: #10140e;
+  --color-header-border: #edf25e;
+  --color-sidebar: #10140e;
+  --color-sidebar-fg: #dce9ca;
+}
+
+/* Cyberpunk 2077 Blue — midnight blue, cyan and hot pink. */
+[data-theme='cyberpunk-2077-blue'] {
+  color-scheme: dark;
+  --color-bg: #03102c;
+  --color-surface: #071638;
+  --color-surface-2: #0c2048;
+  --color-surface-3: #122952;
+  --color-border: #24528a;
+  --color-text: #e7f5ff;
+  --color-text-muted: #8aadf7;
+  --color-accent: #0ef3ff;
+  --color-accent-fg: #03102c;
+  --color-user-bubble: #ff2e97;
+  --color-user-bubble-fg: #160920;
+  --color-header: #060144;
+  --color-header-border: #ffd400;
+  --color-sidebar: #060144;
+  --color-sidebar-fg: #dcecff;
+}
+
+/* Cyberpunk 2077 Violet — black plum and electric fuchsia. */
+[data-theme='cyberpunk-2077-violet'] {
+  color-scheme: dark;
+  --color-bg: #120018;
+  --color-surface: #24002f;
+  --color-surface-2: #320a3d;
+  --color-surface-3: #401448;
+  --color-border: #7a225e;
+  --color-text: #fce6f7;
+  --color-text-muted: #dca4c3;
+  --color-accent: #ff2cf1;
+  --color-accent-fg: #120018;
+  --color-user-bubble: #c832ff;
+  --color-user-bubble-fg: #120018;
+  --color-header: #18001f;
+  --color-header-border: #ff2e97;
+  --color-sidebar: #18001f;
+  --color-sidebar-fg: #f9d3f0;
+}
+
+/* Synthwave — hot pink, ultraviolet and cyan. */
+[data-theme='synthwave'] {
+  color-scheme: dark;
+  --color-bg: #191325;
+  --color-surface: #241b2f;
+  --color-surface-2: #2d223d;
+  --color-surface-3: #362949;
+  --color-border: #495495;
+  --color-text: #f4edff;
+  --color-text-muted: #aaadd0;
+  --color-accent: #ff64b0;
+  --color-accent-fg: #191325;
+  --color-user-bubble: #b967ff;
+  --color-user-bubble-fg: #191325;
+  --color-header: #140f20;
+  --color-header-border: #00f0ff;
+  --color-sidebar: #140f20;
+  --color-sidebar-fg: #e8dfff;
+}
+
+/* Catppuccin Mocha — soft lavender and pastel blue. */
+[data-theme='catppuccin-mocha'] {
+  color-scheme: dark;
+  --color-bg: #1e1e2e;
+  --color-surface: #262637;
+  --color-surface-2: #313244;
+  --color-surface-3: #434558;
+  --color-border: #585b70;
+  --color-text: #cdd6f4;
+  --color-text-muted: #bac2de;
+  --color-accent: #cba6f7;
+  --color-accent-fg: #181825;
+  --color-user-bubble: #89b4fa;
+  --color-user-bubble-fg: #181825;
+  --color-header: #181825;
+  --color-header-border: #89dceb;
+  --color-sidebar: #181825;
+  --color-sidebar-fg: #cdd6f4;
+}
+
+/* Gruvbox Dark — warm charcoal, gold and orange. */
+[data-theme='gruvbox-dark'] {
+  color-scheme: dark;
+  --color-bg: #282828;
+  --color-surface: #32302f;
+  --color-surface-2: #3c3836;
+  --color-surface-3: #44403c;
+  --color-border: #665c54;
+  --color-text: #ebdbb2;
+  --color-text-muted: #bdae93;
+  --color-accent: #fabd2f;
+  --color-accent-fg: #211b14;
+  --color-user-bubble: #fe8019;
+  --color-user-bubble-fg: #211b14;
+  --color-header: #1d2021;
+  --color-header-border: #83a598;
+  --color-sidebar: #1d2021;
+  --color-sidebar-fg: #ebdbb2;
+}
+
+/* Nord — arctic slate and muted frost. */
+[data-theme='nord'] {
+  color-scheme: dark;
+  --color-bg: #242933;
+  --color-surface: #2e3440;
+  --color-surface-2: #343c4a;
+  --color-surface-3: #3b4252;
+  --color-border: #4c566a;
+  --color-text: #eceff4;
+  --color-text-muted: #b0bdd0;
+  --color-accent: #88c0d0;
+  --color-accent-fg: #18232b;
+  --color-user-bubble: #81a1c1;
+  --color-user-bubble-fg: #18232b;
+  --color-header: #2e3440;
+  --color-header-border: #b48ead;
+  --color-sidebar: #2e3440;
+  --color-sidebar-fg: #d8dee9;
+}
+
+/* Monokai — olive charcoal, lime and cyan. */
+[data-theme='monokai'] {
+  color-scheme: dark;
+  --color-bg: #1d1e19;
+  --color-surface: #272822;
+  --color-surface-2: #303129;
+  --color-surface-3: #3b3d32;
+  --color-border: #57594b;
+  --color-text: #f8f8f2;
+  --color-text-muted: #b6b5a2;
+  --color-accent: #66d9ef;
+  --color-accent-fg: #172024;
+  --color-user-bubble: #a6e22e;
+  --color-user-bubble-fg: #1d2410;
+  --color-header: #171813;
+  --color-header-border: #f92672;
+  --color-sidebar: #171813;
+  --color-sidebar-fg: #e8e8d5;
+}

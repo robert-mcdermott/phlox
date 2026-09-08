@@ -1,7 +1,8 @@
 # Approval continuity and recovery
 
-Implemented in [Wave 2](IMPLEMENTATION_WAVES.md), with per-call accounting in Wave 3. This guide covers interactive approval
-snapshots, not the future durable worker/run service.
+Implemented in [Wave 2](IMPLEMENTATION_WAVES.md), with per-call accounting in Wave 3.
+[Wave 5 reconnectable runs](RUNS.md) link new approvals to a server-owned run when enabled.
+This guide describes the underlying approval contract and legacy request-bound behavior.
 
 ## User journey
 
@@ -40,13 +41,14 @@ an expiry condition. Only the winning request can dispatch tools. Every decision
 
 `expired` and `legacy` are display states for a pending row; they do not change the claim
 history. `done` SSE frames include `outcome` for finalized turns. Approval outcomes persist
-on their snapshot rows; fresh turns without approvals do not yet have durable run records.
+on their snapshot rows; fresh turns also have durable run records when the Wave-5 flag is enabled.
 
-A **process crash after claiming** leaves `claimed` intact. Phlox cannot distinguish a
+For an **unlinked legacy approval**, a process crash after claiming leaves `claimed` intact. Phlox cannot distinguish a
 completed remote action from an unexecuted one and does not reset the claim on startup.
 Inspect workspace/remote results before deciding what to do in a **new conversation**.
-The original conversation stays blocked while its claim is unconfirmed. A worker lease,
-run-event history, and reconciliation workflow are F07 work. Cancellation is best effort;
+The original conversation stays blocked while its claim is unconfirmed. Linked Wave-5 runs instead mark abandoned claims interrupted, preserve tool evidence, and
+let the owner acknowledge the outcome after review. Worker leases and automatic
+reconciliation remain future work. Cancellation is best effort;
 it never proves that a remote action was undone.
 
 ## Policy and budget checks
@@ -104,8 +106,9 @@ providers and isolated databases. Coverage includes multiple pauses, exact decis
 simultaneous claims, policy revocation, budgets, limits, expiry, ownership, failed setup,
 terminal outcomes, dismissal accounting, deletion, and an idempotent old-schema upgrade.
 SQLite exercises the full approval behavior suite. Wave 4 also verifies preservation of
-claimed approval rows through Postgres migrations and backup/restore; this does not add
-worker/crash reconciliation or certify all approval concurrency paths on Postgres.
+claimed approval rows through Postgres migrations and backup/restore. Wave 5 adds run
+execution/accounting and conservative restart recovery drills on both engines; it does
+not certify every approval concurrency path on every managed Postgres service.
 
 [Browser tests](../frontend/tests/browser/approval.test.js) use Node's test runner,
 Playwright Chromium, and the real SPA served on an ephemeral localhost port. Each test has

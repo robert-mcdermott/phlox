@@ -32,13 +32,14 @@ const pending = () => ({
   usage: { input: 7, output: 3, total: 10 }, expires_at: '2099-01-01T00:00:00Z',
 })
 
-async function fixture(t, { approval = null, auth = false } = {}) {
+async function fixture(t, { approval = null, auth = false, durable = false } = {}) {
   const context = await browser.newContext()
   t.after(() => context.close())
   const page = await context.newPage()
   page.setDefaultTimeout(8000)
   const state = {
     approval, decisions: [], reject: false, authenticated: false, setup: true,
+    run: null, events: [], cursors: [], cancellations: 0, creates: [], loseAcceptance: false,
     config: { providers: [], pricing: {}, resilience: {}, generation: {}, suggestions: [],
       sandbox: { runner: 'local', container: {} } },
     messages: [{ id: 'user-1', role: 'user', content: 'Save the plan', created_at: '2026-09-07T00:00:00Z' }],
@@ -50,11 +51,11 @@ async function fixture(t, { approval = null, auth = false } = {}) {
   })
   t.after(() => assert.deepEqual(errors, [], 'no browser runtime errors'))
   await context.route('**/*', (route) => new URL(route.request().url()).origin === baseURL ? route.continue() : route.abort())
-  await page.route(`${baseURL}/api/**`, async (route) => {
+  await context.route(`${baseURL}/api/**`, async (route) => {
     const path = new URL(route.request().url()).pathname
     const method = route.request().method()
     const json = (body, status = 200) => route.fulfill({ status, json: body })
-    if (path === '/api/auth/config') return json({ enabled: auth })
+    if (path === '/api/auth/config') return json({ enabled: auth, runs_enabled: durable })
     const user = { id: 'local', username: 'tester', role: 'admin', must_change_password: state.setup }
     if (path === '/api/auth/me') return state.authenticated ? json(user) : json({ detail: 'Sign in' }, 401)
     if (path === '/api/auth/login') {
@@ -85,6 +86,45 @@ async function fixture(t, { approval = null, auth = false } = {}) {
       calls: 2, turns: 1,
     }] })
     if (['/api/assistants', '/api/skills', '/api/documents'].includes(path)) return json([])
+    if (path === '/api/runs' && method === 'POST') {
+      const key = route.request().headers()['idempotency-key']
+      state.creates.push(key)
+      if (!state.run) {
+        state.run = { id: 'run-1', conversation_id: 'alpha', status: 'running' }
+        state.events = [{ type: 'conversation', id: 'alpha' }, { type: 'token', content: 'Saved progress.' }]
+      }
+      if (state.loseAcceptance) { state.loseAcceptance = false; return route.abort('failed') }
+      return json(state.run)
+    }
+    if (path === '/api/runs' && method === 'GET') {
+      return json(new URL(route.request().url()).searchParams.get('conversation_id') === 'alpha' ? state.run : null)
+    }
+    if (path === '/api/runs/run-1/events') {
+      const cursor = Number(new URL(route.request().url()).searchParams.get('after'))
+      state.cursors.push(cursor)
+      const events = state.events.map((event, index) => ({ ...event, seq: index + 1, run_id: 'run-1' }))
+        .filter((event) => event.seq >= Math.max(1, cursor)) // Deliberate duplicate exercises client deduplication.
+      return route.fulfill({ contentType: 'text/event-stream', body: sse(...events, { type: 'run_state', ...state.run }) })
+    }
+    if (path === '/api/runs/run-1/cancel') {
+      state.cancellations++
+      state.run.status = 'cancel_requested'
+      return json(state.run)
+    }
+    if (path === '/api/runs/run-1/approve') {
+      if (state.reject) return json({ detail: 'Monthly budget exceeded' }, 402)
+      if (state.run.status !== 'awaiting_approval') return json({ detail: 'Already claimed' }, 409)
+      state.decisions.push(route.request().postDataJSON())
+      state.approval = null
+      state.run.status = 'completed'
+      state.messages.push({ id: 'answer', role: 'assistant', content: 'Decision handled once.' })
+      state.events.push({ type: 'token', content: 'Decision handled once.' }, { type: 'done', message_id: 'answer', outcome: 'completed' })
+      return json(state.run)
+    }
+    if (path === '/api/runs/run-1/acknowledge') {
+      state.run.needs_acknowledgement = false
+      return json(state.run)
+    }
     if (path === '/api/chat') {
       state.approval = pending()
       return route.fulfill({ contentType: 'text/event-stream', body: sse(
@@ -108,7 +148,7 @@ async function fixture(t, { approval = null, auth = false } = {}) {
     throw new Error(`Unexpected API request: ${method} ${path}`)
   })
   await page.goto(baseURL, { waitUntil: 'domcontentloaded', timeout: 20000 })
-  return { page, state }
+  return { page, state, context }
 }
 
 async function openApproval(page) {
@@ -252,4 +292,93 @@ test('Stop and chat switching reject late events even from a transport that igno
   await page.getByText('CURRENT RESPONSE', { exact: true }).waitFor()
   assert.match(await page.getByText('Other chat', { exact: true }).locator('..').getAttribute('class'), /bg-white\/15/)
   await page.evaluate(() => window.streamControllers[1].close())
+})
+
+
+test('durable runs retry acceptance once, deduplicate replay, detach on navigation and confirm Stop', async (t) => {
+  const { page, state } = await fixture(t, { durable: true })
+  state.loseAcceptance = true
+  await page.getByPlaceholder('Message Phlox…').fill('Keep working')
+  await page.getByRole('button', { name: 'Send', exact: true }).click()
+  await page.getByText('Saved progress.', { exact: true }).waitFor()
+  assert.equal(state.creates.length, 2)
+  assert.equal(state.creates[0], state.creates[1])
+  await page.waitForFunction(async () => {
+    const { useStore } = await import('/src/store/useStore.js')
+    return useStore.getState().connection?.includes('Reconnecting')
+  })
+  await page.getByText('Other chat', { exact: true }).click()
+  await page.getByText('Only the other conversation', { exact: true }).waitFor()
+  assert.equal(state.cancellations, 0)
+  await page.getByText('Approval chat', { exact: true }).click()
+  await page.getByText('Saved progress.', { exact: true }).waitFor()
+  await page.reload()
+  await page.getByText('Approval chat', { exact: true }).click()
+  await page.getByText('Saved progress.', { exact: true }).waitFor()
+  await page.waitForFunction(async () => {
+    const { useStore } = await import('/src/store/useStore.js')
+    return useStore.getState().connection?.includes('Reconnecting')
+  })
+  assert.equal(await page.getByText('Saved progress.', { exact: true }).count(), 1)
+  await page.getByTitle('Stop', { exact: true }).click()
+  await page.getByText('Stopping — awaiting confirmation', { exact: true }).waitFor()
+  assert.equal(state.cancellations, 1)
+  state.run.status = 'cancelled'
+  await page.getByText('Stopped', { exact: true }).waitFor()
+  await page.getByRole('button', { name: 'Send', exact: true }).waitFor()
+  assert.ok(state.cursors.some((cursor) => cursor > 0))
+})
+
+test('durable approval survives reload and a second tab refresh sees the single completion', async (t) => {
+  const { page, state, context } = await fixture(t, { durable: true, approval: pending() })
+  state.run = { id: 'run-1', conversation_id: 'alpha', status: 'awaiting_approval', pending_id: 'approval-1' }
+  state.events = [{ type: 'token', content: 'I can save the plan.' }]
+  await openApproval(page)
+  await page.reload()
+  await openApproval(page)
+  const other = await context.newPage()
+  await other.goto(baseURL)
+  await openApproval(other)
+  state.reject = true
+  await page.getByRole('button', { name: 'Approve & run', exact: true }).click()
+  await page.getByText('Monthly budget exceeded', { exact: true }).waitFor()
+  await page.getByText('Approval needed', { exact: true }).waitFor()
+  state.reject = false
+  await page.getByRole('button', { name: 'Approve & run', exact: true }).click()
+  await page.getByText('Decision handled once.', { exact: true }).waitFor()
+  assert.equal(state.decisions.length, 1)
+  await other.reload()
+  await other.getByText('Approval chat', { exact: true }).click()
+  await other.getByText('Decision handled once.', { exact: true }).waitFor()
+  assert.equal(state.decisions.length, 1)
+})
+
+test('interrupted progress stays visible until acknowledged and logout detaches private state', async (t) => {
+  const { page, state } = await fixture(t, { durable: true, auth: true })
+  state.setup = false
+  state.run = { id: 'run-1', conversation_id: 'alpha', status: 'interrupted', needs_acknowledgement: true, reason: 'Action outcome unknown.' }
+  state.events = [{ type: 'token', content: 'Saved progress.' }]
+  const login = async () => {
+    await page.getByLabel('Username', { exact: true }).fill('tester')
+    await page.getByLabel('Password', { exact: true }).fill('test-password')
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click()
+  }
+  await login()
+  await page.getByText('Approval chat', { exact: true }).click()
+  await page.getByText('Saved progress.', { exact: true }).waitFor()
+  await page.getByRole('button', { name: 'I reviewed the results — allow a new turn', exact: true }).click()
+  await page.getByRole('button', { name: 'I reviewed the results — allow a new turn', exact: true }).waitFor({ state: 'hidden' })
+  state.run.status = 'running'
+  state.events = [{ type: 'token', content: 'Still running.' }]
+  await page.getByText('Other chat', { exact: true }).click()
+  await page.getByText('Approval chat', { exact: true }).click()
+  await page.getByText('Still running.', { exact: true }).waitFor()
+  await page.evaluate(async () => { const { useStore } = await import('/src/store/useStore.js'); useStore.getState().logout() })
+  await page.getByRole('button', { name: 'Sign in', exact: true }).waitFor()
+  const privateState = await page.evaluate(async () => { const { useStore } = await import('/src/store/useStore.js'); const s = useStore.getState(); return [s.run, s.live, s.messages.length, s.conversations.length] })
+  assert.deepEqual(privateState, [null, null, 0, 0])
+  assert.equal(state.cancellations, 0)
+  await login()
+  await page.getByText('Approval chat', { exact: true }).click()
+  await page.getByText('Still running.', { exact: true }).waitFor()
 })

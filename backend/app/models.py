@@ -147,6 +147,8 @@ class Conversation(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
 
+    runs: Mapped[list["Run"]] = relationship(cascade="all, delete-orphan")
+
     approvals: Mapped[list["PendingApproval"]] = relationship(cascade="all, delete-orphan")
 
     messages: Mapped[list["Message"]] = relationship(
@@ -451,3 +453,49 @@ class AppConfig(Base):
     value: Mapped[dict | list | None] = mapped_column(JSON)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
     updated_by: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
+
+class Run(Base):
+    """Private server-owned execution. Clearing active_conversation_id releases admission."""
+
+    __tablename__ = "runs"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(String(32), index=True)
+    conversation_id: Mapped[str] = mapped_column(ForeignKey("conversations.id", ondelete="CASCADE"), index=True)
+    active_conversation_id: Mapped[str | None] = mapped_column(String(32), unique=True, nullable=True)
+    request_key: Mapped[str] = mapped_column(String(100))
+    request_hash: Mapped[str] = mapped_column(String(64))
+    context_version: Mapped[int] = mapped_column(Integer, default=1)
+    payload: Mapped[dict] = mapped_column(JSON)
+    status: Mapped[str] = mapped_column(String(24), default="queued", index=True)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    pending_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    message_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    last_seq: Mapped[int] = mapped_column(Integer, default=0)
+    event_bytes: Mapped[int] = mapped_column(Integer, default=0)
+    events_expired: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
+    events: Mapped[list["RunEvent"]] = relationship(cascade="all, delete-orphan")
+    executions: Mapped[list["ToolExecution"]] = relationship(cascade="all, delete-orphan")
+    __table_args__ = (UniqueConstraint("user_id", "request_key", name="uq_run_request"),)
+
+
+class RunEvent(Base):
+    __tablename__ = "run_events"
+    run_id: Mapped[str] = mapped_column(ForeignKey("runs.id", ondelete="CASCADE"), primary_key=True)
+    seq: Mapped[int] = mapped_column(Integer, primary_key=True)
+    data: Mapped[dict] = mapped_column(JSON)
+
+
+class ToolExecution(Base):
+    """Dispatch intent and observed result; a missing result is never permission to replay."""
+
+    __tablename__ = "tool_executions"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    run_id: Mapped[str] = mapped_column(ForeignKey("runs.id", ondelete="CASCADE"), index=True)
+    call_id: Mapped[str] = mapped_column(String(200))
+    name: Mapped[str] = mapped_column(String(200))
+    status: Mapped[str] = mapped_column(String(24), default="started")
+    # Arguments and results are in the bounded private event log / final transcript.
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)

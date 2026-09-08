@@ -155,6 +155,22 @@ function ThinkingDots({ label }) {
   )
 }
 
+function RunStatus() {
+  const run = useStore((s) => s.run)
+  const connection = useStore((s) => s.connection)
+  const acknowledge = useStore((s) => s.acknowledgeRun)
+  if (!run) return null
+  const labels = { queued: 'Queued', running: 'Running on the server', cancel_requested: 'Stopping — awaiting confirmation', awaiting_approval: 'Waiting for your approval', interrupted: 'Interrupted — review saved results', cancelled: 'Stopped', failed: 'Run failed', limit_reached: 'Run limit reached', blocked: 'Run blocked' }
+  if (run.status === 'completed' && !connection) return null
+  return <div role="status" className="mx-auto mb-2 max-w-3xl rounded-lg border border-border bg-surface-2 px-4 py-2 text-sm text-content">
+    <b>{labels[run.status] || run.status}</b>
+    {connection && <p>{connection}</p>}
+    {run.reason && <p className="mt-1 text-muted">{run.reason}</p>}
+    {run.queued_message && <details className="mt-1"><summary>Submitted request</summary><p className="whitespace-pre-wrap">{run.queued_message}</p></details>}
+    {run.needs_acknowledgement && <button onClick={acknowledge} className="mt-2 rounded border border-border px-3 py-1 text-accent hover:bg-surface">I reviewed the results — allow a new turn</button>}
+  </div>
+}
+
 export default function ChatPage() {
   const messages = useStore((s) => s.messages)
   const live = useStore((s) => s.live)
@@ -222,6 +238,7 @@ export default function ChatPage() {
         )}
       </div>
       <div className="px-4 pt-2">
+        <RunStatus />
         <BudgetBanner />
       </div>
       <Composer />

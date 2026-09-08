@@ -28,7 +28,9 @@ accounts, tool preferences, MCP connections, or index work. A migration failure 
 startup. `/api/readiness` is 503 when the database revision is unavailable/out of date or
 the selected sandbox is unavailable.
 
-The current head is `0002_ledger_width`. The initial revision, `0001_wave3`, contains a **frozen** schema snapshot and
+The current head is `0003_runs`, which adds private run, replay-event, and tool-execution
+tables for [Wave 5](RUNS.md). Revisions `0001_wave3` and `0002_ledger_width` remain readable
+by check/backup before upgrade. The initial revision, `0001_wave3`, contains a **frozen** schema snapshot and
 the previous releases' explicit additive-column allowlist. Existing tables are inspected
 for column types/lengths/nullability, primary keys, uniqueness, foreign keys, and named
 index shapes before adoption. Only known missing columns and missing application tables /
@@ -62,7 +64,9 @@ than dropping columns, is the rollback procedure for this baseline.
 
 - `database.sqlite` (SQLite backup API, including committed WAL data, then integrity check)
   or `database.dump` (Postgres custom-format dump). This includes chats, documents/chunks /
-  embeddings, users, permissions, approval state, usage, API-key hashes, and DB config overlays.
+  embeddings, users, permissions, approval/run state and action evidence, usage, API-key
+  hashes, and DB config overlays. Restored runs are not automatically replayed on startup;
+  see [interruption recovery](RUNS.md#run-and-restart-behavior).
 - `data/`: source uploads, images, workspaces, complete Git checkpoint repositories, empty
   directories, and other regular files under the configured data directory.
 - `config.yml`: an exact copy of the seed config, including any secrets it contains.

@@ -6,7 +6,8 @@
 > This page describes the current implementation. The September 2026
 > [codebase review](CODEBASE_REVIEW.md) records its recovery, accounting, retrieval, and
 > operational limitations. The [active roadmap](ROADMAP.md) describes proposed changes;
-> durable runs, projects, and versioned evidence/artifacts do not yet ship.
+> opt-in [reconnectable runs](RUNS.md) now ship. Projects and versioned evidence/artifacts
+> remain proposed.
 
 Phlox is a feature-rich, ChatGPT-style web app. It does
 chat, an agentic tool-using harness (code execution, filesystem, shell, web), document
@@ -38,6 +39,14 @@ OpenAI-compatible endpoint, including local models).
 FastAPI serves the built SPA from `frontend/dist` (see `backend/app/main.py`).
 
 ## 2. The request lifecycle (most important thing to understand)
+
+With `runs.enabled: true`, `routers/runs.py` admits a private `Run` into a bounded DB queue.
+One worker in `runs.py` owns execution and calls the shared chat preparation functions.
+`RunEvent` replay is independent of HTTP subscriptions; explicit Stop signals cancellation.
+The lifespan maintenance lock covers the worker through shutdown. Run/account/tool policy
+is rechecked before execution; restart exposes interruptions without automatic replay.
+See [RUNS.md](RUNS.md) for the state machine and limits. The following preparation/harness
+flow is shared with the default request-bound mode:
 
 A chat turn flows through these pieces:
 
@@ -79,6 +88,7 @@ deals with provider-specific shapes.
 |---|---|---|
 | **Entry** | `main.py` | App, router mounting, startup wiring (DB, tools, MCP), SPA serving |
 | **Config** | `config.py`, `runtime_settings.py`, `app_config.py` | `config.yml` seed (profiles/defaults) + DB-backed per-user settings + admin deployment overrides (live overlay) |
+| **Runs** | `runs.py`, `routers/runs.py` | Opt-in queue/worker, event replay, explicit cancellation, approval links and interruption review |
 | **Persistence** | `database.py`, `models.py`, `schemas.py`, `migrations/` | SQLite / Postgres, checked Alembic migrations, ORM tables, Pydantic I/O |
 | **Operations** | `ops.py`, `backup.py`, `maintenance.py` | Offline verified bundles, restore into new destinations, server/maintenance exclusion. See [BACKUP_RESTORE.md](BACKUP_RESTORE.md) |
 | **Providers** | `providers/base.py`, `openai_provider.py`, `bedrock_provider.py`, `registry.py` | Provider abstraction + streaming + embeddings |
@@ -182,8 +192,8 @@ deals with provider-specific shapes.
   time, with at most **8 child requests per round**; queued children skip execution after
   cancellation. Mutation-capable children (`read_only: false`, the default) execute
   sequentially within their parent turn. Unattended `ask` tools remain denied unless the
-  parent turn enabled auto-approval. This does not serialize separate top-level runs on
-  the same conversation; durable run ownership is future work.
+  parent turn enabled auto-approval. Opt-in durable runs serialize unresolved top-level
+  work per conversation and inherit a thread-safe journal for child tool intent/results.
 - **Checkpoints** (`workspace/checkpoints.py`): each workspace is a git repo; the harness
   auto-snapshots after a successful mutating tool (`MUTATING_TOOLS`), and the user can
   restore any snapshot (current state is snapshotted first, so nothing is lost). A
@@ -303,6 +313,8 @@ drag handle on its left edge.
 - `Setting` (key/value), `McpServer`, `ToolPref` (enabled + permission per tool),
   `Memory` (cross-conversation facts), `PendingApproval` (versioned paused-run state plus
   claim/outcome status, ORM-cascaded with its conversation).
+- `Run`, `RunEvent`, `ToolExecution` — private request/status, bounded ordered replay, and
+  dispatch/result evidence; ORM-cascaded with their conversation. See [RUNS.md](RUNS.md).
 - `Skill` — reusable instructions with slug, description, visibility, creator, and
   auto-activation flag. Resources/scripts are not bundled; see [SKILLS.md](SKILLS.md).
 - `UsageLedger` — **FK-free** per-call token/cost rows and historical turn entries with a snapshot of the

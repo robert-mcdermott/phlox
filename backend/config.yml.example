@@ -272,3 +272,9 @@ vector_store:
 #       action: redact             # redact | block (block also redacts, then refuses)
 #       replacement: "[MRN]"
 #       enabled: true
+
+# Opt-in reconnectable chat runs (one application process; restart required).
+# Browser refresh/navigation detaches progress; explicit Stop requests cancellation.
+# Existing databases upgrade automatically. See docs/RUNS.md for backup/rollout steps.
+runs:
+  enabled: false

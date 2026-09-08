@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { api } from '../api/client'
 import { streamChat } from '../api/sse'
+import { runRequest, subscribeRun } from '../api/runs'
 import { setToken } from '../api/token'
 import { applyTheme, initialTheme } from '../theme/presets'
 import { canvasKind } from '../utils/canvas'
@@ -26,6 +27,9 @@ export const useStore = create((set, get) => ({
   activeAssistantId: null,
   theme: initialTheme(),
 
+  runCreation: null,
+  run: null,
+  connection: null,
   streamVersion: 0,
   streaming: false,
   live: null, // emptyLive() while streaming
@@ -90,19 +94,25 @@ export const useStore = create((set, get) => ({
   },
 
   async loadSkills() {
+    const owner = get().user
     try {
       const skills = await api.listSkills()
+      if (get().user !== owner) return
       set({ skills })
     } catch {
+      if (get().user !== owner) return
       set({ skills: [] })
     }
   },
 
   async loadAssistants() {
+    const owner = get().user
     try {
       const assistants = await api.listAssistants()
+      if (get().user !== owner) return
       set({ assistants })
     } catch {
+      if (get().user !== owner) return
       set({ assistants: [] })
     }
   },
@@ -121,10 +131,13 @@ export const useStore = create((set, get) => ({
   // Monthly budget status (drives the chat warning/block banner). Refreshed after each
   // turn since spend changes. Null'd out if the request fails or no budget applies.
   async loadBudget() {
+    const owner = get().user
     try {
       const b = await api.budgetStatus()
+      if (get().user !== owner) return
       set({ budget: b && b.budgets && b.budgets.length ? b : null })
     } catch {
+      if (get().user !== owner) return
       set({ budget: null })
     }
   },
@@ -157,22 +170,26 @@ export const useStore = create((set, get) => ({
   },
 
   logout() {
-    get().stopStreaming()
+    get().detachStream()
     setToken(null)
     set({
       streamVersion: get().streamVersion + 1,
       user: null, conversations: [], messages: [], activeId: null, live: null, canvas: null,
-      assistants: [], activeAssistantId: null,
+      assistants: [], activeAssistantId: null, skills: [], providers: [], settings: null,
+      budget: null, lastUsage: null, error: null,
     })
   },
 
   async loadConversations() {
+    const user = get().user
     const conversations = await api.listConversations()
-    set({ conversations })
+    if (get().user === user) set({ conversations })
   },
 
   async loadSettings() {
+    const owner = get().user
     const settings = await api.getSettings()
+    if (get().user !== owner) return
     set({ settings })
     if (settings.theme && settings.theme !== get().theme) {
       set({ theme: settings.theme })
@@ -181,10 +198,13 @@ export const useStore = create((set, get) => ({
   },
 
   async loadProviders() {
+    const owner = get().user
     try {
       const { profiles } = await api.getProviders()
+      if (get().user !== owner) return
       set({ providers: profiles })
     } catch {
+      if (get().user !== owner) return
       set({ providers: [] })
     }
   },
@@ -204,7 +224,7 @@ export const useStore = create((set, get) => ({
 
   // -- conversation selection ---------------------------------------------
   async selectConversation(id) {
-    get().stopStreaming()
+    get().detachStream()
     const version = get().streamVersion + 1
     set({ streamVersion: version, activeId: id || null, messages: [], live: null, canvas: null, error: null, activeAssistantId: null })
     if (!id) return
@@ -212,14 +232,14 @@ export const useStore = create((set, get) => ({
       const conv = await api.getConversation(id)
       if (get().streamVersion !== version || get().activeId !== id) return
       set({ messages: conv.messages, activeAssistantId: conv.assistant_id || null })
-      await get().recoverApproval(id, version)
+      if (!await get().recoverRun(id, version)) await get().recoverApproval(id, version)
     } catch (err) {
       if (get().streamVersion === version) set({ error: String(err) })
     }
   },
 
   newConversation() {
-    get().stopStreaming()
+    get().detachStream()
     set((s) => ({ streamVersion: s.streamVersion + 1, activeId: null, messages: [], live: null, error: null, canvas: null, activeAssistantId: null }))
   },
 
@@ -260,9 +280,11 @@ export const useStore = create((set, get) => ({
   },
 
   async deleteConversation(id) {
-    await api.deleteConversation(id)
-    await get().loadConversations()
-    if (get().activeId === id) get().newConversation()
+    try {
+      await api.deleteConversation(id)
+      await get().loadConversations()
+      if (get().activeId === id) get().newConversation()
+    } catch (error) { set({ error: error.message }) }
   },
 
   async renameConversation(id, title) {
@@ -320,6 +342,10 @@ export const useStore = create((set, get) => ({
       })
       return
     }
+    if (get().run?.needs_acknowledgement) {
+      set({ error: 'Review and acknowledge the interrupted run before continuing.' })
+      return
+    }
     if (get().live?.pendingApproval) {
       set({ error: 'Resolve or dismiss the pending approval before sending another message.' })
       return
@@ -370,7 +396,7 @@ export const useStore = create((set, get) => ({
 
   // Re-run the last assistant turn (delete it server-side, then regenerate).
   async regenerate() {
-    if (get().streaming || get().live?.pendingApproval) return
+    if (get().streaming || get().run?.needs_acknowledgement || get().live?.pendingApproval) return
     const msgs = get().messages
     let idx = -1
     for (let i = msgs.length - 1; i >= 0; i--) {
@@ -386,7 +412,7 @@ export const useStore = create((set, get) => ({
 
   // Edit a prior user message: drop it + everything after, then re-send the new text.
   async editMessage(messageId, newText) {
-    if (get().streaming || get().live?.pendingApproval || !newText.trim()) return
+    if (get().streaming || get().run?.needs_acknowledgement || get().live?.pendingApproval || !newText.trim()) return
     const idx = get().messages.findIndex((m) => m.id === messageId)
     if (idx === -1 || String(messageId).startsWith('tmp-')) return
     const version = get().streamVersion
@@ -402,6 +428,11 @@ export const useStore = create((set, get) => ({
       const live = { ...s.live }
       let canvas
       switch (ev.type) {
+        case 'connection':
+          return { connection: ev.content }
+        case 'run_state':
+          return { run: ev, connection: null }
+
         case 'conversation':
           return { activeId: ev.id }
         case 'token':
@@ -495,6 +526,10 @@ export const useStore = create((set, get) => ({
   // Every callback belongs to one stream generation. Old network events cannot change
   // the selected conversation after Stop, navigation, or a newer stream starts.
   _startStream(payload, path = '/api/chat') {
+    if (get().authConfig?.runs_enabled || (path.endsWith('/approve') && get().run)) {
+      get()._startRun(payload, path)
+      return
+    }
     const version = get().streamVersion + 1
     set({ streamVersion: version })
     const abortFn = streamChat(
@@ -521,6 +556,16 @@ export const useStore = create((set, get) => ({
         const conv = await api.getConversation(id)
         if (get().streamVersion !== version || get().activeId !== id) return
         set({ messages: conv.messages })
+        if (get().authConfig?.run_history_available || get().authConfig?.runs_enabled) {
+          const run = await runRequest(`/api/runs?conversation_id=${encodeURIComponent(id)}`)
+          if (get().streamVersion !== version) return
+          set({ run })
+          if (run && ['queued', 'running', 'cancel_requested'].includes(run.status)) {
+            set({ streaming: true, live: emptyLive() })
+            get()._subscribeRun(run, version)
+            return
+          }
+        }
         await get().recoverApproval(id, version)
       } catch (err) {
         if (get().streamVersion === version) set({ error: String(err) })
@@ -531,7 +576,7 @@ export const useStore = create((set, get) => ({
     if (get().streamVersion !== version) return
     get().loadConversations()
     get().loadBudget()
-    if (get().live?.pendingApproval || get().error) return
+    if (get().live?.pendingApproval || get().error || (get().run && get().run.status !== 'completed')) return
     const q = get().queued
     if (q) {
       set({ queued: null })
@@ -552,9 +597,118 @@ export const useStore = create((set, get) => ({
     get()._startStream({ pending_id: pendingId, decisions }, '/api/chat/approve')
   },
 
-  stopStreaming() {
+  async recoverRun(id = get().activeId, version = get().streamVersion) {
+    if (!id || !(get().authConfig?.run_history_available || get().authConfig?.runs_enabled)) return false
+    const run = await runRequest(`/api/runs?conversation_id=${encodeURIComponent(id)}`)
+    if (get().streamVersion !== version || get().activeId !== id) return true
+    set({ run })
+    if (!run) return false
+    if (['queued', 'running', 'cancel_requested'].includes(run.status)) {
+      set({ streaming: true, live: emptyLive() })
+      if (run.queued_message) set((s) => ({ messages: [...s.messages, { id: 'queued-run', role: 'user', content: run.queued_message }] }))
+      get()._subscribeRun(run, version)
+      return true
+    }
+    if (run.status === 'interrupted' && !run.events_expired) {
+      set({ live: emptyLive() })
+      get()._subscribeRun(run, version)
+      return true
+    }
+    const conv = await api.getConversation(id)
+    if (get().streamVersion === version && get().activeId === id) set({ messages: conv.messages })
+    return false
+  },
+
+  async _startRun(payload, path) {
+    const version = get().streamVersion + 1
+    const approvalRun = path.endsWith('/approve') ? get().run : null
+    const creation = { stop: false }
+    set({ streamVersion: version, streaming: true, connection: null, runCreation: creation })
+    const key = crypto.randomUUID()
+    try {
+      const url = approvalRun ? `/api/runs/${approvalRun.id}/approve` : '/api/runs'
+      // A lost acceptance response can be retried safely with exactly the same key/body.
+      let run
+      try { run = await runRequest(url, payload, key) }
+      catch (error) {
+        if (error.status) throw error
+        if (get().streamVersion !== version) return
+        run = await runRequest(url, payload, key)
+      }
+      if (creation.stop) run = await runRequest(`/api/runs/${run.id}/cancel`, {})
+      if (get().streamVersion !== version) return
+      set({ run, runCreation: null, activeId: run.conversation_id, live: emptyLive() })
+      get().loadConversations()
+      get()._subscribeRun(run, version)
+    } catch (error) {
+      if (get().streamVersion !== version) return
+      if (error.status === 401) { get().logout(); return }
+      set({ error: String(error.message), streaming: false, runCreation: null })
+      await get()._finalize(version)
+    }
+  },
+
+  _subscribeRun(run, version) {
+    const abortFn = subscribeRun(run.id,
+      (event) => { if (get().streamVersion === version) get()._onEvent(event) },
+      async () => {
+        if (get().streamVersion !== version) return
+        const current = get().run
+        set({ streaming: false, abortFn: null })
+        if (current?.status === 'interrupted') {
+          const conv = await api.getConversation(current.conversation_id).catch(() => null)
+          if (conv && get().streamVersion === version) set({ messages: conv.messages })
+          return // Keep saved partial progress visible until explicitly acknowledged.
+        }
+        await get()._finalize(version)
+      },
+      async (error) => {
+        if (get().streamVersion !== version) return
+        if (error.status === 401) { get().logout(); return }
+        set({ streaming: false, abortFn: null, error: error.message })
+        await get()._finalize(version)
+      },
+    )
+    set({ abortFn })
+  },
+
+  async acknowledgeRun() {
+    const run = get().run, version = get().streamVersion
+    if (!run?.needs_acknowledgement) return
+    try {
+      const updated = await runRequest(`/api/runs/${run.id}/acknowledge`, {})
+      if (get().streamVersion !== version) return
+      set({ run: updated, live: null, error: null })
+      await get()._finalize(version)
+    } catch (error) {
+      if (get().streamVersion === version) set({ error: error.message })
+    }
+  },
+
+  detachStream() {
     const { abortFn, streamVersion } = get()
-    // Invalidate callbacks before abort() can dispatch completion.
+    set({ streamVersion: streamVersion + 1, streaming: false, abortFn: null, live: null, queued: null, run: null, runCreation: null, connection: null })
+    abortFn?.()
+  },
+
+  async stopStreaming() {
+    if (get().runCreation) {
+      get().runCreation.stop = true
+      set({ queued: null, connection: 'Stop requested; waiting for the server to accept the request…' })
+      return
+    }
+    const run = get().run, version = get().streamVersion
+    if (run && ['queued', 'running', 'cancel_requested'].includes(run.status)) {
+      set({ queued: null })
+      try {
+        const updated = await runRequest(`/api/runs/${run.id}/cancel`, {})
+        if (get().streamVersion === version) set({ run: updated })
+      } catch (error) {
+        if (get().streamVersion === version) set({ error: error.message })
+      }
+      return
+    }
+    const { abortFn, streamVersion } = get()
     set({ streamVersion: streamVersion + 1, streaming: false, abortFn: null, live: null, queued: null })
     if (abortFn) {
       abortFn()

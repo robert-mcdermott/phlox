@@ -114,6 +114,7 @@ class SpawnSubagent(Tool):
                 db, conversation, provider, REGISTRY, gate, params, profile, model,
                 ephemeral=True, allowed_tools=allowed, cancel_event=ctx.cancel_event,
                 assistant_id=ctx.assistant_id,
+                tool_observer=ctx.tool_observer,
                 accounting=ctx.accounting.child(ctx.parent_call_id) if ctx.accounting else None,
             )
             messages = [

@@ -10,6 +10,7 @@ from app.auth.deps import get_current_user, require_owned_conversation
 from app.config import WORKSPACES_DIR
 from app.database import get_db
 from app.models import Conversation, User
+from app import runs
 from app.schemas import (
     ConversationCreate,
     ConversationDetail,
@@ -33,7 +34,11 @@ def _owned(db: Session, conversation_id: str, user: User) -> Conversation:
 @router.get("", response_model=list[ConversationOut])
 def list_conversations(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     q = _visible(db.query(Conversation), user)
-    return q.order_by(Conversation.updated_at.desc()).all()
+    rows = q.order_by(Conversation.updated_at.desc()).all()
+    from app.models import Run
+    statuses = dict(db.query(Run.conversation_id, Run.status).filter(
+        Run.user_id == user.id, Run.active_conversation_id.is_not(None)).all())
+    return [{**ConversationOut.model_validate(row).model_dump(), "run_status": statuses.get(row.id)} for row in rows]
 
 
 @router.post("", response_model=ConversationDetail)
@@ -61,12 +66,14 @@ def update_conversation(
     conversation_id: str, body: ConversationUpdate,
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
-    conv = _owned(db, conversation_id, user)
-    for field, value in body.model_dump(exclude_unset=True).items():
-        setattr(conv, field, value)
-    db.commit()
-    db.refresh(conv)
-    return conv
+    with runs.LOCK:
+        conv = _owned(db, conversation_id, user)
+        runs.require_idle(db, conversation_id)
+        for field, value in body.model_dump(exclude_unset=True).items():
+            setattr(conv, field, value)
+        db.commit()
+        db.refresh(conv)
+        return conv
 
 
 @router.delete("/{conversation_id}/messages/{message_id}")
@@ -75,41 +82,44 @@ def truncate_from_message(
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
     """Delete a message and every message after it (for edit / regenerate)."""
-    from app.models import Message
+    with runs.LOCK:
+        conv = _owned(db, conversation_id, user)
+        runs.require_idle(db, conversation_id)
+        from app.models import Message
+        from app.approvals import require_no_approval
 
-    conv = _owned(db, conversation_id, user)
-    from app.approvals import require_no_approval
-
-    require_no_approval(db, conv.id)
-    target = db.get(Message, message_id)
-    if not target or target.conversation_id != conv.id:
-        raise HTTPException(404, "Message not found")
-    deleted = 0
-    for m in list(conv.messages):
-        if m.created_at >= target.created_at:
-            db.delete(m)
-            deleted += 1
-    db.commit()
-    return {"deleted": deleted}
+        require_no_approval(db, conv.id)
+        target = db.get(Message, message_id)
+        if not target or target.conversation_id != conv.id:
+            raise HTTPException(404, "Message not found")
+        deleted = 0
+        for m in list(conv.messages):
+            if m.created_at >= target.created_at:
+                db.delete(m)
+                deleted += 1
+        db.commit()
+        return {"deleted": deleted}
 
 
 @router.delete("/{conversation_id}")
 def delete_conversation(
     conversation_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)
 ):
-    conv = _owned(db, conversation_id, user)
-    db.delete(conv)
-    db.commit()
-    ws = WORKSPACES_DIR / conversation_id
-    # Tear down any per-conversation remote sandbox session before removing the local
-    # workspace. No-op for the local/container runners; the remote runner uses this to
-    # release its session deterministically (keyed by the workspace dir name).
-    try:
-        from app.sandbox.runner import get_runner
+    with runs.LOCK:
+        conv = _owned(db, conversation_id, user)
+        runs.require_deletable(db, conversation_id)
+        db.delete(conv)
+        db.commit()
+        ws = WORKSPACES_DIR / conversation_id
+        # Tear down any per-conversation remote sandbox session before removing the local
+        # workspace. No-op for the local/container runners; the remote runner uses this to
+        # release its session deterministically (keyed by the workspace dir name).
+        try:
+            from app.sandbox.runner import get_runner
 
-        get_runner().close_session(ws)
-    except Exception:  # noqa: BLE001
-        pass
-    if ws.exists():
-        shutil.rmtree(ws, ignore_errors=True)
-    return {"deleted": conversation_id}
+            get_runner().close_session(ws)
+        except Exception:  # noqa: BLE001
+            pass
+        if ws.exists():
+            shutil.rmtree(ws, ignore_errors=True)
+        return {"deleted": conversation_id}

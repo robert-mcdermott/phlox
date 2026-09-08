@@ -108,9 +108,9 @@ def create_backup(engine, data_dir, config_path, destination, *, stopped=False, 
             if not known_revision(revision['current']):
                 raise ValueError('Use the matching Phlox release to back up this schema revision')
             with engine.connect() as conn:
-                from app.models import Base
+                from app.migrations import expected_metadata
                 validate(conn, legacy=revision['current'] is None,
-                         expected=Base.metadata if revision['current'] else None,
+                         expected=expected_metadata(revision['current']),
                          allow_legacy_ledger_width=revision['current'] == '0001_wave3')
             cfg = yaml.safe_load(config_path.read_text()) or {}
             vector = cfg.get('vector_store') or {}

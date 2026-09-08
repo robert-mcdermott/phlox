@@ -24,6 +24,7 @@ class MessageOut(BaseModel):
 
 
 class ConversationOut(BaseModel):
+    run_status: str | None = None
     id: str
     title: str
     profile: str | None = None

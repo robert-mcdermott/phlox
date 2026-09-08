@@ -18,8 +18,10 @@ from app.backup import create_backup, restore_backup, verify_backup
 from app.maintenance import maintenance_lock
 from app.migrations import MigrationError, check, status, upgrade
 from app.migrations.baseline import metadata, validate
-from app.models import (AppConfig, Conversation, DocChunk, Document, Message, PendingApproval,
-                        ToolPref, UsageLedger, User)
+from app.models import (
+    AppConfig, Base, Conversation, DocChunk, Document, Message, PendingApproval,
+    ToolPref, UsageLedger, User,
+)
 
 
 @pytest.fixture(params=['sqlite', 'postgresql'])
@@ -88,10 +90,10 @@ def test_fresh_and_repeated_upgrade_match_models(engines):
     engine = engines()
     upgrade(engine)
     upgrade(engine)
-    assert status(engine) == {'current': '0002_ledger_width', 'head': '0002_ledger_width'}
+    assert status(engine) == {'current': '0003_runs', 'head': '0003_runs'}
     assert check(engine)['compatible']
     with engine.connect() as conn:
-        validate(conn)
+        validate(conn, expected=Base.metadata)
 
 
 def test_populated_legacy_upgrade_preserves_data_and_repairs_indexes(engines):
@@ -108,7 +110,7 @@ def test_populated_legacy_upgrade_preserves_data_and_repairs_indexes(engines):
     upgrade(engine)
     assert_content(engine)
     with engine.connect() as conn:
-        validate(conn)
+        validate(conn, expected=Base.metadata)
     upgrade(engine)
     assert_content(engine)
 
@@ -161,7 +163,7 @@ def test_concurrent_upgrade_serializes(engines):
     engine = engines()
     with ThreadPoolExecutor(max_workers=2) as pool:
         list(pool.map(lambda _: upgrade(engine), range(2)))
-    assert status(engine)['current'] == '0002_ledger_width'
+    assert status(engine)['current'] == '0003_runs'
 
 
 def test_different_databases_do_not_share_alembic_context(engines):
@@ -212,7 +214,7 @@ def test_backup_restore_populated_instance(engines, tmp_path, monkeypatch):
     restored = pg_target or sa.create_engine(f'sqlite:///{target / "data/phlox.db"}')
     try:
         assert_content(restored)
-        assert status(restored)['current'] == '0002_ledger_width'
+        assert status(restored)['current'] == '0003_runs'
         for name, content in files.items():
             assert (target / 'data' / name).read_bytes() == content
         restored_workspace = target / 'data/workspaces/conversation'
@@ -394,7 +396,7 @@ def test_lifespan_failure_releases_lock_and_readiness_checks_schema(client, monk
         pass
     with maintenance_lock(DATA_DIR, ENGINE):
         pass
-    monkeypatch.setattr('app.migrations.status', lambda _: {'current': None, 'head': '0002_ledger_width'})
+    monkeypatch.setattr('app.migrations.status', lambda _: {'current': None, 'head': '0003_runs'})
     response = client.get('/api/readiness')
     assert response.status_code == 503 and response.json()['database']['ready'] is False
 
@@ -426,7 +428,7 @@ def test_legacy_receipt_width_preserves_rows_and_unique_constraint(engines, stam
         assert conn.execute(sa.select(ledger).order_by(ledger.c.id)).all() == before
         column = next(c for c in sa.inspect(conn).get_columns('usage_ledger') if c['name'] == 'message_id')
         assert column['type'].length == 64
-        validate(conn)
+        validate(conn, expected=Base.metadata)
     with Session(engine) as db:
         db.add(UsageLedger(message_id=receipt))
         with pytest.raises(sa.exc.IntegrityError):
@@ -476,3 +478,118 @@ def test_receipt_width_failure_rolls_back_copy_and_revision(engines, monkeypatch
     assert_content(engine)
     upgrade(engine)
     assert_content(engine)
+
+
+def test_wave4_revision_can_be_checked_backed_up_and_upgraded(engines, tmp_path):
+    engine = engines()
+    metadata().create_all(engine)
+    populate(engine)
+    with engine.begin() as conn:
+        conn.exec_driver_sql('CREATE TABLE alembic_version (version_num VARCHAR(32) PRIMARY KEY NOT NULL)')
+        conn.exec_driver_sql("INSERT INTO alembic_version VALUES ('0002_ledger_width')")
+    assert check(engine)['compatible']
+    data = tmp_path / 'old-data'
+    data.mkdir()
+    config = tmp_path / 'old-config.yml'
+    config.write_text('{}')
+    create_backup(engine, data, config, tmp_path / 'old-bundle', stopped=True,
+                  pg_bin_dir=os.environ.get('PHLOX_TEST_PG_BIN_DIR'))
+    upgrade(engine)
+    assert_content(engine)
+    assert status(engine)['current'] == '0003_runs'
+
+
+def test_run_evidence_survives_restore_without_replaying(engines, tmp_path):
+    from sqlalchemy.orm import sessionmaker
+    from app.models import Run, RunEvent, ToolExecution
+    from app.runs import Worker, owned
+    from fastapi import HTTPException
+
+    engine = engines()
+    upgrade(engine)
+    populate(engine)
+    with Session(engine) as db:
+        db.add(Run(id='saved-run', user_id='owner', conversation_id='conversation',
+                   active_conversation_id='conversation', request_key='saved-key', request_hash='a'*64,
+                   payload={'pending_id': 'approval'}, status='running', pending_id='approval', last_seq=1))
+        db.flush()
+        db.add(RunEvent(run_id='saved-run', seq=1, data={'type': 'token', 'content': 'Private progress'}))
+        db.add(ToolExecution(run_id='saved-run', call_id='action', name='write_file'))
+        db.commit()
+    data = tmp_path / 'source'
+    data.mkdir()
+    config = tmp_path / 'seed.yml'
+    config.write_text('{}')
+    pg_bin = os.environ.get('PHLOX_TEST_PG_BIN_DIR')
+    bundle = tmp_path / 'bundle'
+    create_backup(engine, data, config, bundle, stopped=True, pg_bin_dir=pg_bin)
+    pg_target = engines() if engine.dialect.name == 'postgresql' else None
+    target = tmp_path / 'restored'
+    restore_backup(bundle, target, database_url=pg_target.url if pg_target is not None else None,
+                   stopped=True, pg_bin_dir=pg_bin)
+    restored = pg_target or sa.create_engine(f'sqlite:///{target / "data/phlox.db"}')
+    try:
+        with Session(restored) as db:
+            assert owned(db, 'saved-run', 'owner').status == 'running'
+            with pytest.raises(HTTPException) as error:
+                owned(db, 'saved-run', 'other-admin')
+            assert error.value.status_code == 404
+            assert db.get(RunEvent, ('saved-run', 1)).data['content'] == 'Private progress'
+        worker = Worker(sessionmaker(bind=restored))
+        worker.recover()
+        assert not worker.step()
+        with Session(restored) as db:
+            assert db.get(Run, 'saved-run').status == 'interrupted'
+            assert db.query(ToolExecution).one().status == 'outcome_unknown'
+            assert db.get(PendingApproval, 'approval').status == 'interrupted'
+            db.delete(db.get(Conversation, 'conversation'))
+            db.commit()
+            assert not db.query(Run).count() and not db.query(RunEvent).count()
+            assert not db.query(ToolExecution).count()
+            assert db.query(UsageLedger).count() == 1
+    finally:
+        if pg_target is None:
+            restored.dispose()
+
+
+def test_worker_persists_execution_and_accounting_on_both_engines(engines, monkeypatch):
+    from types import SimpleNamespace
+    from sqlalchemy.orm import sessionmaker
+    from app import runs
+    from app.agent.registry import ToolRegistry
+    from app.models import Run, RunEvent
+    from app.providers.base import StreamDelta
+    from app.schemas import ChatRequest
+
+    engine = engines()
+    upgrade(engine)
+    factory = sessionmaker(bind=engine)
+    worker = runs.Worker(factory)
+    worker.thread = SimpleNamespace(is_alive=lambda: True)
+    monkeypatch.setattr(runs, 'worker', worker)
+    monkeypatch.setattr(runs, 'runs_enabled', lambda: True)
+    monkeypatch.setattr('app.model_calls.SessionLocal', factory)
+    monkeypatch.setattr('app.routers.chat.REGISTRY', ToolRegistry())
+
+    class Provider:
+        model = 'run-test-model'
+        supports_tools = True
+
+        def stream(self, *args):
+            yield StreamDelta(type='usage', usage={'input': 2, 'output': 3, 'total': 5})
+            yield StreamDelta(type='text', text='Durable answer')
+            yield StreamDelta(type='done')
+
+    monkeypatch.setattr('app.routers.chat.build_provider', lambda *args: Provider())
+    with factory() as db:
+        user = User(id='run-owner', username='runner', is_active=True, must_change_password=False)
+        db.add(user)
+        db.commit()
+        run_id = runs.create(db, user, ChatRequest(message='hello'), 'key').id
+    assert worker.step()
+    with factory() as db:
+        row = db.get(Run, run_id)
+        assert row.status == 'completed'
+        assert db.get(Message, row.message_id).content == 'Durable answer'
+        assert db.query(RunEvent).filter_by(run_id=run_id).count() >= 3
+        assert db.query(UsageLedger).filter_by(turn_id=run_id).one().total_tokens == 5

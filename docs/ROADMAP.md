@@ -3,7 +3,7 @@
 Reviewed **2026-09-07** against commit `e07ddc7d`. This is the active product and
 engineering plan. The [codebase review](CODEBASE_REVIEW.md) records evidence, limitations,
 and verification; the [original roadmap](ROADMAP_LEGACY.md) preserves the delivery history.
-**M1 is in progress:** [Waves 1–4](IMPLEMENTATION_WAVES.md) implement F01–F04 and F06, permission
+**M1 is in progress:** [Waves 1–5](IMPLEMENTATION_WAVES.md) implement F01–F04, F06, and the bounded F07 delivery, permission
 defaults, and the initial F05 browser harness. See the wave log for current verification. M2–M5 remain proposed. Existing features and
 completed work are identified explicitly; unchecked entries do not yet ship.
 
@@ -132,6 +132,9 @@ stay green. A failed or interrupted run is visibly distinct from successful comp
 
 ### M1.2 — Make a run independent of its HTTP connection
 
+Wave 5 delivers `Run`, `RunEvent`, and `ToolExecution` records behind an opt-in flag; see
+[RUNS.md](RUNS.md). The broader target below also includes future leases/inbox/retry work.
+
 Add `Run`, `RunEvent`, and `ToolExecution` records. A conversation contains messages;
 a run is one attempt to produce an outcome. Store a versioned snapshot of its execution
 context, stable tool-call IDs, monotonic event sequence, partial output, heartbeat,
@@ -141,19 +144,22 @@ Proposed states: `queued → running → awaiting_approval → running → succe
 explicit `failed`, `cancelled`, and `interrupted` paths. A lease identifies the executing
 worker; an expired lease triggers recovery, not blind replay of side effects.
 
-- [ ] Separate run creation, event subscription, approval, and cancellation endpoints.
+- [x] Separate run creation, event subscription, approval, and cancellation endpoints.
   Keep `/api/chat` working through an adapter during migration.
-- [ ] Use a database-backed queue and a bounded worker in the existing single-process
+- [x] Use a database-backed queue and a bounded worker in the existing single-process
   deployment first. A broker or separate worker fleet is optional later.
-- [ ] Persist events before exposing them. Reconnect with a cursor; deduplicate in the UI.
+- [x] Persist events before exposing them. Reconnect with a cursor; deduplicate in the UI.
   SSE is sufficient for replay; WebSockets are not required to detach work from a tab.
 - [ ] Switching chats, refreshing, or losing the network detaches the subscriber. Only
-  explicit Stop requests cancellation. Show active runs and approvals in an inbox.
+  explicit Stop requests cancellation. **Wave 5 delivers this with sidebar/status recovery;**
+  a dedicated runs/approvals inbox remains proposed.
 - [ ] Persist side-effect intent and result. Retry safe reads; require reconciliation or
   confirmation when a worker dies after an external action with an unknown result.
+  **Wave 5 records intent/results and requires review; automatic read retries remain deferred.**
   Exactly-once external execution cannot be promised without downstream idempotency.
 - [ ] Limit concurrent runs per user/deployment, tool duration, output bytes, and child
-  count. Backpressure must bound progress queues and event storage.
+  count. Backpressure must bound progress queues and event storage. **Wave 5 bounds admission,
+  previews, and saved events; inherited tool timeouts/child limits still apply.**
 
 **Acceptance:** disconnect/reconnect, two tabs, server restart at an approval, and worker
 failure around a mutating call produce no duplicate persisted result or automatic duplicate
@@ -434,7 +440,7 @@ Start here; do not open every milestone simultaneously. Sizes are relative:
 | 4 / F04 | Per-model-call usage records and context fit enforcement | L | **Complete, Wave 3:** call attribution, partial usage, price snapshots, approval reconciliation, bounded context |
 | 5 / F05 | Browser test harness and state isolation | M | **Started, Waves 2–3:** isolated Chromium approval/accounting scenarios in CI; extend to full-stack and further user journeys |
 | 6 / F06 | Migration baseline plus backup/restore fixture | L | **Complete, Wave 4:** checked migrations, offline bundles, SQLite/Postgres restore with checkpoint/index recovery |
-| 7 / F07 | Durable run/event service plus reconnect UI, behind a flag | L, then re-estimate | Disconnect and restart scenarios pass with stable run/event IDs |
+| 7 / F07 | Durable run/event service plus reconnect UI, behind a flag | L, then re-estimate | **Delivered, Wave 5 (opt-in):** one bounded worker, persistent progress, reconnect/Stop UI, approval and conservative interruption recovery; see [RUNS.md](RUNS.md) |
 | 8 / F08 | Source registry and clickable citations prototype | M | Two retrieval calls and direct refs render unambiguous accessible sources |
 | 9 / F09 | Embedding identity and ingestion consistency | M–L | Same-dimension model change, outage, deletion, and retry fixtures pass |
 | 10 / F10 | First five core-journey evals and pilot scripts | M | Explicit pass rubrics, provider metadata, costs, and failure examples recorded |

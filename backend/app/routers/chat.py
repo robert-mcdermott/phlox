@@ -338,6 +338,18 @@ def _build_fallback(active_profile: str):
 async def chat(
     req: ChatRequest, request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user)
 ):
+    from app.config import runs_enabled
+    if runs_enabled():
+        from app import runs
+        run = runs.create(db, user, req, request.headers.get("Idempotency-Key"))
+        return runs.subscribe(run.id, user.id)
+    cancel_event = threading.Event()
+    stream = prepare_chat(req, db, user, cancel_event)
+    watcher = asyncio.create_task(_watch_disconnect(request, cancel_event))
+    return StreamingResponse(stream, media_type="text/event-stream", background=BackgroundTask(watcher.cancel))
+
+
+def prepare_chat(req, db, user, cancel_event, run_id=None, tool_observer=None):
     settings = get_settings(db, user.id)
 
     conversation: Conversation | None = None
@@ -348,6 +360,8 @@ async def chat(
             raise HTTPException(404, "Conversation not found")
 
     if conversation is not None:
+        from app.runs import require_idle
+        require_idle(db, conversation.id, except_run=run_id)
         approvals.require_no_approval(db, conversation.id)
 
     # The pinned assistant wins on existing conversations; req.assistant_id only applies
@@ -503,8 +517,7 @@ async def chat(
     from app.model_calls import CallScope, ScopedProvider
     from dataclasses import replace
 
-    accounting = CallScope.new(conversation.id, user.id)
-    cancel_event = threading.Event()
+    accounting = CallScope(run_id, conversation.id, user.id) if run_id else CallScope.new(conversation.id, user.id)
 
     def stream():
         try:
@@ -548,7 +561,7 @@ async def chat(
                 fallback_provider=fallback,
                 cancel_event=cancel_event,
                 assistant_id=assistant.id if assistant else None,
-                accounting=accounting,
+                accounting=accounting, tool_observer=tool_observer,
             )
             yield from session.run(compacted)
         finally:
@@ -556,10 +569,7 @@ async def chat(
             # otherwise keep polling until its own timeout).
             cancel_event.set()
 
-    watcher = asyncio.create_task(_watch_disconnect(request, cancel_event))
-    return StreamingResponse(
-        stream(), media_type="text/event-stream", background=BackgroundTask(watcher.cancel)
-    )
+    return stream()
 
 
 @router.get("/chat/approvals/{conversation_id}")
@@ -578,6 +588,10 @@ def list_approvals(
 def dismiss_approval(
     pending_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)
 ):
+    from app import runs
+    linked = runs.for_approval(db, pending_id, user)
+    if linked:
+        return runs.cancel(db, user, linked.id)
     pending, _ = approvals.owned_approval(db, pending_id, user)
     # An unobserved claim may still be executing, even on another server process.
     # Never release it here or make its tool calls retryable.
@@ -616,6 +630,18 @@ def dismiss_approval(
 async def approve(
     req: ApproveRequest, request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user)
 ):
+    from app import runs
+    linked = runs.for_approval(db, req.pending_id, user)
+    if linked:
+        run = runs.resume(db, user, linked.id, req)
+        return runs.subscribe(run.id, user.id)
+    cancel_event = threading.Event()
+    stream = prepare_approval(req, db, user, cancel_event)
+    watcher = asyncio.create_task(_watch_disconnect(request, cancel_event))
+    return StreamingResponse(stream, media_type="text/event-stream", background=BackgroundTask(watcher.cancel))
+
+
+def prepare_approval(req, db, user, cancel_event, validate_only=False, tool_observer=None):
     """Validate current policy, then claim once before any tool dispatch."""
     pending, conversation = approvals.owned_approval(db, req.pending_id, user)
     approvals.validate_resume(pending, req.decisions)
@@ -666,12 +692,13 @@ async def approve(
     from app.model_calls import CallScope
 
     accounting = CallScope(state.get("turn_id") or pending.id, conversation.id, user.id)
-    cancel_event = threading.Event()
     session = AgentSession(
         db, conversation, provider, REGISTRY, gate, params, state["profile"], state.get("model"),
         allowed_tools=allowed_tools, cancel_event=cancel_event,
-        assistant_id=assistant.id if assistant else None, accounting=accounting,
+        assistant_id=assistant.id if assistant else None, accounting=accounting, tool_observer=tool_observer,
     )
+    if validate_only:
+        return None
     approvals.claim(db, pending.id)
     if state.get("version") == 2 and state.get("turn_usage", {}).get("total"):
         from app.usage_ledger import record_usage
@@ -702,7 +729,4 @@ async def approve(
             db.rollback()
             approvals.finish_claim(db, req.pending_id, terminal)
 
-    watcher = asyncio.create_task(_watch_disconnect(request, cancel_event))
-    return StreamingResponse(
-        stream(), media_type="text/event-stream", background=BackgroundTask(watcher.cancel)
-    )
+    return stream()

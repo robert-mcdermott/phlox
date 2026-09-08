@@ -11,6 +11,7 @@ proxies /api to this app (see frontend/vite.config.js).
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -42,6 +43,7 @@ from app.routers import (
     mcp,
     memories,
     providers,
+    runs,
     settings,
     skills,
     tools,
@@ -131,13 +133,22 @@ async def lifespan(app: FastAPI):
     from app.database import ENGINE
     from app.maintenance import maintenance_lock
 
+    from app.runs import worker
+
     with maintenance_lock(DATA_DIR, ENGINE):
+        worker_started = False
         try:
             _bootstrap()
+            worker.start()
+            worker_started = True
             logger.info("Phlox ready — %d tools registered", len(REGISTRY.names()))
             yield
         finally:
-            mcp_manager.close()
+            try:
+                if worker_started:
+                    await asyncio.to_thread(worker.stop)
+            finally:
+                mcp_manager.close()
 
 
 app = FastAPI(title="Phlox", version=get_version(display=False), lifespan=lifespan)
@@ -149,7 +160,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-for r in (auth, chat, conversations, providers, settings, documents, assistants, mcp,
+for r in (runs, auth, chat, conversations, providers, settings, documents, assistants, mcp,
           tools, files, memories, checkpoints, attachments, usage, admin_config, api_keys,
           gateway, budgets, skills):
     app.include_router(r.router)

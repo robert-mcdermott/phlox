@@ -352,3 +352,8 @@ def default_generation_params() -> dict[str, Any]:
         "max_context_tokens": d.get("max_context_tokens", 16000),
         "system_prompt": d.get("system_prompt", DEFAULT_SYSTEM_PROMPT),
     }
+
+
+def runs_enabled() -> bool:
+    """File-only opt-in: worker lifecycle changes require a server restart."""
+    return (load_config().get("runs") or {}).get("enabled") is True

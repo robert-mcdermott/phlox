@@ -162,10 +162,55 @@ are supported. Cross-engine conversion, automatic destructive downgrades, Window
 integration testing, provider invoice reconciliation, and durable worker recovery remain
 later work. The verified database service is Postgres 16, not every managed deployment.
 
-## Wave 5 — Durable run foundation (proposed next)
+## Wave 5 — Reconnectable runs
 
-F07: introduce persistent run identity, state transitions and ordered events; preserve the
-existing chat API through an adapter. Begin with one supported worker, explicit ownership,
-reconnect/status inspection, and honest interruption states before implementing leases or
-any action replay. Continue with F08 source citations so the first research improvement
-ships before broader autonomy features.
+**Status:** implemented and verified, 2026-09-07. **Scope:** the first bounded F07 delivery
+and its F05 browser coverage. Builds on Wave 3 accounting and Wave 4 migrations/recovery.
+
+**User outcome:** start a task, refresh or switch conversations, then return to its saved
+progress or completed answer. Explicit Stop requests cancellation. Server restart exposes
+interrupted work and unresolved actions without silently executing them again.
+
+With `runs.enabled: true`, a server-owned worker persists and completes chat independently
+of its subscribers. The default remains the legacy request-bound mode. See [RUNS.md](RUNS.md)
+for the rollout flag, API, limits, retention, cancellation, and recovery contract.
+
+### Delivered scope
+
+| Task | Deliverable | Acceptance |
+|---|---|---|
+| W5.1 — Persist run state | Add `Run`, `RunEvent`, and `ToolExecution` through a new Alembic revision. Define owner, conversation, execution context version, states/reasons, and ordered event IDs; associate existing call accounting with the run without rebilling. | Populated SQLite/Postgres upgrade and restore preserve old messages, approvals and ledger entries. Other users, including admins, receive 404 for private run data. |
+| W5.2 — Own execution on the server | Add a bounded database-backed queue and one in-process worker with its own DB sessions. Atomically enforce one unresolved run per conversation, bound pending work per user/deployment, and deduplicate retried create requests. | Two tabs or retried requests cannot create duplicate execution. Queue exhaustion is visible and bounded. Current account/tool/budget policy is checked before execution. |
+| W5.3 — Separate actions from subscription | Add run creation/status, event subscription with a cursor, and explicit cancellation. Keep `/api/chat` and approval clients working through an adapter; persist events before delivery and batch token/progress writes with byte limits. | Disconnecting a subscriber leaves the worker running. Reconnection replays ordered progress without duplicate messages/tool results. Stop acknowledgement is distinct from confirmed cancellation. |
+| W5.4 — Integrate approvals and interruption | Link approval pauses/resumes to the same run; retain atomic claim and cumulative limits. Persist tool intent before dispatch and result afterward. On startup, mark abandoned running/claimed work interrupted or outcome-unknown. | Restart at an approval preserves the pending review; restart around a mutating call never replays it automatically. Old unlinked approvals remain compatible. Failed/unknown outcomes remain visible. |
+| W5.5 — Recover the browser journey | Separate the selected conversation's subscription from server execution. Add running/waiting/interrupted indicators, restore progress on reopening, deduplicate by run/event ID, and send Stop to the cancellation endpoint. | Refresh, chat switch, two tabs, temporary network loss and re-login recover the correct owner's state. Logout detaches and clears private client state. |
+| W5.6 — Verify and document rollout | Add scripted backend and browser journeys, event-storage limits and cleanup rules, run-data deletion coverage, backup/restore drills, and an opt-in rollout flag. | The complete create → disconnect → reconnect → approve/Stop → finish journey passes; run content is deleted with its owner/conversation while usage metadata retains its existing policy. |
+
+Implemented limits: one worker; 32 unresolved runs per deployment / 4 per user / 1 per
+conversation; 8 MiB request snapshots; 2 MiB event logs / 128 KiB per event; bounded live
+preview buffers; terminal replay expiry after seven days. Interrupted actions require
+explicit acknowledgement. Linked approvals retain the existing claim and accounting seam.
+Known older schema revisions remain checkable/back-upable before upgrading to `0003_runs`.
+
+Verification: **348 backend tests passed, 1 non-applicable SQLite case skipped**, with
+Postgres 16 enabled (**29 new cases**). **9 Chromium browser scenarios**, Ruff, production
+frontend build, documentation link checks, and `git diff --check` pass. Coverage includes
+idempotent admission, detach/replay, explicit Stop, successive approval claims, current
+policy rejection, child action evidence, bounded progress/log overflow, startup recovery,
+account/conversation deletion, and populated upgrade/restore on both engines. Browser
+fixtures cover lost acceptance, network reconnect, reload, two tabs, approvals, Stop,
+interruption acknowledgement, logout, and login recovery. Existing nine backend
+deprecation warnings and the diagram chunk-size build warning remain. Tests use isolated
+data and scripted providers; no live model/provider certification is claimed. The disposable
+Postgres test container was removed after verification.
+
+Boundaries: one application process/worker; no broker, distributed leases, scheduled tasks,
+automatic continuation after worker death, or automatic retry of uncertain tool actions.
+Keep the existing provider/tool interfaces and permission gate. The OpenAI gateway remains
+its current completion API. This wave delivers the reconnect journey, not all of M1.2.
+
+## Following wave — Sources and clickable citations
+
+F08 should follow this bounded run foundation: stable source identity across retrievals,
+clickable citations, and source inspection. Deliver that visible research improvement before
+expanding background autonomy, scheduling, or distributed workers.

@@ -33,18 +33,25 @@ def known_revision(revision):
     }
 
 
+def expected_metadata(revision):
+    # Historical revisions must remain checkable/back-upable before upgrade.
+    if revision in {None, '0001_wave3', '0002_ledger_width'}:
+        from app.migrations.baseline import metadata
+        return metadata()
+    from app.models import Base
+    return Base.metadata
+
+
 def check(engine):
     """Read-only schema compatibility check with a safe, concrete operator diagnostic."""
     from app.migrations.baseline import validate
-    from app.models import Base
-
     revision = status(engine)
     if not known_revision(revision['current']):
         raise MigrationError('Unrecognized schema revision; use its matching Phlox release')
     try:
         with engine.connect() as conn:
             validate(conn, legacy=revision['current'] is None,
-                     expected=Base.metadata if revision['current'] else None,
+                     expected=expected_metadata(revision['current']),
                      allow_legacy_ledger_width=revision['current'] == '0001_wave3')
     except ValueError as exc:
         raise MigrationError(f'Schema check failed: {exc}. Preserve a backup; do not stamp manually.') from None

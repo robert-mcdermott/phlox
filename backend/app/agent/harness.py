@@ -17,6 +17,7 @@ import json
 import logging
 import queue
 import threading
+import uuid
 from collections.abc import Iterator
 from copy import deepcopy
 from contextlib import closing
@@ -40,6 +41,42 @@ MAX_CONCURRENT_SUBAGENTS = 3
 MAX_SUBAGENTS_PER_ROUND = 8
 
 
+class ProgressBuffer:
+    """Bound live previews without blocking tools during cancellation/slow persistence.
+
+    Completion notices bypass the 128 preview slots (at most eight per child batch),
+    so overflow can never discard a completion or deadlock a generator's final join.
+    ToolResult remains the authoritative output; omission is surfaced in the preview.
+    """
+
+    def __init__(self):
+        self.queue = queue.Queue()
+        self.slots = threading.BoundedSemaphore(128)
+        self.omitted = threading.Event()
+
+    def progress(self, value):
+        if not self.slots.acquire(blocking=False):
+            self.omitted.set()
+            return
+        if isinstance(value, tuple):
+            call_id, content = value
+        else:
+            call_id, content = None, value
+        if len(content) > 8192:
+            content = content[:8192]
+            self.omitted.set()
+        self.queue.put((True, (call_id, content) if call_id is not None else content))
+
+    def finish(self, value):
+        self.queue.put((False, value))
+
+    def get(self):
+        preview, value = self.queue.get()
+        if preview:
+            self.slots.release()
+        return value
+
+
 class AgentSession:
     def __init__(
         self,
@@ -57,10 +94,13 @@ class AgentSession:
         cancel_event: threading.Event | None = None,
         assistant_id: str | None = None,
         accounting=None,
+        tool_observer=None,
     ):
         from app.model_calls import CallScope
 
         self.accounting = accounting or CallScope.new(conversation.id, conversation.user_id)
+        self.tool_observer = tool_observer
+        self.journal_prefix = uuid.uuid4().hex
         self.db = db
         self.conversation = conversation
         self.provider = provider
@@ -100,7 +140,13 @@ class AgentSession:
             params=deepcopy(self.params),
             allowed_tools=frozenset(self.allowed_tools),
             accounting=self.accounting,
+            tool_observer=tool_observer,
         )
+
+    def _observe_child_tool(self, kind, call, **data):
+        if self.ephemeral and self.tool_observer:
+            self.tool_observer({"type": kind, "id": f"{self.journal_prefix}:{call.id}",
+                                "name": call.name, **data})
 
     def _cancelled(self) -> bool:
         return self.cancel_event is not None and self.cancel_event.is_set()
@@ -417,6 +463,8 @@ class AgentSession:
         for call in calls:
             if self._cancelled():
                 break
+            self._observe_child_tool("child_tool_start", call, arguments=call.arguments)
+            yield events.sse("tool_start", id=call.id, name=call.name)
             yield events.status(f"Running {call.name}…")
             result = yield from self._execute_tool_streaming(call.id, call.name, call.arguments)
             # Snapshot the workspace after a successful mutating tool, so the change is
@@ -438,7 +486,7 @@ class AgentSession:
         not route a tool that *does* use ``ctx.db`` through this path without giving it
         the same treatment.
         """
-        progress_q: queue.Queue[tuple[str, str | None]] = queue.Queue()
+        progress_q = ProgressBuffer()
         holders: dict[str, dict[str, Any]] = {c.id: {} for c in calls}
         names_by_id = {c.id: c.name for c in calls}
 
@@ -447,16 +495,16 @@ class AgentSession:
                 holders[call.id]["result"] = ToolResult(
                     content="Sub-agent cancelled before dispatch. Not executed.", is_error=True
                 )
-                progress_q.put((call.id, None))
+                progress_q.finish((call.id, None))
                 return
             tool = self.registry.get(call.name)
             if tool is None:
                 holders[call.id]["result"] = ToolResult(content=f"Unknown tool: {call.name}", is_error=True)
-                progress_q.put((call.id, None))
+                progress_q.finish((call.id, None))
                 return
             call_ctx = replace(
                 self.ctx, params=deepcopy(self.ctx.params),
-                progress=lambda chunk, cid=call.id: progress_q.put((cid, chunk)),
+                progress=lambda chunk, cid=call.id: progress_q.progress((cid, chunk)),
             )
             try:
                 holders[call.id]["result"] = tool.run(call_ctx, **call.arguments)
@@ -464,7 +512,7 @@ class AgentSession:
                 logger.exception("Tool %s failed", call.name)
                 holders[call.id]["error"] = e
             finally:
-                progress_q.put((call.id, None))
+                progress_q.finish((call.id, None))
 
         work: queue.Queue[ToolCall] = queue.Queue()
         for call in calls:
@@ -480,19 +528,28 @@ class AgentSession:
 
         threads = [threading.Thread(target=worker, daemon=True)
                    for _ in range(min(MAX_CONCURRENT_SUBAGENTS, len(calls)))]
+        for call in calls:
+            self._observe_child_tool("child_tool_start", call, arguments=call.arguments)
+            yield events.sse("tool_start", id=call.id, name=call.name)
         for t in threads:
             t.start()
 
         remaining = {c.id for c in calls}
-        while remaining:
-            call_id, chunk = progress_q.get()
-            if chunk is None:
-                remaining.discard(call_id)
-                continue
-            yield events.tool_progress(call_id, names_by_id[call_id], chunk)
-        for t in threads:
-            t.join()
+        try:
+            while remaining:
+                call_id, chunk = progress_q.get()
+                if chunk is None:
+                    remaining.discard(call_id)
+                    continue
+                yield events.tool_progress(call_id, names_by_id[call_id], chunk)
+        finally:
+            if remaining and self.cancel_event is not None:
+                self.cancel_event.set()
+            for t in threads:
+                t.join()
 
+        if progress_q.omitted.is_set():
+            yield events.status("Some live child progress was omitted; saved tool results follow.")
         return [
             ToolResult(content=f"Tool error: {holders[c.id]['error']}", is_error=True)
             if "error" in holders[c.id]
@@ -530,6 +587,12 @@ class AgentSession:
         }
         pending = PendingApproval(conversation_id=self.conversation.id, state=state)
         self.db.add(pending)
+        self.db.flush()
+        from app.models import Run
+
+        linked_run = self.db.get(Run, self.accounting.turn_id)
+        if linked_run and not self.ephemeral:
+            linked_run.pending_id = pending.id
         self.db.commit()
         self.db.refresh(pending)
 
@@ -550,6 +613,7 @@ class AgentSession:
         all_artifacts: list[dict],
         messages: list[dict],
     ) -> Iterator[str]:
+        self._observe_child_tool("child_tool_result", call, content=result.content, is_error=result.is_error)
         for art in result.artifacts:
             url = f"/api/files/{self.conversation.id}?path={art['path']}"
             all_artifacts.append({**art, "url": url})
@@ -603,7 +667,7 @@ class AgentSession:
         if tool is None:
             return ToolResult(content=f"Unknown tool: {name}", is_error=True)
 
-        progress_queue: queue.Queue[str | None] = queue.Queue()
+        progress_queue = ProgressBuffer()
         holder: dict[str, Any] = {}
 
         def worker() -> None:
@@ -613,19 +677,27 @@ class AgentSession:
                 logger.exception("Tool %s failed", name)
                 holder["error"] = e
             finally:
-                progress_queue.put(None)  # sentinel: no more progress coming
+                progress_queue.finish(None)  # sentinel: no more progress coming
 
-        self.ctx.progress = progress_queue.put
+        self.ctx.progress = progress_queue.progress
         t = threading.Thread(target=worker, daemon=True)
         t.start()
-        while True:
-            chunk = progress_queue.get()
-            if chunk is None:
-                break
-            yield events.tool_progress(call_id, name, chunk)
-        t.join()
-        self.ctx.progress = None
+        completed = False
+        try:
+            while True:
+                chunk = progress_queue.get()
+                if chunk is None:
+                    completed = True
+                    break
+                yield events.tool_progress(call_id, name, chunk)
+        finally:
+            if not completed and self.cancel_event is not None:
+                self.cancel_event.set()
+            t.join()
+            self.ctx.progress = None
 
+        if progress_queue.omitted.is_set():
+            yield events.tool_progress(call_id, name, "\n[Some live progress omitted; saved tool result follows.]\n")
         if "error" in holder:
             return ToolResult(content=f"Tool error: {holder['error']}", is_error=True)
         return holder["result"]

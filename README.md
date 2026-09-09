@@ -20,7 +20,10 @@ Open <http://127.0.0.1:5189>. Stop with Ctrl+C.
 - Link user-facing guides to the release tag so they match the advertised version. The
   contributor roadmap links to `main` intentionally.
 - Check setup, defaults, upgrade steps, and operating limits against the release's
-  `docs/USER_GUIDE.md`, `RUNS.md`, `BACKUP_RESTORE.md`, and `INGESTION.md`.
+  `docs/USER_GUIDE.md`, `RESEARCH.md`, `RUNS.md`, `BACKUP_RESTORE.md`, and `INGESTION.md`.
+- Keep Research explicitly opt-in and normal Chat the default. Search administration lives
+  in the admin console; DuckDuckGo remains the default and fallback, and public SearXNG
+  endpoints must support JSON. Update upgrade advice for the specific previous release.
 - `css/themes.css` contains the release's exact application palette values, scoped to
   `.theme-demo[data-preview-theme]`. Keep them aligned with the app's `tokens.css` and
   keep the 18 preview controls aligned with `presets.js`. The preview is illustrative;

@@ -6,16 +6,16 @@
     <title>Phlox — Self-hosted AI agents, research, and tools</title>
     <meta
       name="description"
-      content="Self-hosted AI chat, agents, and research with your choice of local or cloud models. Explore Phlox v0.2.0: reconnectable runs, inspectable citations, and 18 themes."
+      content="Self-hosted AI chat, agents, and research with your choice of local or cloud models. Explore Phlox v0.2.1: opt-in Research mode, cited reports, and your choice of web search provider."
     />
     <meta name="author" content="Robert McDermott" />
 
     <!-- Open Graph -->
     <meta property="og:type" content="website" />
-    <meta property="og:title" content="Phlox v0.2.0 — Your models. Your workspace." />
+    <meta property="og:title" content="Phlox v0.2.1 — Your models. Your workspace." />
     <meta
       property="og:description"
-      content="An open-source AI assistant with tools, reconnectable tasks, document and web citations, and local or cloud models. Self-host Phlox on your own infrastructure."
+      content="An open-source AI workspace with opt-in research, inspectable citations, configurable web search, and agent tools. Connect local or cloud models on your own infrastructure."
     />
     <meta
       property="og:image"
@@ -50,7 +50,7 @@
         </a>
         <nav class="nav" id="nav" aria-label="Main navigation">
           <a href="#features">Features</a>
-          <a href="#knowledge">Research</a>
+          <a href="#research">Research</a>
           <a href="#themes">Themes</a>
           <a href="#quickstart">Quick start</a>
           <a href="#docs">Docs</a>
@@ -104,14 +104,14 @@
               <a class="btn btn-primary" href="#quickstart">Get started</a>
               <a
                 class="btn btn-secondary"
-                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.0/docs/USER_GUIDE.md"
+                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/USER_GUIDE.md"
                 >Read the user guide</a
               >
             </div>
             <a
               class="release-link"
-              href="https://github.com/robert-mcdermott/phlox/releases/tag/v0.2.0"
-              ><span>v0.2.0</span> Reconnectable runs, captured sources, and more
+              href="https://github.com/robert-mcdermott/phlox/releases/tag/v0.2.1"
+              ><span>v0.2.1</span> Research mode, configurable search, and a cleaner chat workspace
               <span aria-hidden="true">→</span></a
             >
             <div class="hero-providers">
@@ -173,40 +173,35 @@
       <section class="section release-section" id="release">
         <div class="container">
           <div class="section-head">
-            <span class="kicker">New in v0.2.0</span>
-            <h2 class="section-title">Continue the work. Inspect the evidence.</h2>
+            <span class="kicker">New in v0.2.1</span>
+            <h2 class="section-title">Ask a question. Follow the research.</h2>
             <p class="section-lead">
-              A release focused on reliable execution, useful sources, and easier operation.
+              Choose your sources, follow the plan, and inspect the evidence in a cited report.
+              Everyday chat stays one click away.
             </p>
           </div>
           <div class="grid-3">
-            <a class="info-card feature-link" href="#runs"
-              ><span class="kicker">Execution</span>
-              <h3>Return to a running task</h3>
-              <p>
-                Optional persistent runs keep working across refreshes and chat switches, with saved
-                progress and explicit Stop.
-              </p>
-              <span class="text-link">Explore runs →</span></a
-            >
-            <a class="info-card feature-link" href="#knowledge"
-              ><span class="kicker">Research</span>
-              <h3>Open the passage behind a citation</h3>
-              <p>
-                Inspect retained document and web excerpts, with source locations and fetch times
-                that survive a reload.
-              </p>
-              <span class="text-link">Explore sources →</span></a
-            >
-            <a class="info-card feature-link" href="#upgrade"
-              ><span class="kicker">Operations</span>
-              <h3>Upgrade with a recovery path</h3>
-              <p>
-                Checked database migrations, verified offline backups, and explicit document-index
-                maintenance.
-              </p>
-              <span class="text-link">Upgrade guidance →</span></a
-            >
+            <a class="info-card feature-link" href="#research">
+              <span class="kicker">Research</span>
+              <h3>From question to cited report</h3>
+              <p>Opt into planning, evidence gathering, and report writing using the web,
+                selected documents, or both. Choose the depth and follow progress.</p>
+              <span class="text-link">Explore Research mode →</span>
+            </a>
+            <a class="info-card feature-link" href="#web-search">
+              <span class="kicker">Search</span>
+              <h3>Your choice of search provider</h3>
+              <p>Keep DuckDuckGo or configure Serper or a public SearXNG endpoint in the admin
+                console. DuckDuckGo remains the fallback when another provider fails.</p>
+              <span class="text-link">Configure web search →</span>
+            </a>
+            <a class="info-card feature-link" href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/USER_GUIDE.md#chat-and-everyday-use">
+              <span class="kicker">Chat experience</span>
+              <h3>More room for the conversation</h3>
+              <p>A compact composer, expandable token details, per-chat text drafts, and
+                Jump to latest make it easier to write and read while replies stream.</p>
+              <span class="text-link">Explore the chat controls →</span>
+            </a>
           </div>
         </div>
       </section>
@@ -391,10 +386,10 @@
                   <path d="M4 3h12l4 4v14H4V3Zm4 8h8m-8 4h8" />
                 </svg>
               </div>
-              <h3>Document and web sources</h3>
+              <h3>Research with cited sources</h3>
               <p>
-                Search your documents or fetch web pages, then open citations to inspect the
-                captured evidence. See processing progress and retry interrupted uploads.
+                Choose Research for a staged investigation of documents and the web. Follow the
+                plan and open report citations to inspect captured passages. Chat remains the default.
               </p>
             </article>
             <article class="feature-card">
@@ -574,7 +569,7 @@
               </li>
             </ul>
             <p>
-              <a href="https://github.com/robert-mcdermott/phlox/blob/v0.2.0/docs/RUNS.md"
+              <a href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/RUNS.md"
                 >Run behavior and recovery →</a
               >
             </p>
@@ -713,13 +708,91 @@
         </div>
       </section>
 
+      <!-- ===== Research mode and search providers ===== -->
+      <section class="section" id="research">
+        <div class="container">
+          <div class="split">
+            <div class="split-copy reveal">
+              <span class="kicker">Opt-in Research mode</span>
+              <h2 class="section-title">Set the scope. Follow the evidence.</h2>
+              <p class="section-lead">
+                Change Chat to Research in the composer for a focused investigation. Ask a concrete
+                question, choose your sources, and follow the plan through to a cited report.
+                Normal chat remains the default, including the next turn after a research request.
+              </p>
+              <ul class="check-list">
+                <li>Research the web, selected documents, or documents and web together</li>
+                <li>Choose Brief, Standard, or Thorough depth; optionally limit web domains</li>
+                <li>Follow the plan, gathering progress, source counts, and available model usage</li>
+                <li>Inspect retained passages behind citations and export the report as Markdown</li>
+                <li>Use Stop to cancel further work; incomplete research reports its gaps</li>
+              </ul>
+              <p class="guide-links">
+                <a href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/RESEARCH.md">Research setup, limits, and examples →</a>
+              </p>
+              <p class="detail-note">
+                Research uses the current question and selected sources, with bounded gathering and
+                read tools. It requires a tool-capable model. The deep-research skill remains separate
+                guidance in ordinary chat. Enable <a href="#runs">reconnectable runs</a> to keep
+                research going across refreshes; otherwise keep the chat open.
+              </p>
+            </div>
+            <div class="stack-card reveal" aria-label="Research stages">
+              <div class="stack-row">
+                <span class="stack-step">1</span>
+                <div><strong>Plan</strong><small>Outline the questions and evidence to gather.</small></div>
+              </div>
+              <div class="stack-line"></div>
+              <div class="stack-row">
+                <span class="stack-step">2</span>
+                <div><strong>Gather</strong><small>Search selected sources and capture passages within the chosen limits.</small></div>
+              </div>
+              <div class="stack-line"></div>
+              <div class="stack-row">
+                <span class="stack-step">3</span>
+                <div><strong>Report</strong><small>Write from available evidence, with citations and gaps to review.</small></div>
+              </div>
+            </div>
+          </div>
+          <div class="operator-note" id="web-search">
+            <span class="kicker">Search engine administration</span>
+            <h3>Configure search where you manage Phlox</h3>
+            <p>Go to <strong>Settings → Configuration → Web search</strong> to select a provider,
+              manage its credentials, test the settings, and save. Changes apply to new searches
+              immediately, in normal chat and Research mode. No configuration-file edit is needed.</p>
+            <div class="grid-3">
+              <article class="info-card">
+                <h3>DuckDuckGo</h3>
+                <p>The default, with no API key required. Also used as the fallback if your configured
+                  provider fails. Free search can be rate-limited.</p>
+              </article>
+              <article class="info-card">
+                <h3>Serper</h3>
+                <p>Google search results through your Serper API key. Keys are masked after saving;
+                  testing and searches consume your Serper credits.</p>
+              </article>
+              <article class="info-card">
+                <h3>SearXNG</h3>
+                <p>Use a public HTTPS endpoint from <a href="https://searx.space/">searx.space</a>
+                  that permits JSON searches. Hosting your own instance is optional.</p>
+              </article>
+            </div>
+            <p class="detail-note">Requests are paced, with a recovery cooldown after provider failures.
+              Public endpoints vary in availability; if the configured provider and DuckDuckGo both
+              fail, Phlox reports the failure. Queries go to the selected provider and to DuckDuckGo
+              when fallback is needed.</p>
+            <p><a href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/RESEARCH.md#search-engine-administration">Search configuration and troubleshooting →</a></p>
+          </div>
+        </div>
+      </section>
+
       <!-- ===== Knowledge / RAG ===== -->
       <section class="section section-alt" id="knowledge">
         <div class="container">
           <div class="split reverse">
             <div class="split-copy reveal">
               <span class="kicker">Knowledge &amp; memory</span>
-              <h2 class="section-title">Research with passages you can inspect</h2>
+              <h2 class="section-title">Keep the passage behind every source</h2>
               <p class="section-lead">
                 Upload PDF, DOCX, Markdown, text, or code. Track processing, retry failures, and
                 search personal, conversation, or assistant documents. Open a citation to inspect
@@ -742,15 +815,15 @@
                 </li>
               </ul>
               <p class="guide-links">
-                <a href="https://github.com/robert-mcdermott/phlox/blob/v0.2.0/docs/SOURCES.md"
+                <a href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/SOURCES.md"
                   >Document citations</a
                 >
                 ·
-                <a href="https://github.com/robert-mcdermott/phlox/blob/v0.2.0/docs/WEB_SOURCES.md"
+                <a href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/WEB_SOURCES.md"
                   >Web evidence</a
                 >
                 ·
-                <a href="https://github.com/robert-mcdermott/phlox/blob/v0.2.0/docs/INGESTION.md"
+                <a href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/INGESTION.md"
                   >Processing and indexes</a
                 >
               </p>
@@ -1569,7 +1642,7 @@
           <p class="qs-note">
             Includes Outrun, Blade Runner 2049, Chaos Theory, both Cyberpunk variants, Synthwave,
             and more.
-            <a href="https://github.com/robert-mcdermott/phlox/blob/v0.2.0/docs/THEMING.md"
+            <a href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/THEMING.md"
               >Full catalog and custom themes →</a
             >
           </p>
@@ -1602,7 +1675,7 @@
               <pre
                 class="code-block"
                 id="qs-nix"
-              ><code>git clone --branch v0.2.0 --depth 1 https://github.com/robert-mcdermott/phlox.git
+              ><code>git clone --branch v0.2.1 --depth 1 https://github.com/robert-mcdermott/phlox.git
 cd phlox
 ./scripts/start.sh dev</code></pre>
             </div>
@@ -1620,7 +1693,7 @@ cd phlox
               <pre
                 class="code-block"
                 id="qs-win"
-              ><code>git clone --branch v0.2.0 --depth 1 https://github.com/robert-mcdermott/phlox.git
+              ><code>git clone --branch v0.2.1 --depth 1 https://github.com/robert-mcdermott/phlox.git
 cd phlox
 .\scripts\start.ps1 dev</code></pre>
             </div>
@@ -1642,16 +1715,16 @@ cd phlox
           </ol>
           <p class="qs-note">
             <a
-              href="https://github.com/robert-mcdermott/phlox/blob/v0.2.0/docs/USER_GUIDE.md#first-time-setup"
+              href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/USER_GUIDE.md#first-time-setup"
               >Detailed first-time setup</a
             >
             ·
             <a
-              href="https://github.com/robert-mcdermott/phlox/blob/v0.2.0/docs/USER_GUIDE.md#configure-model-providers"
+              href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/USER_GUIDE.md#configure-model-providers"
               >Provider configuration</a
             >
             ·
-            <a href="https://github.com/robert-mcdermott/phlox/blob/v0.2.0/docs/DOCKER.md"
+            <a href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/DOCKER.md"
               >Docker / Podman</a
             >
           </p>
@@ -1662,7 +1735,7 @@ cd phlox
               for shared use. Auth-enabled production requires a stable
               <code>PHLOX_JWT_SECRET</code> and an isolated runner; follow the
               <a
-                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.0/docs/USER_GUIDE.md#start-stop-and-production-preparation"
+                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/USER_GUIDE.md#start-stop-and-production-preparation"
                 >production setup guide</a
               >
               before using <code>prod</code>.
@@ -1670,29 +1743,21 @@ cd phlox
           </div>
           <div class="operator-note" id="upgrade">
             <span class="kicker">Existing installations</span>
-            <h3>Upgrading to v0.2.0</h3>
+            <h3>Upgrading to v0.2.1</h3>
             <ol>
-              <li>
-                Stop Phlox and preserve a complete offline backup before starting the new release.
-                Keep the deployment’s database, data paths, config, and external secrets.
-              </li>
-              <li>
-                Install the release dependencies and run the checked schema upgrade. The current
-                revision is <code>0005_ingestion</code>; a failed check requires investigation, not
-                manual stamping.
-              </li>
-              <li>
-                Rebuild existing document indexes in Settings → Documents to establish embedding
-                identity. Until then, search uses keyword matching. Rebuilds can incur provider
-                costs.
-              </li>
-              <li>
-                Reprocess older files for new page, section, and table metadata. Dismiss and request
-                again any approvals that predate the new continuity format.
-              </li>
+              <li>Stop Phlox and preserve a complete offline backup of the database, data paths,
+                configuration, and external secrets.</li>
+              <li>Check out v0.2.1, install the release dependencies, and follow the checked upgrade
+                procedure. There is no new schema migration from v0.2.0; the revision remains
+                <code>0005_ingestion</code>.</li>
+              <li>Start Phlox normally. Chat and DuckDuckGo remain the defaults. Select Research
+                when needed, and configure other search providers in the admin console.</li>
             </ol>
+            <p>Upgrading from before v0.2.0? Follow the full upgrade guide for schema checks,
+              document-index identity, and older approvals. Existing v0.2.0 indexes do not need
+              rebuilding solely for this release.</p>
             <p>
-              <a href="https://github.com/robert-mcdermott/phlox/blob/v0.2.0/docs/BACKUP_RESTORE.md"
+              <a href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/BACKUP_RESTORE.md"
                 >Backup, migration, and restore guide →</a
               >
             </p>
@@ -1703,7 +1768,7 @@ cd phlox
       <section class="section section-alt" id="docs">
         <div class="container">
           <div class="section-head">
-            <span class="kicker">Documentation · v0.2.0</span>
+            <span class="kicker">Documentation · v0.2.1</span>
             <h2 class="section-title">A guide for every stage</h2>
             <p class="section-lead">
               Start with the User Guide, then use the focused guides for your deployment and
@@ -1712,7 +1777,7 @@ cd phlox
           </div>
           <a
             class="guide-banner"
-            href="https://github.com/robert-mcdermott/phlox/blob/v0.2.0/docs/USER_GUIDE.md"
+            href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/USER_GUIDE.md"
             ><div>
               <span class="kicker">Start here</span>
               <h3>Phlox User Guide</h3>
@@ -1725,71 +1790,77 @@ cd phlox
               <h3>Start and operate</h3>
               <a
                 class="doc-entry"
-                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.0/docs/USER_GUIDE.md"
+                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/USER_GUIDE.md"
                 ><strong>User Guide</strong
                 ><span>Installation, configuration, everyday use, and troubleshooting.</span></a
               ><a
                 class="doc-entry"
-                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.0/docs/BACKUP_RESTORE.md"
+                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/BACKUP_RESTORE.md"
                 ><strong>Backup and restore</strong
                 ><span>Checked upgrades, offline backups, verification, and recovery.</span></a
               ><a
                 class="doc-entry"
-                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.0/docs/DEPLOYMENT.md"
+                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/DEPLOYMENT.md"
                 ><strong>Linux deployment</strong
                 ><span>systemd, reverse proxy, TLS, and production configuration.</span></a
               ><a
                 class="doc-entry"
-                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.0/docs/DOCKER.md"
+                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/DOCKER.md"
                 ><strong>Docker / Podman</strong
                 ><span>Images, persistent data, provider networking, and sandbox setup.</span></a
               ><a
                 class="doc-entry"
-                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.0/docs/AUTH.md"
+                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/AUTH.md"
                 ><strong>Authentication</strong
                 ><span>Accounts, private data, and Entra ID SSO.</span></a
               ><a
                 class="doc-entry"
-                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.0/docs/SANDBOX.md"
+                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/SANDBOX.md"
                 ><strong>Execution runners</strong
                 ><span>Local, container, and remote execution choices.</span></a
               ><a
                 class="doc-entry"
-                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.0/docs/BUDGETS.md"
+                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/BUDGETS.md"
                 ><strong>Budgets</strong
                 ><span>Monthly thresholds and enforcement boundaries.</span></a
               >
             </div>
             <div class="docs-group">
               <h3>Use the agent and sources</h3>
+              <a class="doc-entry" href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/RESEARCH.md">
+                <strong>Research mode</strong><span>Source scope, depth, progress, citations, and Stop.</span>
+              </a>
+              <a class="doc-entry" href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/RESEARCH.md#search-engine-administration">
+                <strong>Web search providers</strong><span>DuckDuckGo, Serper, public SearXNG, and fallback.</span>
+              </a>
               <a
                 class="doc-entry"
-                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.0/docs/RUNS.md"
+                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/RUNS.md"
                 ><strong>Runs and Stop</strong
                 ><span>Reconnect, approvals, interruption recovery, and retention.</span></a
               ><a
                 class="doc-entry"
-                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.0/docs/APPROVALS.md"
+                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/APPROVALS.md"
                 ><strong>Tool approvals</strong
                 ><span>Review, resume, expiry, and current policy checks.</span></a
               ><a
                 class="doc-entry"
-                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.0/docs/SOURCES.md"
+                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/SOURCES.md"
                 ><strong>Document citations</strong
                 ><span>Captured passages, source locations, and export.</span></a
               ><a
                 class="doc-entry"
-                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.0/docs/WEB_SOURCES.md"
+                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/WEB_SOURCES.md"
                 ><strong>Web evidence</strong
                 ><span>Fetch behavior, source inspection, limitations, and deletion.</span></a
               ><a
                 class="doc-entry"
-                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.0/docs/INGESTION.md"
+                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/INGESTION.md"
                 ><strong>Document processing</strong
                 ><span>Upload progress, retries, reprocessing, and index rebuilds.</span></a
               ><a
                 class="doc-entry"
-                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.0/docs/SKILLS.md"
+                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/SKILLS.md"
                 ><strong>Skills</strong
                 ><span>Reusable workflows and slash-command invocation.</span></a
               >
@@ -1798,40 +1869,40 @@ cd phlox
               <h3>Configure and extend</h3>
               <a
                 class="doc-entry"
-                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.0/docs/MODEL_CALLS.md"
+                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/MODEL_CALLS.md"
                 ><strong>Usage and model calls</strong
                 ><span>Context limits, pricing, retries, and unknown usage.</span></a
               ><a
                 class="doc-entry"
-                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.0/docs/OBSERVABILITY.md"
+                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/OBSERVABILITY.md"
                 ><strong>Observability</strong
                 ><span>Usage reports, structured logs, and tracing.</span></a
               ><a
                 class="doc-entry"
-                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.0/docs/API_GATEWAY.md"
+                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/API_GATEWAY.md"
                 ><strong>API gateway</strong
                 ><span>Per-user keys and OpenAI-compatible completions.</span></a
               ><a
                 class="doc-entry"
-                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.0/docs/GUARDRAILS.md"
+                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/GUARDRAILS.md"
                 ><strong>Guardrails</strong
                 ><span>Optional text-pattern redaction and blocking.</span></a
               ><a
                 class="doc-entry"
-                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.0/docs/MCP.md"
+                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/MCP.md"
                 ><strong>MCP tools</strong><span>Connect and manage external tool servers.</span></a
               ><a
                 class="doc-entry"
-                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.0/docs/THEMING.md"
+                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/THEMING.md"
                 ><strong>Theming</strong><span>The 18 palettes and custom themes.</span></a
               ><a
                 class="doc-entry"
-                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.0/docs/DEVELOPMENT.md"
+                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/DEVELOPMENT.md"
                 ><strong>Development</strong
                 ><span>Local checks, browser tests, and retrieval fixtures.</span></a
               ><a
                 class="doc-entry"
-                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.0/docs/ARCHITECTURE.md"
+                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/ARCHITECTURE.md"
                 ><strong>Architecture</strong><span>System map and extension points.</span></a
               >
             </div>
@@ -1842,12 +1913,12 @@ cd phlox
               >current roadmap</a
             >
             ·
-            <a href="https://github.com/robert-mcdermott/phlox/blob/v0.2.0/docs/ADDING_A_TOOL.md"
+            <a href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/ADDING_A_TOOL.md"
               >add a tool</a
             >
             ·
             <a
-              href="https://github.com/robert-mcdermott/phlox/blob/v0.2.0/docs/ADDING_A_PROVIDER.md"
+              href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/ADDING_A_PROVIDER.md"
               >add a provider</a
             >
           </p>
@@ -1897,14 +1968,14 @@ cd phlox
           </div>
           <div class="footer-col">
             <h4>Docs</h4>
-            <a href="https://github.com/robert-mcdermott/phlox/blob/v0.2.0/docs/USER_GUIDE.md"
+            <a href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/USER_GUIDE.md"
               >User Guide</a
             >
-            <a href="https://github.com/robert-mcdermott/phlox/blob/v0.2.0/docs/BACKUP_RESTORE.md"
+            <a href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/BACKUP_RESTORE.md"
               >Upgrading and backups</a
             >
             <a
-              href="https://github.com/robert-mcdermott/phlox/blob/v0.2.0/docs/ARCHITECTURE.md"
+              href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/ARCHITECTURE.md"
               target="_blank"
               rel="noopener"
               >Architecture</a
@@ -1916,13 +1987,13 @@ cd phlox
               >Roadmap</a
             >
             <a
-              href="https://github.com/robert-mcdermott/phlox/blob/v0.2.0/docs/API_GATEWAY.md"
+              href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/API_GATEWAY.md"
               target="_blank"
               rel="noopener"
               >API Gateway</a
             >
             <a
-              href="https://github.com/robert-mcdermott/phlox/blob/v0.2.0/docs/THEMING.md"
+              href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/THEMING.md"
               target="_blank"
               rel="noopener"
               >Theming</a
@@ -1930,8 +2001,8 @@ cd phlox
           </div>
           <div class="footer-col">
             <h4>Project</h4>
-            <a href="https://github.com/robert-mcdermott/phlox/releases/tag/v0.2.0"
-              >v0.2.0 release notes</a
+            <a href="https://github.com/robert-mcdermott/phlox/releases/tag/v0.2.1"
+              >v0.2.1 release notes</a
             >
             <a href="https://github.com/robert-mcdermott/phlox" target="_blank" rel="noopener"
               >GitHub repository</a

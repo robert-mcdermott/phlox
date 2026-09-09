@@ -545,3 +545,7 @@ main:focus { outline: none; }
   .js .will-reveal { opacity: 1 !important; transform: none !important; }
   .theme-preview { position: static; }
 }
+
+/* Search provider configuration introduced in v0.2.1. */
+#web-search .grid-3 { margin: 22px 0; }
+#web-search .detail-note + p { margin-top: 14px; }

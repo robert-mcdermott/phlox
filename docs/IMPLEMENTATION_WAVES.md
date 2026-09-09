@@ -453,7 +453,184 @@ writers do not participate in Phlox's process lock. Existing HTML preview networ
 is unchanged; rich binary previews, React builds, evidence bundles, sharing and automatic
 version expiry remain outside this wave.
 
-## Next wave — Output inspection and portable exports
+## Wave 14 — General reliability and task completion
+
+**Status:** planned, near-term priority, added 2026-09-09. **Scope:** application/session/run
+reliability across Chat and Research, M2.3 evidence quality and completion budgets, with a
+bounded bridge to M3 deliverables. Schedule ahead of output inspection and portable exports.
+This is backlog work; current runtime behavior, authentication and limits have not changed.
+
+**Motivation:** a reviewed long-running research task exposed an empty synthesis saved as
+completed, exhausted search/read allowances, repeated context trimming, and useful financial
+sections beyond the HTML extraction cutoff. PDF and JSON sources were rejected despite
+successful HTTP responses. A subsequent ordinary agent turn needed shell/dependency
+workarounds to obtain data and generate a chart. These findings motivate product fixes;
+they do not establish the upstream cause of the empty response. Use synthetic or approved
+public fixtures for regressions, not private conversation content or credentials.
+A subsequent user-reported research attempt hit the max-output-token warning. Investigate
+its effective settings and provider finish reason rather than assuming the cumulative
+research allowance caused it. Completion-aware budget handling is a first-priority part
+of this wave, not a later tuning exercise.
+
+**Additional observed pattern:** a later API-to-chart task exhausted Research's cumulative
+usage threshold and search allowance, then returned an unexecuted script instead of the
+requested files. Its saved events showed neither context trimming nor an output-limit
+warning. The follow-up succeeded in ordinary agent mode with POST requests and execution.
+This identifies a capability/routing problem as well as a budget problem: increasing the
+generic tool-round setting does not override Research's separate preset ceilings, and GET
+fetching alone cannot query a POST-based data API. The successful follow-up also exposed
+silently ignored API filters, incorrect assumptions about field types, repeated prompt
+input, and browser/workspace connectivity failures. Preserve these distinctions when
+diagnosing failures; a completed model turn is not proof the requested deliverable exists.
+
+**Restart investigation:** local logs confirm development auto-reloads triggered by generated
+workspace Python files, including the container runner's `.phlox/run.py` and an agent-written
+report script. The launcher watches the entire backend directory, which includes runtime
+data. In two reviewed sessions, these writes caused orderly shutdown/startup sequences,
+including a second queued reload, followed by repeated HTTP 401 responses. This is direct
+evidence of an unintended dev restart; the observed sequences do not indicate a hard crash.
+In the latest session, model calls continued while Uvicorn waited for connections to close,
+and both saved turns ended `completed`. The earlier follow-up ended `cancelled` without a
+persisted reason, so its cancellation initiator cannot be established from that row alone.
+
+The inspected configuration has no persistent JWT signing secret. Development falls back
+to a new per-process secret, and the frontend clears authentication on a 401. Secret rotation
+is therefore the likely explanation for the login screen after reload; the historical
+server environment and token validation reason were not captured, so distinguish that
+inference from the confirmed restart. The production launcher omits `--reload` and requires
+a strong environment-provided signing secret: this specific generated-file trigger does
+not apply there. Production process loss, shutdown and session expiry still need regression
+coverage. Repeated failures to reach the optional local telemetry collector also obscured
+the logs; those exporter errors alone are not evidence of an application crash.
+
+| Task | Planned behavior | Acceptance |
+|---|---|---|
+| W14.1 — Truthful completion and recovery | Detect empty synthesis, incomplete streams and output-limit termination; distinguish completed reports from failed, interrupted, or partial attempts. Preserve evidence and partial output; support bounded continuation or explicit synthesis retry without repeating gathering. | Empty/abrupt/reasoning-only streams cannot silently produce a successful blank report. Truncated reports remain incomplete until recovered; truncated tool arguments never execute. Recovery uses reauthorized evidence and current policy/accounting; Stop prevents further calls. |
+| W14.2 — Relevant page evidence | Remove navigation/boilerplate, preserve tables and headings, and support bounded targeted passage retrieval or pagination beyond the initial excerpt. | A long annual-report fixture exposes financial figures after character 20,000 without sending the entire page on every pass. Retained citations identify the exact passages supplied; omitted content remains explicit. |
+| W14.3 — PDF and structured web sources | Add bounded PDF text/table extraction with page provenance, JSON/API schema retrieval, and policy-controlled read queries including POST-based search APIs. Prefer documented endpoints and pagination over repeated guessed GET URLs. | Valid public PDF/JSON and paginated POST-query fixtures are usable without ad hoc shell downloads or package installation. POST is not assumed read-only solely because it returns data: use a scoped adapter or explicit request policy. Malformed, oversized, encrypted/unsupported and timed-out inputs fail clearly; DNS pinning, redirects/domain scope, cancellation, ownership and retention remain enforced. |
+| W14.4 — Research working context | Maintain compact findings, source references and unresolved questions during a single investigation; retrieve original evidence as needed instead of repeatedly replaying and prefix-truncating tool output. | Long single-turn and follow-up fixtures reduce repeated input while retaining the passages needed for final claims. Summaries remain derived notes, not new evidence; source deletion, scope changes, approvals and reconnects preserve the same boundaries. |
+| W14.5 — Completion-aware model and research budgets | Audit effective context, output/reasoning, round, search/read, time and cumulative usage limits across research and ordinary agent calls. Provide generous, model-aware stage allowances, configurable admin presets and bounded adaptive continuation; distinguish planning targets from explicit hard ceilings. | Large and reasoning-heavy tasks can finish within supported model and authorized deployment limits without restarting research. Reserve enough input/output room for synthesis; expose the actual limiting setting and recovery action. Limits survive approval/replay, exhausted tools stop being offered, and admission rechecks budgets after calls. Unknown usage stays unknown; model/search charges and source/event/storage bounds remain explicit. |
+| W14.6 — Research-to-analysis handoff | Recognize requested API acquisition, calculations and file deliverables before gathering. Within the user's requested scope and current tool policy, carry research through data acquisition, analysis and artifact creation in the same task. Reuse the sandbox, source and artifact services. | A request explicitly asking for a script to fetch data and build a report/chart completes those deliverables without a second "where is my graph?" prompt or invented plan-approval step. Selecting Research alone does not grant execution: actual tool approvals still apply. If required capabilities are unavailable, explain the specific blocker early instead of spending the allowance on an impossible workflow. |
+| W14.7 — Verified structured-data acquisition | Probe the API schema and a small response before full retrieval; validate effective filters, returned organizations/years, field types, identifiers, pagination and aggregation rules. Persist the retrieval recipe and provenance. | An HTTP-200 fixture that ignores unknown filter keys cannot trigger a full unfiltered download or a misleading success claim. Array-valued fields, duplicates/subprojects, missing values and incomplete years are handled explicitly. A known filtered dataset yields the reference annual totals and source-backed annotations. |
+| W14.8 — Deliverable completion and usable verification | Track requested outputs separately from model-turn completion; check files, report/chart data agreement, dependency requirements and available preview routes. Keep retrieval and build steps reproducible and large raw data out of prompts. | An unexecuted script is not reported as a delivered HTML report/chart. An inaccessible browser tool does not cause repeated file/localhost probes or an unbounded background preview server. Report visual verification as unavailable when appropriate while delivering validated files. Large raw datasets retain clear current-workspace versus saved-copy status and a bounded portable provenance/retrieval manifest. |
+| W14.9 — Development reload isolation | Restrict reload watching to application source; exclude runtime data, workspaces, uploads and generated artifacts. Align shell/PowerShell launchers and documented manual commands. | Repeated container executions and agent-created Python files cause no backend restart or logout. Real application source edits still reload. Cover default and custom data paths; production starts without a watcher. |
+| W14.10 — Session continuity and reauthentication | Make local development signing-secret lifetime deliberate and easy to configure, with a secure approach that survives source reloads. Preserve production secret requirements, session expiry and account revocation. Distinguish authentication loss from backend/network unavailability and reconnect the owner to saved work after login. | Source reload with a stable secret retains a valid session. Genuine expiry or secret rotation produces a clear sign-in flow; transient network/5xx failures do not masquerade as logout. Reauthentication restores the owned run without resubmitting the request or repeating tools; logout clears private state and stops unauthorized polling. Stale responses from a previous login cannot clear a newer session. |
+| W14.11 — Restart recovery and lifecycle diagnostics | Audit graceful shutdown, forced process loss, request-bound streams and durable workers. Record termination initiator/reason, process/boot identity, timestamps and run correlation; make optional telemetry failures concise and non-blocking. | Distinguish user Stop, server shutdown, provider failure, budget termination and unknown tool outcome in saved status. Completed work remains completed; interrupted work retains evidence and offers an explicit recovery path without automatically replaying uncertain actions. Production restart and unavailable-collector tests preserve startup, execution, shutdown and isolation. Diagnostics contain no tokens, secrets or private prompt/tool bodies. |
+
+**Implementation order:** fix generated-file reloads and establish lifecycle/session
+diagnostics first, alongside truthful completion/recovery and effective-budget diagnostics.
+Then harden reauthentication/shutdown recovery, early capability routing and extraction;
+follow with PDF/JSON/POST-query support, working context, measured budget calibration,
+validated acquisition and the analysis/delivery path. Keep normal Chat the default,
+Research opt-in, the deep-research skill as optional guidance,
+and DuckDuckGo as the default/fallback search provider.
+
+**Budget design and evaluation:** give models enough room to finish useful work; avoid
+discarding an investigation because an arbitrary preset is too small. Examine all limits
+together rather than treating every cutoff as a request for a larger context window.
+
+- Trace effective defaults, profile caps, user/assistant overrides, research presets and
+  provider request parameters. Distinguish maximum context capacity, reserved output,
+  reasoning tokens where exposed, cumulative usage and tool rounds. Show the effective
+  limit and its origin in diagnostics without exposing prompts or secrets.
+- Resolve and snapshot effective settings consistently across new turns, existing chats,
+  assistants, regeneration, approval resume, durable runs and fallback models. Investigate
+  the current split where ordinary preparation reads output/context from runtime/assistant
+  settings but reads tool rounds from the conversation snapshot, while compaction uses the
+  runtime context setting. Existing saved conversation parameters alone cannot establish
+  what each historical provider call received. Persist effective input/output limits,
+  research stage, finish reason and trimming metadata per call for reliable diagnosis.
+- Audit the generic harness as well as Research: its round cap currently ends ordinary
+  agents with "Please refine the request" rather than reserving completion or preserving an
+  actionable continuation. Expose preset ceilings alongside generic settings so raising
+  Max tool rounds cannot appear to raise a separate research limit. Give the model accurate
+  remaining allowances and supported tools; adapt planning before another doomed call.
+- Use provider-supported output/reasoning controls and task-stage allowances. Keep planning
+  economical while giving synthesis and substantial artifacts sufficient completion room.
+  Fit useful evidence and output together; a larger output reservation must not needlessly
+  crowd out the evidence needed to write the report. Do not infer capability from model names.
+- Distinguish reported visible output, reasoning and cached input when providers expose
+  them; retain unknowns when they do not. Repeated cached input still occupies context and
+  is not necessarily charged like uncached input. Investigate excessive planning/gathering
+  reasoning and schema/tool-prompt overhead before assuming more output tokens are needed.
+- Evaluate soft gathering targets and bounded adaptive extensions within admin-authorized
+  ceilings. Account for gathering, reasoning, compaction, retries and synthesis separately.
+  Preserve explicit user/admin spend and resource ceilings, supported provider limits and
+  Stop; never silently replace an explicitly chosen hard limit with an unlimited run.
+- Handle `length` / `max_tokens` as incomplete output. Where supported and authorized,
+  continue synthesis from retained evidence and partial text without repeating searches or
+  tool side effects. Bound continuation attempts, detect lack of progress and preserve
+  citations without duplicate prose. If recovery requires a changed hard limit, offer a
+  specific resume action instead of only telling the user to restart the request.
+- Test a candidate Thorough preset of 24 model passes, 24 searches, 48 fetch attempts and
+  larger token/time allowances against the existing preset. These are evaluation candidates,
+  not promised defaults or sufficient fixes by themselves. Account for the existing
+  64-source-per-turn ceiling and bounded event storage without relaxing transport safeguards.
+- Measure completed useful reports, truncation/restart rate, evidence coverage, latency,
+  repeated-input tokens and total reported usage/cost. A shorter run that produces no usable
+  answer is not a budget-efficiency improvement.
+
+**Workflow and delivery boundaries:** preserve the initial user objective and selected
+source scope across the research-to-analysis transition. Use normal permissions for the
+requested execution instead of requiring a mode switch and repeated user instruction.
+HTTP status alone is not data validation, generated code is not executed output, and a
+nonempty answer is not proof of task completion. Final checks should be task-specific and
+bounded; lack of a usable preview surface must not prevent delivery of otherwise valid
+files. Defer general browser control and broader output-preview features to their existing
+backlogs. Package or reference large datasets deliberately rather than increasing all
+snapshot/output caps or replaying raw records into the model.
+
+**Application reliability boundaries:** reconnectable runs survive browser disconnection,
+not arbitrary process loss. Build on their current journal and conservative interruption
+recovery rather than promising transparent restart of an in-flight tool. Preserve saved
+evidence, accounting, approvals and unknown outcomes; resume only steps whose execution
+state and current authorization are known. Keep explicit Stop responsive and distinguish it
+from shutdown-triggered cancellation. Evaluate connection draining and shutdown deadlines
+with a stalled provider/tool so an open event stream cannot indefinitely conceal a pending
+restart. Persist the reason before termination where possible; a forced kill must leave an
+honest interrupted state on recovery. Do not change durable-run defaults or introduce a
+distributed worker system as an incidental fix.
+
+Choose a secure development secret strategy (for example, one secret inherited by reload
+children for the launcher lifetime, or protected local persistence) and document its exact
+restart behavior. Never use a shared fallback, commit generated secrets, disable login, or
+extend sessions indefinitely to hide the issue. Reauthentication must respect ownership,
+revocation and cleared private browser state. Retain only a safe navigation/reconnection
+hint, then reauthorize the run; login must not implicitly submit another task. Record safe
+authentication failure categories separately from network/server failures. Add timestamps,
+boot/PID and termination reason to lifecycle diagnostics, with private run correlation only
+in appropriately protected records. Rate-limit/coalesce unavailable-collector messages and
+surface optional telemetry degradation without flooding or blocking normal execution.
+
+**Verification before delivery:** offline regressions cover empty/truncated streams,
+late-page evidence, PDF/JSON parsing limits, source-preserving context reduction, budget
+exhaustion, Stop/approval/reconnect and cross-user isolation. Include reasoning-heavy output,
+long final reports, limits during tool-call generation, configured provider caps, conflicting
+overrides, adaptive extensions, continuation with no duplicated actions, and explicit hard
+ceilings. Successful recovery must not repeat evidence gathering; unrecoverable truncation
+must retain a clear incomplete outcome and recoverable work. Use a reproducible multi-year
+research fixture with a known reference table, unavailable sources and an explained spike;
+check the report and chart against those values and their supporting passages. Add browser
+coverage for budget/status/recovery and handoff controls. Include a one-prompt API-to-HTML/chart
+journey with POST pagination, silently ignored filters, an array-valued field, a large raw
+dataset, an unavailable preview tool and settings changed between turns. Check that a
+generic agent near its round limit can finish or continue with retained state without
+repeating completed actions. Add process-level regressions that write generated workspace
+Python files under the real dev watcher, then edit application source and observe exactly
+the intended reload behavior. Exercise shell/PowerShell launch configuration, stable and
+ephemeral secrets, session expiry, concurrent stale 401 responses, network loss and same-user
+reauthentication with a running task. Test graceful restart with an open SSE subscription,
+forced termination during a model call/tool/approval, stalled shutdown, and a missing
+telemetry collector. Assert preserved progress, accurate completion/interruption reasons,
+no duplicate execution, bounded shutdown behavior and cross-user isolation in both
+request-bound and durable modes. Record explicitly configured
+live-provider quality checks separately from CI, including provider/model, effective limits,
+reported versus estimated usage, truncation, missing evidence and completion outcome.
+Update [Research](RESEARCH.md), [Web sources](WEB_SOURCES.md), [Model calls](MODEL_CALLS.md),
+[Runs](RUNS.md), [Authentication](AUTH.md), and the relevant setup/architecture guides when
+behavior ships.
+
+## Later wave — Output inspection and portable exports
 
 Continue the remaining bounded M3.3 work: CSV/table and PDF inspection, a deliberate preview
 network policy, and portable output bundles with clear source/provenance and access rules.

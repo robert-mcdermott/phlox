@@ -13,6 +13,12 @@ files**; see [Conversation alternatives](CONVERSATION_ALTERNATIVES.md). **Wave 1
 text artifacts**, selected-passage revision, version comparison and restore; see
 [Editable artifacts](ARTIFACTS.md). Richer project memory, extracted tasks and portable output
 bundles remain proposed.
+**Near-term priority: Wave 14 — General reliability and task completion** is
+[planned in the wave backlog](IMPLEMENTATION_WAVES.md#wave-14--general-reliability-and-task-completion),
+ahead of output inspection and portable exports. It addresses empty completion, missed
+page evidence, PDF/JSON sources, research context efficiency, configurable budgets and an
+explicit analysis handoff, plus generated-file reload isolation, session continuity and
+restart recovery/diagnostics. These follow-up improvements remain planned.
 The wave log records verification and remaining limits. M3 has an initial delivery; M4–M5 remain proposed. Existing features and
 completed work are identified explicitly; unchecked entries do not yet ship.
 
@@ -292,6 +298,26 @@ scope must be a server-enforced constraint, including child tools and fallbacks.
   handling; semantic claim verification and live-model quality targets remain open.
   End with a useful partial result when the budget expires.
 
+**Next increment — Wave 14:** prioritize truthful synthesis completion/recovery and audit
+output/reasoning limits alongside context, rounds and research allowances. Give substantial
+tasks sufficient model-aware completion room, with bounded adaptive extensions and synthesis
+continuation that preserves evidence rather than restarting the investigation. Distinguish
+soft planning targets from explicit user/admin hard ceilings; honor Stop and actual provider
+capacity. Improve passages beyond the initial HTML cutoff, bounded PDF/JSON evidence and
+working-context consolidation. Measure successful completion and avoided restarts, not only
+tokens consumed per attempt. Audit effective settings across the generic harness, research,
+existing chats and recovery, with per-call limit/finish diagnostics. Route explicitly
+requested API acquisition and analysis through a permission-controlled workflow that
+finishes the requested files without a second prompt. Support scoped POST-based data
+queries, validate filters/pagination before full downloads, and verify actual deliverables
+rather than treating an unexecuted script as completion. Preserve Research's source and tool
+policy boundaries through the transition. The same wave also addresses general application
+reliability: prevent generated workspace files from triggering dev reloads, preserve valid
+sessions across intended reloads, reconnect after reauthentication, and distinguish server
+shutdown from user Stop. Verify graceful/forced restart recovery and optional telemetry
+failures across ordinary Chat and Research without replaying uncertain tool actions.
+See the [planned tasks and acceptance criteria](IMPLEMENTATION_WAVES.md#wave-14--general-reliability-and-task-completion).
+
 **Acceptance:** a research run stays inside source and budget limits, produces a useful
 partial result on failure, and supports inspection of both agreement and contradictory
 evidence. Benchmark grounding, usefulness, latency, and cost against Quick answer.
@@ -509,6 +535,11 @@ F03 is a minimal correctness repair; F07 moves that state into the durable run s
 F04 supplies call IDs that can attach to runs. F06 is complete and precedes shipping new persistent
 schemas; F08 may prototype on fixtures while F07 lands. Expand F10 to the release targets
 as M2/M3 ship. This ordering deliberately pairs foundational work with visible progress.
+
+**Near-term follow-up backlog:** [Wave 14 — General reliability and task completion](IMPLEMENTATION_WAVES.md#wave-14--general-reliability-and-task-completion)
+is the next planned increment after Wave 13. Tasks W14.1–W14.11 define its scope, ordering,
+budget experiments, application/session/restart reliability and verification. Output inspection and portable exports remain queued
+after this reliability work; the original F01–F10 identifiers above remain unchanged.
 
 ## 12. Deferred scope and review cadence
 

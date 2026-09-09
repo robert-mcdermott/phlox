@@ -30,6 +30,7 @@ from app.observability import setup_observability
 from app.routers import (
     admin_config,
     api_keys,
+    artifacts,
     assistants,
     attachments,
     auth,
@@ -158,7 +159,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-for r in (projects, sources, runs, auth, chat, conversations, providers, settings, documents, assistants, mcp,
+for r in (artifacts, projects, sources, runs, auth, chat, conversations, providers, settings, documents, assistants, mcp,
           tools, files, memories, checkpoints, attachments, usage, admin_config, api_keys,
           gateway, budgets, skills):
     app.include_router(r.router)

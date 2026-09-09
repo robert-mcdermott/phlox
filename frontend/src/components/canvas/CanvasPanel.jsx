@@ -3,6 +3,7 @@ import { Code2, Download, ExternalLink, FileText, Loader2, RefreshCw, X, Eye } f
 import { api } from '../../api/client'
 import { useStore } from '../../store/useStore'
 import Markdown from '../markdown/Markdown'
+import ArtifactEditor, { draftKey } from './ArtifactEditor'
 
 const MIN_WIDTH = 340
 const MAX_WIDTH = 960
@@ -42,6 +43,7 @@ function useResize(width, setWidth) {
 export default function CanvasPanel() {
   const canvas = useStore((s) => s.canvas)
   const closeCanvas = useStore((s) => s.closeCanvas)
+  const [editing, setEditing] = useState(() => !!useStore.getState().artifactDrafts[draftKey(canvas)])
   const [width, setWidth] = useState(DEFAULT_WIDTH)
   const [text, setText] = useState('')
   const [loading, setLoading] = useState(false)
@@ -51,7 +53,7 @@ export default function CanvasPanel() {
   const requestVersion = useRef(0)
 
   const load = useCallback(() => {
-    if (!canvas) return
+    if (!canvas || editing) return
     const version = ++requestVersion.current
     setLoading(true)
     setError(null)
@@ -59,14 +61,14 @@ export default function CanvasPanel() {
     request.then(value => { if (version === requestVersion.current) setText(value) })
       .catch(e => { if (version === requestVersion.current) setError(String(e.message || e)) })
       .finally(() => { if (version === requestVersion.current) setLoading(false) })
-  }, [canvas])
+  }, [canvas, editing])
 
   useEffect(() => {
     setView('preview')
     load()
     return () => { requestVersion.current++ }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canvas?.conversationId, canvas?.path, canvas?.nonce])
+  }, [canvas?.conversationId, canvas?.path, canvas?.nonce, editing])
 
   if (!canvas) return null
 
@@ -95,7 +97,9 @@ export default function CanvasPanel() {
           </span>
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          {(canvas.kind === 'html' || canvas.kind === 'markdown') && (
+          {!editing && <button onClick={() => setEditing(true)} className="rounded border border-border px-2 py-1 text-xs text-content hover:bg-surface-3">Edit &amp; versions</button>}
+          {editing && <button onClick={() => setEditing(false)} className="rounded border border-border px-2 py-1 text-xs text-content hover:bg-surface-3">Preview original</button>}
+          {!editing && (canvas.kind === 'html' || canvas.kind === 'markdown') && (
             <div className="mr-1 flex rounded-md border border-border p-0.5 text-xs">
               <button
                 onClick={() => setView('preview')}
@@ -111,7 +115,7 @@ export default function CanvasPanel() {
               </button>
             </div>
           )}
-          <button onClick={load} className="rounded p-1.5 text-muted hover:bg-surface-3 hover:text-content" title="Refresh">
+          {!editing && <><button onClick={load} className="rounded p-1.5 text-muted hover:bg-surface-3 hover:text-content" title="Refresh">
             <RefreshCw size={15} />
           </button>
           <button
@@ -129,7 +133,7 @@ export default function CanvasPanel() {
             title="Download"
           >
             <Download size={15} />
-          </button>
+          </button></>}
           <button onClick={closeCanvas} className="rounded p-1.5 text-muted hover:bg-surface-3 hover:text-content" title="Close">
             <X size={16} />
           </button>
@@ -137,7 +141,7 @@ export default function CanvasPanel() {
       </div>
 
       <div className="min-h-0 flex-1 overflow-hidden">
-        {loading ? (
+        {editing ? <ArtifactEditor key={draftKey(canvas)} canvas={canvas} /> : loading ? (
           <div className="flex h-full items-center justify-center">
             <Loader2 className="animate-spin text-accent" />
           </div>

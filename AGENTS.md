@@ -127,4 +127,9 @@ exports; `Conversation.messages` contains every saved path and is for ownership/
 Persist answers with their pinned parent, including approval resumes. Request-bound streams
 and durable runs block branch/project mutation while active. File snapshots retain bounded
 answer output separately from the shared workspace; selection never restores files.
-Current schema head is `0007_branches`; older revision metadata must remain checkable.
+**Wave 13 adds editable artifacts:** immutable bounded text versions live in SQL; saving
+and restoring are independent of explicit hash-checked workspace publication. Selected-text
+AI revision uses the shared model-call accounting/budget seam and both guardrail directions;
+proposals require review and never write automatically. Observe run/approval admission
+guards for mutations and preserve the original answer snapshot. See [docs/ARTIFACTS.md](docs/ARTIFACTS.md).
+Current schema head is `0008_artifacts`; older revision metadata must remain checkable.

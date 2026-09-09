@@ -30,6 +30,16 @@ export default function App() {
     return () => window.removeEventListener('phlox-unauthorized', onUnauthorized)
   }, [init, logout])
 
+  useEffect(() => {
+    const protectDrafts = event => {
+      if (!Object.keys(useStore.getState().artifactDrafts).length) return
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    window.addEventListener('beforeunload', protectDrafts)
+    return () => window.removeEventListener('beforeunload', protectDrafts)
+  }, [])
+
   // Keyboard shortcuts.
   useEffect(() => {
     const onKey = (e) => {
@@ -75,7 +85,7 @@ export default function App() {
         />
         <ChatPage onOpenSettings={openSettings} />
       </div>
-      {canvas && <CanvasPanel />}
+      {canvas && <CanvasPanel key={`${canvas.conversationId}:${canvas.path}:${canvas.savedUrl || ''}`} />}
       {settingsOpen && (
         <Suspense fallback={null}>
           <SettingsDrawer initialTab={settingsTab} onClose={() => setSettingsOpen(false)} />

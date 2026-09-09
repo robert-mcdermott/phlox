@@ -30,6 +30,8 @@ everyday use, upgrades, and troubleshooting.
   per-tool permissions, human approvals, and Git-backed workspace checkpoints.
 - **Code execution and artifacts** — run Python and JavaScript, inspect generated files,
   charts, and captured output, and preview HTML/Markdown in a resizable artifact canvas.
+  [Edit text artifacts](docs/ARTIFACTS.md), revise selected passages with AI, compare versions,
+  and restore earlier work.
   Choose local execution, isolated Docker/Podman containers, or AWS AgentCore microVMs.
 - **Document and web research with citations** — search PDFs, Word documents, Markdown,
   and code, or discover and read web pages. Inspect the retained passage behind each

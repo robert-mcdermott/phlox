@@ -46,6 +46,12 @@ async function openBlob(path, filename, newTab = false) {
 }
 
 export const api = {
+  openArtifact: (cid, body) => req('POST', `/api/artifacts/${cid}/open`, body),
+  getArtifact: (cid, id, version) => req('GET', `/api/artifacts/${cid}/${id}${version ? `?version_id=${version}` : ''}`),
+  saveArtifact: (cid, id, body) => req('POST', `/api/artifacts/${cid}/${id}/versions`, body),
+  restoreArtifact: (cid, id, body) => req('POST', `/api/artifacts/${cid}/${id}/restore`, body),
+  publishArtifact: (cid, id, body) => req('POST', `/api/artifacts/${cid}/${id}/publish`, body),
+  diffArtifact: (cid, id, before, after) => req('GET', `/api/artifacts/${cid}/${id}/diff?before=${before}&after=${after}`),
   selectAlternative: (id, messageId, leaf) => req('POST', `/api/conversations/${id}/alternatives/${messageId}`, { expected_leaf_id: leaf }),
   listProjects: () => req('GET', '/api/projects'),
   getProject: id => req('GET', `/api/projects/${id}`),

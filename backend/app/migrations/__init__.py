@@ -34,6 +34,16 @@ def known_revision(revision):
 
 
 def expected_metadata(revision):
+    if revision == '0007_branches':
+        import sqlalchemy as sa
+        result = expected_metadata('0006_projects')
+        messages = result.tables['messages']
+        messages.append_column(sa.Column('parent_id', sa.String(32), nullable=True))
+        sa.Index('ix_messages_parent_id', messages.c.parent_id)
+        conversations = result.tables['conversations']
+        conversations.append_column(sa.Column('active_leaf_id', sa.String(32), nullable=True))
+        conversations.append_column(sa.Column('branch_choices', sa.JSON, nullable=True))
+        return result
     if revision == '0006_projects':
         import json
         import sqlalchemy as sa

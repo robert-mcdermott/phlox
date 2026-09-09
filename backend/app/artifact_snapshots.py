@@ -3,7 +3,7 @@ import logging
 import shutil
 
 from sqlalchemy import event
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 
 from app.config import ATTACHMENTS_DIR
 from app.models import Message
@@ -38,6 +38,10 @@ def capture(message):
                     remaining -= len(data)
                     item.update(snapshot_status='saved', snapshot_index=index,
                                 url=f'/api/files/{message.conversation_id}/saved/{message.id}/{index}')
+                    db = object_session(message)
+                    if db is not None:
+                        from app.artifacts import capture as capture_version
+                        capture_version(db, message, item, data)
         except (OSError, ValueError, KeyError):
             logger.info('Could not retain an answer artifact snapshot')
         result.append(item)

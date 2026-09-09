@@ -97,7 +97,7 @@ def test_fresh_and_repeated_upgrade_match_models(engines):
     engine = engines()
     upgrade(engine)
     upgrade(engine)
-    assert status(engine) == {'current': '0007_branches', 'head': '0007_branches'}
+    assert status(engine) == {'current': '0008_artifacts', 'head': '0008_artifacts'}
     assert check(engine)['compatible']
     with engine.connect() as conn:
         validate(conn, expected=Base.metadata)
@@ -170,7 +170,7 @@ def test_concurrent_upgrade_serializes(engines):
     engine = engines()
     with ThreadPoolExecutor(max_workers=2) as pool:
         list(pool.map(lambda _: upgrade(engine), range(2)))
-    assert status(engine)['current'] == '0007_branches'
+    assert status(engine)['current'] == '0008_artifacts'
 
 
 def test_different_databases_do_not_share_alembic_context(engines):
@@ -221,7 +221,7 @@ def test_backup_restore_populated_instance(engines, tmp_path, monkeypatch):
     restored = pg_target or sa.create_engine(f'sqlite:///{target / "data/phlox.db"}')
     try:
         assert_content(restored)
-        assert status(restored)['current'] == '0007_branches'
+        assert status(restored)['current'] == '0008_artifacts'
         for name, content in files.items():
             assert (target / 'data' / name).read_bytes() == content
         restored_workspace = target / 'data/workspaces/conversation'
@@ -403,7 +403,7 @@ def test_lifespan_failure_releases_lock_and_readiness_checks_schema(client, monk
         pass
     with maintenance_lock(DATA_DIR, ENGINE):
         pass
-    monkeypatch.setattr('app.migrations.status', lambda _: {'current': None, 'head': '0007_branches'})
+    monkeypatch.setattr('app.migrations.status', lambda _: {'current': None, 'head': '0008_artifacts'})
     response = client.get('/api/readiness')
     assert response.status_code == 503 and response.json()['database']['ready'] is False
 
@@ -503,7 +503,7 @@ def test_wave4_revision_can_be_checked_backed_up_and_upgraded(engines, tmp_path)
                   pg_bin_dir=os.environ.get('PHLOX_TEST_PG_BIN_DIR'))
     upgrade(engine)
     assert_content(engine)
-    assert status(engine)['current'] == '0007_branches'
+    assert status(engine)['current'] == '0008_artifacts'
 
 
 def test_run_evidence_survives_restore_without_replaying(engines, tmp_path):
@@ -805,5 +805,51 @@ def test_wave12_populated_projects_upgrade_and_branch_restore(engines, tmp_path)
             branches.choose(conv, 'answer')
             assert [m.content for m in branches.active(conv)] == ['Keep this text', 'Original answer']
             assert db.get(Message, 'answer').usage == {'total': 9}
+    finally:
+        restored.dispose()
+
+
+def test_wave13_populated_history_upgrade_and_artifact_restore(engines, tmp_path):
+    from app.migrations import expected_metadata
+    from app.artifacts import add_version, digest
+    from app.models import Artifact, ArtifactVersion
+    engine = engines()
+    frozen = expected_metadata('0007_branches')
+    frozen.create_all(engine)
+    with engine.begin() as conn:
+        conn.exec_driver_sql('CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL PRIMARY KEY)')
+        conn.exec_driver_sql("INSERT INTO alembic_version VALUES ('0007_branches')")
+    populate(engine)
+    assert check(engine)['compatible']
+    config = tmp_path / 'config.yml'
+    config.write_text('{}')
+    data = tmp_path / 'data'
+    data.mkdir()
+    pg_bin = os.environ.get('PHLOX_TEST_PG_BIN_DIR')
+    create_backup(engine, data, config, tmp_path / 'before', stopped=True, pg_bin_dir=pg_bin)
+    upgrade(engine)
+    assert_content(engine)
+    with Session(engine) as db:
+        row = Artifact(conversation_id='conversation', path='brief.md', path_key=digest(b'brief.md'))
+        db.add(row)
+        db.flush()
+        original = add_version(db, row, '# Original café\n', 'agent', message_id='message')
+        edited = add_version(db, row, '# Edited café\n', 'edit', parent=original)
+        ids = row.id, original.id, edited.id
+        db.commit()
+    bundle, target = tmp_path / 'artifacts-backup', tmp_path / 'artifacts-restored'
+    create_backup(engine, data, config, bundle, stopped=True, pg_bin_dir=pg_bin)
+    pg_target = engines() if engine.dialect.name == 'postgresql' else None
+    restore_backup(bundle, target, database_url=pg_target.url if pg_target is not None else None,
+                   stopped=True, pg_bin_dir=pg_bin)
+    restored = pg_target or sa.create_engine(f'sqlite:///{target / "data/phlox.db"}')
+    try:
+        assert check(restored)['compatible']
+        with Session(restored) as db:
+            assert db.get(Artifact, ids[0]).head_version_id == ids[2]
+            assert db.get(ArtifactVersion, ids[1]).content == '# Original café\n'
+            assert db.get(ArtifactVersion, ids[2]).content == '# Edited café\n'
+            assert db.get(ArtifactVersion, ids[2]).parent_version_id == ids[1]
+            assert db.get(ArtifactVersion, ids[2]).source_message_id == 'message'
     finally:
         restored.dispose()

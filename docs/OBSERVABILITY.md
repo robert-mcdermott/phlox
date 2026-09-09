@@ -9,7 +9,8 @@ Phlox exposes three layers of operational visibility, configured under
 
 The metadata-only `UsageLedger` records each application generation call before dispatch,
 then saves provider usage snapshots as they arrive. It covers chat rounds, children,
-compaction, fallback, explicit compatibility retries, gateway calls, and connection probes.
+compaction, fallback, explicit compatibility retries, gateway calls, connection probes,
+and selected-text artifact revision calls (including proposals the user discards).
 Final `Message.usage` receipts aggregate the turn without another charge. See
 [MODEL_CALLS.md](MODEL_CALLS.md) for statuses, parent attribution, context checks, and limits.
 

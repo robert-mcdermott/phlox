@@ -9,8 +9,10 @@ foundations, document/web evidence, and opt-in bounded Research with admin-manag
 assistants and provider setup; see the [wave log](IMPLEMENTATION_WAVES.md) and
 [discovery guide](MODEL_DISCOVERY.md). **Wave 11 delivers private projects and context inspection**;
 see [Projects](PROJECTS.md). **Wave 12 preserves conversation alternatives and bounded answer
-files**; see [Conversation alternatives](CONVERSATION_ALTERNATIVES.md). Richer project memory,
-extracted tasks, artifact editing and version diffs remain proposed.
+files**; see [Conversation alternatives](CONVERSATION_ALTERNATIVES.md). **Wave 13 adds editable
+text artifacts**, selected-passage revision, version comparison and restore; see
+[Editable artifacts](ARTIFACTS.md). Richer project memory, extracted tasks and portable output
+bundles remain proposed.
 The wave log records verification and remaining limits. M3 has an initial delivery; M4–M5 remain proposed. Existing features and
 completed work are identified explicitly; unchecked entries do not yet ship.
 
@@ -330,7 +332,7 @@ Users can identify and remove the context behind an answer.
 - [x] Replace destructive edit/regenerate truncation with immutable message ancestry and
   an active branch pointer. Keep branch navigation simple: previous/next alternative first.
 - [x] Bind runs and artifacts to a branch/version. **Wave 12** pins answer ancestry and
-  retains bounded finalized artifact snapshots (full artifact editing remains M3.3). Fork from a workspace checkpoint or
+  retains bounded finalized artifact snapshots (text editing follows in Wave 13). Fork from a workspace checkpoint or
   declare that file state is shared; do not imply that switching message branches undoes files.
 - [ ] Add optional side-by-side model comparison with explicit extra cost and a chosen
   result. It must obey the same data policy and not mutate a shared workspace concurrently.
@@ -340,10 +342,14 @@ and usage. A failed regeneration leaves the old version usable.
 
 ### M3.3 — Turn canvas into a workspace for finished output
 
-- [ ] Add `Artifact` and `ArtifactVersion` metadata: source run, path, media type, hash,
-  title, provenance, and version. Keep files in the workspace/object-storage seam.
-- [ ] Support document editing, selected-section instructions, version diffs, and revert.
-  Detect concurrent user/agent edits instead of silently replacing them.
+- [x] Add bounded text `Artifact` and `ArtifactVersion` metadata: source message/turn,
+  path, hash, origin, ancestry and version, with name/type derived from the path. **Wave 13**
+  stores immutable text in SQL so checked database backups include every version; original
+  answer files and mutable workspaces retain their existing storage seams.
+- [x] Support text editing, selected-section AI proposals, version diffs, and explicit restore.
+  **Wave 13** detects stale heads, guards Phlox run/approval activity, and uses an explicit
+  hash-checked workspace update instead of silently replacing agent files. External host
+  writers remain outside Phlox's process lock. See [Editable artifacts](ARTIFACTS.md).
 - [ ] Add CSV/table inspection and PDF preview; retain direct downloads. Ship a small
   curated set of document/report/data-analysis skills with output validation and templates.
 - [ ] Add a React/JSX preview only through an isolated, pinned build environment, with
@@ -355,6 +361,11 @@ and usage. A failed regeneration leaves the old version usable.
 **Acceptance:** revise one paragraph without losing the rest; compare and restore versions;
 download a self-contained result. Preview tests cover parent isolation, unintended network
 egress, malicious content, large files, and narrow/mobile layouts.
+
+**Wave 13 boundary:** the editing/versioning portion is implemented for UTF-8 text up to
+1 MiB. Proposal review and normal model-call controls apply; revisions do not gather fresh
+evidence or run tools. Current HTML/Markdown preview behavior is unchanged, so the stricter
+preview/network acceptance and evidence bundles remain work for a later wave.
 
 ## 7. M4 — Controlled autonomy
 

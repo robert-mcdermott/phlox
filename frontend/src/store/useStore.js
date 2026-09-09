@@ -50,6 +50,17 @@ export const useStore = create((set, get) => ({
   // { conversationId, path, name, ext, kind, nonce } — `nonce` bumps to force a re-fetch
   // when the same file is rewritten later in the same turn.
   canvas: null,
+  canvasEditing: false,
+  // Unsaved text stays in memory across navigation; never persisted to localStorage.
+  artifactDrafts: {},
+  keepArtifactDraft(key, draft) {
+    set(s => {
+      const artifactDrafts = { ...s.artifactDrafts }
+      if (draft) artifactDrafts[key] = draft
+      else delete artifactDrafts[key]
+      return { artifactDrafts }
+    })
+  },
 
   // -- auth ----------------------------------------------------------------
   authConfig: null, // {enabled, allow_registration, entra_enabled}
@@ -205,6 +216,7 @@ export const useStore = create((set, get) => ({
     set({
       streamVersion: get().streamVersion + 1,
       user: null, conversations: [], messages: [], activeId: null, activeLeafId: null, hasAlternatives: false, branchSwitching: false, live: null, canvas: null,
+      artifactDrafts: {}, canvasEditing: false,
       assistants: [], activeAssistantId: null, skills: [], providers: [], settings: null,
       projects: [], activeProjectId: null,
       budget: null, lastUsage: null, error: null,
@@ -313,6 +325,8 @@ export const useStore = create((set, get) => ({
   async deleteConversation(id) {
     try {
       await api.deleteConversation(id)
+      set(s => ({ artifactDrafts: Object.fromEntries(Object.entries(s.artifactDrafts)
+        .filter(([key]) => !key.startsWith(`${id}:`))) }))
       await get().loadConversations()
       if (get().activeId === id) get().newConversation()
     } catch (error) { set({ error: error.message }) }
@@ -534,7 +548,7 @@ export const useStore = create((set, get) => ({
           // shows up; if it's already open on this same file, bump nonce to re-fetch the
           // latest content (e.g. the agent iterated on the same file).
           const kind = canvasKind(ev.ext)
-          if (kind) {
+          if (kind && !s.canvasEditing) {
             if (!s.canvas) {
               canvas = { conversationId: s.activeId, path: ev.path, name: ev.name, ext: ev.ext, kind, nonce: Date.now() }
             } else if (s.canvas.conversationId === s.activeId && s.canvas.path === ev.path) {
@@ -561,7 +575,8 @@ export const useStore = create((set, get) => ({
   openCanvasArtifact(art, conversationId) {
     const kind = canvasKind(art.ext)
     if (!kind) return
-    set({ canvas: { conversationId, path: art.path, savedUrl: art.snapshot_status === 'saved' ? art.url : null, name: art.name, ext: art.ext, kind, nonce: Date.now() } })
+    set({ canvas: { conversationId, path: art.path, savedUrl: art.snapshot_status === 'saved' ? art.url : null,
+      artifactId: art.artifact_id, versionId: art.version_id, name: art.name, ext: art.ext, kind, nonce: Date.now() } })
   },
 
   closeCanvas() {

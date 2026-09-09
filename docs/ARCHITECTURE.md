@@ -104,6 +104,29 @@ these bytes. Current workspace file APIs remain separate. Committed message dele
 removes its attachment directory; rollback preserves it. See the alternatives guide for
 limits, shared workspace semantics, and migration `0007_branches`.
 
+### Editable artifacts
+
+`artifacts.py` stores bounded UTF-8 `ArtifactVersion.content` in SQL under a private
+conversation/path `Artifact`. Versions carry hashes, ancestry, origin and source-message
+provenance; finalized answer capture registers supported text without rewriting snapshots.
+Older snapshots and workspace text are imported on explicit editor open. Schema
+`0008_artifacts` is additive, and Wave 12's schema metadata remains frozen for check/backup.
+
+`routers/artifacts.py` checks conversation ownership on every route. Saves and restores
+append immutable versions, with expected-head checks and shared run/approval admission
+guards. Publishing is a separate hash-checked atomic workspace replacement; DB saving
+does not depend on filesystem publication. Conversation/account deletion cascades versions.
+Checkpoint restore also observes the run/approval guard. External filesystem writers are
+outside the process lock.
+
+`artifact_revisions.py` makes one tool-free selected-passage call through `stream_model`,
+including budget, context and usage handling plus input/output guardrails. Proposals are
+buffered until complete and returned for user review; they never write files or versions.
+Request-bound revision leases prevent conflicting Phlox mutations and release on completion
+or cooperative cancellation. `ArtifactEditor.jsx` retains unsaved drafts only in memory,
+supports version comparison/restore, and rejects late proposal events after cancellation.
+See [ARTIFACTS.md](ARTIFACTS.md) for data flow, storage and preview boundaries.
+
 ### Evidence seam
 
 `projects.py` resolves the conversation's pinned project, selected library documents,

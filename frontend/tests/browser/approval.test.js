@@ -966,3 +966,166 @@ test('saved artifact canvas and download use answer bytes', async t => {
   await page.getByTitle('Close', { exact: true }).click()
   assert.equal(await page.getByRole('region', { name: 'Artifact canvas', exact: true }).count(), 0)
 })
+
+async function artifactFixture(t, content = '🌸 Original paragraph.\n\nKeep this section.') {
+  const fixtureState = await fixture(t)
+  const { page, state, context } = fixtureState
+  const first = { id: 'v1', number: 1, origin: 'agent', content, sha256: 'original', source_message_id: 'answer-old' }
+  const editor = { versions: [first], head: 'v1', workspace: { sha256: 'original', available: true, exists: true },
+    saves: [], publishes: [], revisions: [], stale: false, failProposal: false, holdProposal: false }
+  const detail = id => ({ id: 'artifact-1', path: 'report.md', head_version_id: editor.head,
+    version: editor.versions.find(v => v.id === id) || editor.versions.at(-1),
+    versions: [...editor.versions].reverse(), workspace: editor.workspace })
+  await context.route(`${baseURL}/api/artifacts/**`, async route => {
+    const url = new URL(route.request().url())
+    const path = url.pathname
+    const body = route.request().method() === 'POST' ? route.request().postDataJSON() : null
+    if (path.endsWith('/versions') || path.endsWith('/restore')) {
+      if (editor.stale) return route.fulfill({ status: 409, json: { detail: 'A newer version was saved. Reload versions before saving; your draft is unchanged.' } })
+      const source = editor.versions.find(v => v.id === (body.base_version_id || body.version_id))
+      const number = editor.versions.length + 1
+      const version = { ...source, id: `v${number}`, number, content: body.content ?? source.content,
+        sha256: `hash-${number}`, origin: body.content !== undefined ? 'edit' : 'restore', parent_version_id: editor.head }
+      editor.versions.push(version)
+      editor.head = version.id
+      editor.saves.push(body)
+      return route.fulfill({ json: detail(version.id) })
+    }
+    if (path.endsWith('/publish')) {
+      editor.publishes.push(body)
+      editor.workspace = { ...editor.workspace, sha256: editor.versions.find(v => v.id === body.version_id).sha256 }
+      return route.fulfill({ json: editor.workspace })
+    }
+    if (path.endsWith('/diff')) return route.fulfill({ json: { diff: '--- v1\n+++ v2\n-Original paragraph.\n+Revised paragraph.', truncated: false } })
+    if (path.endsWith('/revise')) {
+      editor.revisions.push(body)
+      if (editor.holdProposal) await new Promise(resolve => { editor.release = resolve })
+      return route.fulfill({ contentType: 'text/event-stream', body: editor.failProposal
+        ? sse({ type: 'error', content: 'The model could not complete this revision. Your document is unchanged.' })
+        : sse({ type: 'artifact_proposal', replacement: 'A concise paragraph.', model: 'test-model', usage: { total: 42 } }) }).catch(() => {})
+    }
+    if (path.includes('/download/')) return route.fulfill({ contentType: 'application/octet-stream', body: editor.versions.find(v => v.id === path.split('/').at(-1)).content })
+    return route.fulfill({ json: detail(url.searchParams.get('version_id') || editor.head) })
+  })
+  state.messages.push({ id: 'answer-old', role: 'assistant', content: 'Here is your report.', artifacts: [
+    { name: 'report.md', path: 'report.md', ext: '.md', snapshot_status: 'saved', url: '/api/files/alpha/saved/answer-old/0', artifact_id: 'artifact-1', version_id: 'v1' },
+  ] })
+  await page.getByText('Approval chat', { exact: true }).click()
+  await page.getByTitle('Open in canvas', { exact: true }).click()
+  await page.getByRole('button', { name: 'Edit & versions', exact: true }).click()
+  await page.getByLabel('Artifact text', { exact: true }).waitFor()
+  return { ...fixtureState, editor }
+}
+
+test('artifact editing compares, restores, downloads and explicitly updates workspace on desktop and phone', async t => {
+  const { page, editor } = await artifactFixture(t)
+  await page.getByLabel('Artifact text', { exact: true }).fill('Revised paragraph.\n\nKeep this section.')
+  await page.getByRole('button', { name: 'Save version', exact: true }).click()
+  await page.getByText('Saved version 2.', { exact: false }).waitFor()
+  assert.equal(editor.publishes.length, 0)
+  await page.getByRole('button', { name: 'Compare', exact: true }).click()
+  await page.getByLabel('Version difference').getByText('+Revised paragraph.', { exact: false }).waitFor()
+  await page.getByLabel('Artifact version', { exact: true }).selectOption('v1')
+  await page.getByRole('button', { name: 'Restore as new version', exact: true }).click()
+  await page.getByText('Restored as version 3.', { exact: false }).waitFor()
+  assert.equal(editor.versions[2].content, editor.versions[0].content)
+  const downloaded = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'Download version', exact: true }).click()
+  assert.equal((await downloaded).suggestedFilename(), 'report-v3.md')
+  await page.getByRole('button', { name: 'Use in workspace', exact: true }).click()
+  await page.getByText('Workspace updated.', { exact: false }).waitFor()
+  assert.equal(editor.publishes.length, 1)
+  assert.equal(editor.publishes[0].expected_workspace_sha256, 'original')
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.getByRole('region', { name: 'Artifact canvas', exact: true }).getByRole('button', { name: 'Edit', exact: true }).click()
+  const panel = await page.getByRole('region', { name: 'Artifact canvas', exact: true }).boundingBox()
+  assert.ok(panel.x >= 0 && panel.x + panel.width <= 391)
+  for (const label of ['Save version', 'Use in workspace', 'Download version']) {
+    const bounds = await page.getByRole('button', { name: label, exact: true }).boundingBox()
+    assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= 391, `${label} fits phone width`)
+  }
+  await page.getByRole('button', { name: 'Preview original', exact: true }).click()
+  await page.getByRole('heading', { name: 'Original retained report', exact: true }).waitFor()
+})
+
+test('artifact draft survives stale save, canvas close and chat navigation; logout clears it', async t => {
+  const { page, editor } = await artifactFixture(t)
+  const text = 'Keep this unsaved draft.'
+  await page.getByLabel('Artifact text', { exact: true }).fill(text)
+  editor.stale = true
+  await page.getByRole('button', { name: 'Save version', exact: true }).click()
+  await page.getByRole('alert').getByText('A newer version was saved.', { exact: false }).waitFor()
+  assert.equal(await page.getByLabel('Artifact text', { exact: true }).inputValue(), text)
+  await page.getByTitle('Close', { exact: true }).click()
+  await page.getByText('Other chat', { exact: true }).click()
+  await page.getByText('Approval chat', { exact: true }).click()
+  await page.getByTitle('Open in canvas', { exact: true }).click()
+  await page.getByText('Your unsaved draft has been restored.', { exact: false }).waitFor()
+  assert.equal(await page.getByLabel('Artifact text', { exact: true }).inputValue(), text)
+  editor.stale = false
+  await page.getByRole('button', { name: 'Reload versions', exact: true }).click()
+  await page.getByRole('button', { name: 'Save version', exact: true }).click()
+  await page.getByText('Saved version 2.', { exact: false }).waitFor()
+  await page.getByLabel('Artifact text', { exact: true }).fill('Another private draft')
+  assert.equal(await page.evaluate(async () => {
+    const { useStore } = await import('/src/store/useStore.js')
+    useStore.getState().logout()
+    return Object.keys(useStore.getState().artifactDrafts).length
+  }), 0)
+})
+
+test('selected text revision handles Unicode offsets, requires review and preserves surrounding text', async t => {
+  const { page, editor } = await artifactFixture(t)
+  const input = page.getByLabel('Artifact text', { exact: true })
+  await input.evaluate(el => { el.focus(); el.setSelectionRange(3, 22); el.dispatchEvent(new Event('select', { bubbles: true })) })
+  await page.getByLabel('Revision instruction', { exact: true }).fill('Make it concise')
+  await page.getByRole('button', { name: 'Revise selection', exact: true }).click()
+  await page.getByRole('button', { name: 'Apply to draft', exact: true }).waitFor()
+  assert.equal(editor.revisions[0].start, 2) // 🌸 is one Unicode code point, two JS code units.
+  assert.equal(editor.revisions[0].end, 21)
+  assert.equal(await input.inputValue(), editor.versions[0].content)
+  assert.equal(editor.saves.length, 0)
+  await page.getByRole('button', { name: 'Apply to draft', exact: true }).click()
+  assert.equal(await input.inputValue(), '🌸 A concise paragraph.\n\nKeep this section.')
+  assert.equal(await page.getByRole('button', { name: 'Revise selection', exact: true }).isDisabled(), true)
+  await page.getByRole('button', { name: 'Save version', exact: true }).click()
+  await page.getByText('Saved version 2.', { exact: false }).waitFor()
+  assert.equal(editor.saves[0].content, '🌸 A concise paragraph.\n\nKeep this section.')
+})
+
+test('failed or stopped artifact revisions leave saved text unchanged', async t => {
+  const { page, editor } = await artifactFixture(t)
+  const input = page.getByLabel('Artifact text', { exact: true })
+  await input.evaluate(el => { el.focus(); el.setSelectionRange(3, 22); el.dispatchEvent(new Event('select', { bubbles: true })) })
+  await page.getByLabel('Revision instruction', { exact: true }).fill('Try this revision')
+  editor.failProposal = true
+  await page.getByRole('button', { name: 'Revise selection', exact: true }).click()
+  await page.getByRole('alert').getByText('The model could not complete this revision.', { exact: false }).waitFor()
+  assert.equal(await input.inputValue(), editor.versions[0].content)
+  editor.failProposal = false
+  editor.holdProposal = true
+  await page.getByRole('button', { name: 'Revise selection', exact: true }).click()
+  await page.getByRole('button', { name: 'Stop revision', exact: true }).click()
+  await page.getByText('Revision stopped.', { exact: false }).waitFor()
+  editor.release?.()
+  assert.equal(await input.inputValue(), editor.versions[0].content)
+  assert.equal(editor.saves.length, 0)
+})
+
+test('selected revision preserves CRLF outside the passage and keyboard selection works', async t => {
+  const { page, editor } = await artifactFixture(t, '🌸 First line.\r\nOriginal paragraph.\r\nKeep this section.')
+  const input = page.getByLabel('Artifact text', { exact: true })
+  await input.focus()
+  await input.press('ControlOrMeta+A')
+  await input.press('ArrowLeft')
+  await input.press('ArrowDown')
+  await input.press('Home')
+  for (let i = 0; i < 19; i++) await input.press('Shift+ArrowRight')
+  await page.getByLabel('Revision instruction', { exact: true }).fill('Shorten the paragraph')
+  await page.getByRole('button', { name: 'Revise selection', exact: true }).click()
+  await page.getByRole('button', { name: 'Apply to draft', exact: true }).click()
+  await page.getByRole('button', { name: 'Save version', exact: true }).click()
+  await page.getByText('Saved version 2.', { exact: false }).waitFor()
+  assert.equal(editor.revisions[0].start, 15)
+  assert.equal(editor.saves[0].content, '🌸 First line.\r\nA concise paragraph.\r\nKeep this section.')
+})

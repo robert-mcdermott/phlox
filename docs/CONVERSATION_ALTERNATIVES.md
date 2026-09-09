@@ -55,7 +55,8 @@ Newly completed answer artifacts have a bounded saved copy when the file is avai
   current workspace and can fail if the file was removed. Historical bytes cannot be
   reconstructed from an old link alone.
 - Workspace Files continues to show current files. A saved answer copy is separate from
-  an editable workspace file. This wave does not add an artifact editor or version diff UI.
+  an editable workspace file. [Editable artifacts](ARTIFACTS.md) adds version history,
+  selected-passage revision, comparison, and explicit workspace publication for text files.
 
 Snapshots remain private under the conversation's ownership checks. Source citations still
 obey their existing access/deletion/expiry rules; preserving an answer does not bypass them.

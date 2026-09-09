@@ -177,6 +177,7 @@ class Conversation(Base):
 
     sources: Mapped[list["Source"]] = relationship(cascade="all, delete-orphan")
     context_records: Mapped[list["ContextRecord"]] = relationship(cascade="all, delete-orphan")
+    editable_artifacts: Mapped[list["Artifact"]] = relationship(cascade="all, delete-orphan")
 
     runs: Mapped[list["Run"]] = relationship(cascade="all, delete-orphan")
 
@@ -214,6 +215,36 @@ class Message(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now, index=True)
 
     conversation: Mapped[Conversation] = relationship(back_populates="messages")
+
+
+class Artifact(Base):
+    """A conversation's versioned text output, independent of its live workspace."""
+    __tablename__ = 'artifacts'
+    __table_args__ = (UniqueConstraint('conversation_id', 'path_key'),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    conversation_id: Mapped[str] = mapped_column(ForeignKey('conversations.id', ondelete='CASCADE'), index=True)
+    path: Mapped[str] = mapped_column(String(1000))
+    path_key: Mapped[str] = mapped_column(String(64))
+    head_version_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    versions: Mapped[list["ArtifactVersion"]] = relationship(cascade='all, delete-orphan')
+
+
+class ArtifactVersion(Base):
+    """Immutable UTF-8 text; database backups include all versions."""
+    __tablename__ = 'artifact_versions'
+    __table_args__ = (UniqueConstraint('artifact_id', 'number'),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    artifact_id: Mapped[str] = mapped_column(ForeignKey('artifacts.id', ondelete='CASCADE'), index=True)
+    number: Mapped[int] = mapped_column(Integer)
+    content: Mapped[str] = mapped_column(Text)
+    sha256: Mapped[str] = mapped_column(String(64))
+    parent_version_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    origin: Mapped[str] = mapped_column(String(30))
+    source_message_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    details: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
 
 class Document(Base):

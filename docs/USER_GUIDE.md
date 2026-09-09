@@ -345,7 +345,12 @@ calls; unresolved approvals/runs must be handled first. See [Conversation altern
 Attach images for a vision model. Answers support Markdown, highlighted/copyable code,
 LaTeX math, and Mermaid diagrams. If a model writes files, open **Workspace Files** to browse
 and download them. HTML/Markdown artifacts can open in the resizable canvas with preview
-and source views. Workspace checkpoints let you restore file snapshots; they do not undo
+and source views. Select **Edit & versions** to edit text, request a selected-passage AI
+revision, compare saved versions, or restore earlier text. **Save version** preserves an
+independent copy; **Use in workspace** explicitly updates the agent's file after checking
+for intervening changes. Unsaved artifact drafts survive chat switches in memory but must
+be saved before browser refresh or logout. See [Editable artifacts](ARTIFACTS.md) for limits,
+provenance, and a manual test procedure. Workspace checkpoints let you restore file snapshots; they do not undo
 external tool actions or replace an application backup.
 
 The compact toolbar below the message field contains the **Chat / Research** selector
@@ -552,7 +557,7 @@ secret environment**. Enabling runs or citations does not require a fresh databa
    frontend (`npm ci` then `npm run build`) for production. The development launcher does
    not refresh existing frontend dependencies automatically after every lockfile change.
 4. Start normally. Checked Alembic migrations run before application bootstrap. Current
-   head is `0007_branches`; this includes conversation alternatives, projects and the earlier run/source migrations even with runs
+   head is `0008_artifacts`; this includes artifact versions, conversation alternatives, projects and the earlier run/source migrations even with runs
    disabled. Do not stamp a database manually or overwrite it with an empty one.
 5. Check `/api/readiness`, sign in, and verify an existing conversation and document.
 
@@ -601,6 +606,7 @@ and a representative document question after setup.
 | Server installation and containers | [DEPLOYMENT.md](DEPLOYMENT.md), [DOCKER.md](DOCKER.md) |
 | Model catalogs and provider setup | [MODEL_DISCOVERY.md](MODEL_DISCOVERY.md) |
 | Private projects and context inspection | [PROJECTS.md](PROJECTS.md) |
+| Conversation alternatives and editable output | [CONVERSATION_ALTERNATIVES.md](CONVERSATION_ALTERNATIVES.md), [ARTIFACTS.md](ARTIFACTS.md) |
 | Runs, approvals, document evidence | [RUNS.md](RUNS.md), [APPROVALS.md](APPROVALS.md), [SOURCES.md](SOURCES.md), [INGESTION.md](INGESTION.md) |
 | Accounts and Entra ID | [AUTH.md](AUTH.md) |
 | Execution environments | [SANDBOX.md](SANDBOX.md) |

@@ -422,8 +422,41 @@ limited to 32 MiB per file and 64 MiB per answer; older/missing/oversized files 
 current-workspace links. Retries incur normal usage and repeat tools only after current
 permission checks. Source snapshots retain their existing access and expiry rules.
 
-## Next wave — Editable, versioned artifacts
+## Wave 13 — Editable, versioned artifacts
 
-Build document editing, selected-section revision, version diffs and explicit restore on
-the preserved conversation and output foundations. Continue evaluating Research quality
-with configured models before increasing autonomy or making competitive quality claims.
+**Status:** implemented and verified, 2026-09-09.
+
+| Task | Delivered behavior | Acceptance |
+|---|---|---|
+| W13.1 — Retained versions | Private text artifacts with immutable SQL content, hashes, origins, source linkage and ancestry | New agent outputs are versioned; old answer snapshots import explicitly without replacing original bytes |
+| W13.2 — Canvas editing | Text editor, draft preview, version selector, bounded diffs, restore as a new version, version download | Earlier text survives edits/restores; drafts survive canvas/chat navigation in memory |
+| W13.3 — Selected-passage revision | One tool-free model call; proposal review, Apply/Discard and Stop | Only selection/instruction is supplied; budget/context/accounting and both guardrail directions apply; partial results never write |
+| W13.4 — Workspace publication | Separate Use in workspace action with expected-head/hash checks and busy guards | Stale edits and concurrent Phlox activity cannot silently replace current files; failed publication retains the saved version |
+| W13.5 — Upgrade and documentation | Additive `0008_artifacts`, frozen Wave 12 schema, operator/user guidance | Populated SQLite/Postgres upgrades and backup/restore preserve old data and new artifact content |
+
+See [Editable artifacts](ARTIFACTS.md) for usage, limits, upgrade notes and manual checks.
+
+**Verification:** 550 backend tests passed with disposable Postgres coverage enabled;
+one inapplicable SQLite case skipped. All 34 Chromium scenarios passed, including editor
+save/restore/download, explicit workspace updates, stale drafts, chat navigation/logout,
+proposal review/failure/Stop, Unicode and CRLF selection, and phone controls. Ruff, the
+frontend production build, local documentation links and `git diff --check` passed.
+Desktop and phone layouts were visually reviewed with synthetic artifacts. No live model
+credentials or user database were used for verification. Existing deprecation and
+bundle-size warnings remain; the guide includes configured-model manual checks.
+
+Boundaries: UTF-8 text up to 1 MiB per version; comparisons up to 2,000 lines per version
+and 128,000 displayed characters. Drafts are browser-memory-only; saving versions is explicit.
+AI revision is request-bound, tool-free and user-selected, with no automatic source checking
+or durable resume. Versions share a conversation/path across alternatives. External host
+writers do not participate in Phlox's process lock. Existing HTML preview network behavior
+is unchanged; rich binary previews, React builds, evidence bundles, sharing and automatic
+version expiry remain outside this wave.
+
+## Next wave — Output inspection and portable exports
+
+Continue the remaining bounded M3.3 work: CSV/table and PDF inspection, a deliberate preview
+network policy, and portable output bundles with clear source/provenance and access rules.
+Keep React/JSX builds separate until a pinned isolated build/runtime design is ready.
+Continue evaluating Research quality with configured models before increasing autonomy or
+making competitive quality claims.

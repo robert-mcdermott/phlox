@@ -11,8 +11,10 @@ Before each application model invocation, Phlox checks context fit and current a
 budget policy, then inserts a metadata-only `UsageLedger` row. If insertion fails, the
 provider is not dispatched. Each row carries a unique call ID (`message_id`), turn ID,
 optional parent call ID, actual model/profile, kind, identity snapshot, and price snapshot.
-Top-level rounds, fallback, compaction, child rounds, gateway requests, and connection
-probes use this seam. Child workers use independent short DB sessions and share their
+Top-level rounds, fallback, compaction, child rounds, gateway requests, connection
+probes, and selected-text artifact revisions use this seam. Artifact revisions use an
+`artifact_edit` kind and their own turn ID; their usage is included even when the proposal
+is discarded, without changing a chat answer's receipt. Child workers use independent short DB sessions and share their
 parent's turn ID; they do not share its SQLAlchemy session.
 
 Provider usage events are cumulative snapshots, committed as soon as received. Repeated

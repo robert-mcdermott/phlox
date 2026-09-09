@@ -21,7 +21,10 @@ explicit analysis handoff, plus generated-file reload isolation, session continu
 restart recovery/diagnostics. The first increment implements dev reload isolation and
 initial session/restart diagnostics: source reloads preserve the launcher signing secret,
 temporary outages retain login, and same-owner reauthentication reopens saved work.
-Completion, budget, evidence and analysis improvements remain planned; see the wave's
+The second increment adds bounded tool-free completion recovery, truthful incomplete
+outcomes, current generation settings for existing chats, and inspectable call limits/finish
+reasons. Larger research presets, evidence extraction and analysis improvements remain
+planned; see the wave's
 delivery record for verification and remaining restart boundaries.
 The wave log records verification and remaining limits. M3 has an initial delivery; M4–M5 remain proposed. Existing features and
 completed work are identified explicitly; unchecked entries do not yet ship.
@@ -302,7 +305,8 @@ scope must be a server-enforced constraint, including child tools and fallbacks.
   handling; semantic claim verification and live-model quality targets remain open.
   End with a useful partial result when the budget expires.
 
-**Next increment — Wave 14:** prioritize truthful synthesis completion/recovery and audit
+**Wave 14 in progress:** initial truthful synthesis completion/recovery and effective-setting
+diagnostics now ship; the remaining budget work audits
 output/reasoning limits alongside context, rounds and research allowances. Give substantial
 tasks sufficient model-aware completion room, with bounded adaptive extensions and synthesis
 continuation that preserves evidence rather than restarting the investigation. Distinguish

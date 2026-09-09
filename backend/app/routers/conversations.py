@@ -81,6 +81,12 @@ def update_conversation(
         old_membership = (conv.params or {}).get('project_membership')
         for field, value in body.model_dump(exclude_unset=True).items():
             setattr(conv, field, value)
+        if 'params' in body.model_fields_set:
+            supplied = body.params or {}
+            conv.params = {**supplied, '_generation_overrides': {
+                key: supplied[key] for key in ('temperature', 'max_tokens', 'max_context_tokens', 'max_tool_rounds')
+                if key in supplied and supplied[key] is not None
+            }}
         if conv.project_id != old_project:
             import uuid
             old_membership = uuid.uuid4().hex

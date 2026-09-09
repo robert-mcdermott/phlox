@@ -21,6 +21,10 @@ from app.usage_ledger import _identity_snapshot
 _retry = ContextVar("model_call_retry", default=None)
 
 
+class IncompleteStreamError(RuntimeError):
+    """Transport ended without a confirmed provider completion."""
+
+
 @dataclass(frozen=True)
 class CallScope:
     turn_id: str
@@ -76,7 +80,7 @@ def normalize_usage(raw):
         return None
     values = {}
     try:
-        for key in ("input", "output", "total", "cache_read", "cache_write"):
+        for key in ("input", "output", "total", "cache_read", "cache_write", "reasoning"):
             value = raw.get(key)
             if value is None:
                 continue
@@ -92,16 +96,20 @@ def normalize_usage(raw):
     total = values.get("total") or inp + out
     if total < inp + out or values.get("cache_read", 0) + values.get("cache_write", 0) > inp:
         return None
-    return {"input": inp, "output": out, "total": total, "_complete": complete,
-            "cache_read": values.get("cache_read", 0), "cache_write": values.get("cache_write", 0)}
+    result = {"input": inp, "output": out, "total": total, "_complete": complete,
+              "cache_read": values.get("cache_read", 0), "cache_write": values.get("cache_write", 0)}
+    if 'reasoning' in values and 'output' in values and values['reasoning'] <= out:
+        result['reasoning'] = values['reasoning']  # A subset of output, never an extra charge.
+    return result
 
 
 class _Call:
-    def __init__(self, scope, provider, call_id=None):
+    def __init__(self, scope, provider, call_id=None, diagnostics=None):
         self.id = call_id or f"call:{uuid.uuid4().hex}"
         self.rate = snapshot_rate(provider.model)
         self.usage = None
         self.invalid_report = False
+        self.diagnostics = deepcopy(diagnostics or {})
         with SessionLocal() as db:
             row = UsageLedger(
                 message_id=self.id, turn_id=scope.turn_id, conversation_id=scope.conversation_id,
@@ -109,6 +117,7 @@ class _Call:
                 profile=getattr(provider, "profile_name", None), model=provider.model,
                 call_kind=scope.kind, status="running", usage_status="unknown",
                 rate_snapshot=self.rate,
+                usage_details={"call": self.diagnostics},
                 **{k: v for k, v in _identity_snapshot(db, scope.user_id).items() if k != "user_id"},
             )
             db.add(row)
@@ -123,11 +132,14 @@ class _Call:
                 and not self.invalid_report else "partial"
             ) if self.usage else "unknown"
             if self.usage is not None:
-                row.usage_details = {k: v for k, v in self.usage.items() if not k.startswith("_")}
+                row.usage_details = {**{k: v for k, v in self.usage.items() if not k.startswith("_")},
+                                     "call": deepcopy(self.diagnostics)}
                 row.input_tokens = self.usage["input"]
                 row.output_tokens = self.usage["output"]
                 row.total_tokens = self.usage["total"]
                 row.cost_usd = call_cost(self.rate, self.usage)
+            else:
+                row.usage_details = {"call": deepcopy(self.diagnostics)}
             db.commit()
 
 
@@ -159,23 +171,44 @@ def stream_model(provider, messages, tools, params, scope, *, cancel_event=None,
 
     check_budget()
     from app.projects import record_call
-    record_call(scope, provider, fitted)
-    current = _Call(scope, provider, call_id)
+    call_id = call_id or f'call:{uuid.uuid4().hex}'
+    record_call(scope, provider, fitted, call_id=call_id)
+    diagnostics = {
+        **info, "max_context_tokens": int(params.get("max_context_tokens", 16000)),
+        "max_tool_rounds": params.get("max_tool_rounds"),
+        "profile_context_window": window,
+        "stage": params.get("_stage") if params.get("_stage") in {
+            'plan', 'gather', 'synthesize', 'completion_recovery', 'finalize',
+        } else 'generation',
+        "finish_reason": None,
+        "setting_sources": {k: v for k, v in params.get("_setting_sources", {}).items()
+                            if k in {"temperature", "max_tokens", "max_context_tokens", "max_tool_rounds"}
+                            and v in {"runtime", "assistant", "conversation_override", "approval_snapshot", "current_limit"}},
+    }
+    current = _Call(scope, provider, call_id, diagnostics)
+    provider_params = {k: v for k, v in params.items() if k not in {'_stage', '_setting_sources'}}
     status = "interrupted"
+    terminal = False
 
     def retry():
-        nonlocal current
+        nonlocal current, terminal
         current.save("failed")
         check_budget()
-        current = _Call(replace(scope, kind="retry", parent_call_id=current.id), provider)
+        current = _Call(replace(scope, kind="retry", parent_call_id=current.id), provider,
+                        diagnostics=diagnostics)
+        record_call(replace(scope, kind='retry'), provider, fitted, call_id=current.id)
+        terminal = False
 
     try:
-        with closing(provider.stream(fitted, tools, params)) as source:
+        with closing(provider.stream(fitted, tools, provider_params)) as source:
             while True:
                 token = _retry.set(retry)
                 try:
                     delta = next(source)
                 except StopIteration:
+                    if not terminal:
+                        current.diagnostics['finish_reason'] = 'incomplete_stream'
+                        raise IncompleteStreamError('Model stream ended without a completion signal. Saved output may be incomplete.') from None
                     status = "completed"
                     break
                 finally:
@@ -192,6 +225,18 @@ def stream_model(provider, messages, tools, params, scope, *, cancel_event=None,
                         current.save()
                     else:
                         current.invalid_report = True
+                if cancel_event is not None and cancel_event.is_set():
+                    status = "cancelled"
+                    return
+                if delta.type in {"done", "tool_calls"}:
+                    terminal = True
+                    reason = delta.stop_reason or ('tool_calls' if delta.type == 'tool_calls' else 'stop')
+                    current.diagnostics['finish_reason'] = reason if reason in {
+                        'stop', 'end_turn', 'stop_sequence', 'tool_calls', 'tool_use', 'length',
+                        'max_tokens', 'content_filter', 'guardrail_intervened', 'incomplete_stream',
+                    } else 'other'
+                    if reason == 'incomplete_stream':
+                        raise IncompleteStreamError('Model stream ended without a completion signal. Saved output may be incomplete.')
                 delta.call_id = current.id
                 if cancel_event is not None and cancel_event.is_set():
                     status = "cancelled"
@@ -199,6 +244,9 @@ def stream_model(provider, messages, tools, params, scope, *, cancel_event=None,
                 yield delta
     except GeneratorExit:
         status = "cancelled" if cancel_event is not None and cancel_event.is_set() else "interrupted"
+        raise
+    except IncompleteStreamError:
+        status = "interrupted"
         raise
     except Exception:
         status = "failed"

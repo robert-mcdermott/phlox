@@ -96,3 +96,23 @@ def generation_params(settings: dict[str, Any]) -> dict[str, Any]:
         "max_tool_rounds": settings["max_tool_rounds"],
         "max_context_tokens": settings["max_context_tokens"],
     }
+
+
+def resolve_generation(settings, assistant_params=None, conversation_params=None):
+    """Current settings for each new turn; old conversation params are historical seeds.
+
+    Explicit overrides are marked by the conversation PATCH API so they can be
+    distinguished from the identical-looking snapshots saved when chats were created.
+    """
+    params = generation_params(settings)
+    sources = dict.fromkeys(params, 'runtime')
+    assistant_params = assistant_params or {}
+    params.update(assistant_params)
+    sources.update({key: 'assistant' for key in sources if key in assistant_params})
+    overrides = (conversation_params or {}).get('_generation_overrides', {})
+    for key in sources:
+        if key in overrides:
+            params[key] = overrides[key]
+            sources[key] = 'conversation_override'
+    params['_setting_sources'] = sources
+    return params

@@ -375,7 +375,8 @@ def test_openai_compatibility_retry_is_metered_separately(db, scope):
         if len(seen) == 1:
             raise RuntimeError("does not support tools")
         return iter([SimpleNamespace(usage=SimpleNamespace(prompt_tokens=4, completion_tokens=2,
-                    total_tokens=6, prompt_tokens_details=SimpleNamespace(cached_tokens=2)), choices=[])])
+                    total_tokens=6, prompt_tokens_details=SimpleNamespace(cached_tokens=2)), choices=[
+                        SimpleNamespace(finish_reason='stop', delta=SimpleNamespace(content='Recovered answer.', tool_calls=None))])])
     provider = object.__new__(OpenAIProvider)
     provider.model, provider.supports_tools = "meter-model", True
     provider._client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))

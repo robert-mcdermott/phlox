@@ -219,8 +219,7 @@ class AgentSession:
         initial_decisions: dict[str, str] | None = None,
     ) -> Iterator[str]:
         max_rounds = int(self.params.get("max_tool_rounds", 12))
-        if self.research:
-            max_rounds = min(max_rounds, self.research.limits['rounds'])
+        research_rounds = min(max_rounds, self.research.limits['rounds']) if self.research else max_rounds
         enabled = self.allowed_tools if self.allowed_tools is not None else self.gate.enabled_names()
         tools = self.registry.specs(enabled_names=enabled)
 
@@ -252,23 +251,41 @@ class AgentSession:
                 return
 
         used_fallback = False
+        completion_text = ''
+        recovery_attempts = 0
+        completion_only = False
         for _round in range(self.rounds_used, max_rounds):
             if self._cancelled():
-                yield from self._finalize("", tool_steps, all_artifacts)
+                yield from self._finalize(completion_text, tool_steps, all_artifacts)
                 return
             if self.research:
                 from app.model_calls import turn_usage
-                instruction = self.research.before_round(self.rounds_used, max_rounds,
+                instruction = self.research.before_round(self.rounds_used, research_rounds,
                                                         turn_usage(self.accounting)['total'])
                 # Transient stage instructions are not persisted as user messages. End with
                 # a user turn for providers that disallow assistant-prefill continuations.
                 round_messages = deepcopy(messages)
                 round_messages[0]['content'] += '\n\nCurrent research stage: ' + instruction
                 round_messages.append({'role': 'user', 'content': 'Proceed with the current research stage.'})
-                round_tools = tools if self.research.phase == 'gather' else []
+                round_tools = [t for t in tools if t.name in self.research.available_tools()] if self.research.phase == 'gather' else []
                 yield self._research_event()
             else:
                 round_messages, round_tools = messages, tools
+            final_reserve = not self.research and max_rounds > 1 and self.rounds_used >= max_rounds - 1
+            if completion_only or final_reserve:
+                round_messages, round_tools = deepcopy(round_messages), []
+                if completion_text:
+                    round_messages.append({'role': 'assistant', 'content': completion_text})
+                round_messages.append({'role': 'user', 'content': (
+                    'Continue the unfinished answer exactly where it stopped, without repeating its text. '
+                    if completion_only and completion_text else
+                    'Write the final answer now from the work already performed. '
+                ) + 'Use the existing evidence; no more tools or new actions. Do not claim files or actions '
+                    'were completed unless the saved tool results confirm them. Explain any remaining gaps.'})
+            call_params = {**self.params, '_stage': (
+                'completion_recovery' if completion_only else
+                self.research.phase if self.research else 'finalize' if final_reserve else 'generation'
+            )}
             self.rounds_used += 1
             round_text = ""
             pending_calls: list[ToolCall] = []
@@ -289,7 +306,7 @@ class AgentSession:
                     from app.model_calls import stream_model
 
                     model_stream = stream_model(
-                        self.provider, provider_messages, round_tools, self.params,
+                        self.provider, provider_messages, round_tools, call_params,
                         replace(self.accounting, kind="fallback") if used_fallback else self.accounting,
                         cancel_event=self.cancel_event,
                     )
@@ -332,9 +349,12 @@ class AgentSession:
 
                                 totals = turn_usage(self.accounting)
                                 self.turn_usage = {k: totals[k] for k in ("input", "output", "total")}
+                                if self.research:
+                                    self.research.state['reported_tokens'] = totals['total']
                                 yield events.usage(u)
                             elif delta.type == "tool_calls":
                                 pending_calls = delta.tool_calls
+                                stop_reason = delta.stop_reason
                             elif delta.type == "done":
                                 stop_reason = delta.stop_reason
                     break  # round streamed successfully
@@ -342,6 +362,12 @@ class AgentSession:
                     # Fall back to a secondary provider if one is configured and we failed
                     # before producing any output this round (so we don't duplicate tokens).
                     from app.agent.context import ContextLimitError
+                    from app.model_calls import IncompleteStreamError
+
+                    if isinstance(e, IncompleteStreamError):
+                        stop_reason = 'incomplete_stream'
+                        pending_calls = []  # No action from an unconfirmed stream may run.
+                        break
 
                     if (self.fallback_provider and not used_fallback and not streamed_any
                             and not round_text and not isinstance(e, ContextLimitError)):
@@ -361,7 +387,7 @@ class AgentSession:
                     logger.exception("Provider stream error")
                     self.outcome = "failed"
                     yield events.error(f"Model error: {e}")
-                    yield from self._finalize(round_text, tool_steps, all_artifacts)
+                    yield from self._finalize(completion_text + round_text, tool_steps, all_artifacts)
                     return
 
             # Drain the guardrails redactors: emit the held-back tail (or discover a
@@ -389,19 +415,80 @@ class AgentSession:
                 )
                 round_text += note
                 yield events.token(note)
-                yield from self._finalize(round_text, tool_steps, all_artifacts)
+                yield from self._finalize(completion_text + round_text, tool_steps, all_artifacts)
                 return
 
-            # The turn hit the output-token limit before finishing (common with heavy
-            # "thinking" models or large file output) — make it visible, not silent.
-            if stop_reason in ("length", "max_tokens"):
-                note = (
-                    "\n\n> ⚠️ **Response was cut off at the max-tokens limit** before completing"
-                    " (the model may have spent the budget on reasoning and/or large output)."
-                    " Increase **Max tokens** in Settings → Model and try again."
-                )
-                round_text += note
+            if self._cancelled():
+                yield from self._finalize(completion_text + round_text, tool_steps, all_artifacts)
+                return
+
+            if stop_reason in {'content_filter', 'guardrail_intervened'}:
+                self.outcome = 'blocked'
+                note = '\n\nResponse stopped by the provider’s content policy. No further actions were executed.'
                 yield events.token(note)
+                yield from self._finalize(completion_text + round_text + note, tool_steps, all_artifacts)
+                return
+
+            if stop_reason not in {None, 'stop', 'end_turn', 'stop_sequence', 'tool_use', 'tool_calls',
+                                   'length', 'max_tokens', 'incomplete_stream'}:
+                self.outcome = 'failed'
+                note = '\n\nResponse incomplete: the provider ended with an unsupported completion reason. No further actions were executed.'
+                yield events.token(note)
+                yield from self._finalize(completion_text + round_text + note, tool_steps, all_artifacts)
+                return
+
+            # Complete text can continue safely with no tools. Never execute a tool
+            # batch whose provider finish reason indicates truncation/interruption.
+            incomplete = stop_reason in {'length', 'max_tokens', 'incomplete_stream'}
+            if (completion_only and completion_text and round_text.startswith(completion_text)
+                    and len(round_text) > len(completion_text)):
+                # Some models restart their answer despite the continuation instruction.
+                # Keep an exact repeated prefix only once in the canonical saved answer.
+                round_text = round_text[len(completion_text):]
+            empty = not round_text.strip() and not pending_calls
+            no_progress = bool(completion_only and completion_text and round_text.strip()
+                               and round_text.strip() in completion_text)
+            if incomplete or empty or no_progress:
+                reason = stop_reason if incomplete else 'no_progress' if no_progress else 'empty_response'
+                if not no_progress:
+                    completion_text += round_text
+                # Each call flushes its output redactor. Joining two separately
+                # checked streams could reconstruct a sensitive match at the seam.
+                can_recover = (not guardrails_out and not pending_calls
+                               and (not self.research or self.research.phase == 'synthesize')
+                               and recovery_attempts < 2 and self.rounds_used < max_rounds and not no_progress)
+                if can_recover:
+                    recovery_attempts += 1
+                    if self.research:
+                        self.research.state['recovery_calls'] = recovery_attempts
+                    self.completion = {'reason': reason, 'recovery_calls': recovery_attempts, 'recovered': False}
+                    completion_only = True
+                    yield events.status('Continuing the unfinished answer from saved work; no tools will be repeated…')
+                    continue
+                self.outcome = 'limit_reached' if reason in {'length', 'max_tokens'} else 'failed'
+                self.completion = {'reason': reason, 'recovery_calls': recovery_attempts, 'recovered': False}
+                note = ('\n\nResponse incomplete: ' + (
+                    'the model reached its output-token limit. Increase Max output tokens in Settings → Model.'
+                    if reason in {'length', 'max_tokens'} else
+                    'the model returned no usable continuation or ended without confirming completion.'
+                ) + ' Saved output and tool results are retained. Continue in Chat to reuse the saved work.'
+                    + (' The unfinished tool request was not executed.' if pending_calls else '')
+                    + (' Automatic continuation is unavailable while output guardrails are active.'
+                       if guardrails_out else ''))
+                yield events.token(note)
+                yield from self._finalize(completion_text + note, tool_steps, all_artifacts)
+                return
+
+            if completion_only or final_reserve:
+                if pending_calls:
+                    self.outcome = 'limit_reached'
+                    note = '\n\nResponse incomplete: the model requested additional tools during final completion. No further actions were executed. Continue from the saved work after adjusting the round limit if needed.'
+                    yield events.token(note)
+                    yield from self._finalize(completion_text + round_text + note, tool_steps, all_artifacts)
+                    return
+                round_text = completion_text + round_text
+                if completion_only:
+                    self.completion['recovered'] = True
 
             if self.research:
                 if self._cancelled():
@@ -409,6 +496,7 @@ class AgentSession:
                     return
                 if self.research.phase == 'synthesize':
                     if pending_calls:
+                        self.outcome = 'limit_reached'
                         round_text += '\n\nResearch ended: the model requested more tools instead of completing the report. No further actions were executed.'
                     if not self._has_research_evidence():
                         round_text += '\n\nNo supporting passages were retained in this research run. Treat the report as unverified.'
@@ -443,7 +531,7 @@ class AgentSession:
 
         self.outcome = "limit_reached"
         yield from self._finalize(
-            "I reached the tool-call limit before finishing. Please refine the request.",
+            "I reached the configured model-pass limit before finishing. Saved tool results and output are retained. Increase Max tool rounds in Settings → Model, then continue from the saved work.",
             tool_steps,
             all_artifacts,
         )
@@ -809,12 +897,17 @@ class AgentSession:
             self.outcome = "completed"
         if self.ephemeral:
             self.final_text = final_text
-            yield events.done("")
+            yield events.done("", outcome=self.outcome)
             return
+        if self.outcome != 'completed' and not final_text.strip():
+            final_text = 'The response did not complete. Review the saved progress and tool results before continuing.'
 
         from app.model_calls import turn_usage
 
         usage = turn_usage(self.accounting)
+        usage['outcome'] = self.outcome
+        if hasattr(self, 'completion'):
+            usage['completion'] = self.completion
         from app.models import ContextRecord
         record = self.db.get(ContextRecord, self.accounting.turn_id)
         if record:
@@ -827,7 +920,8 @@ class AgentSession:
                 final_text = ('Research ended before a complete report was written. '
                               'The collected passages remain available for inspection: '
                               + (', '.join('[' + r['label'] + ']' for r in refs) if refs else 'none were retained.')
-                              + '\n\nNo complete conclusion was reached. Start a new Research turn to continue.')
+                              + ('\n\nSaved partial output:\n' + final_text if final_text.strip() else '')
+                              + '\n\nNo complete conclusion was reached. Continue in Chat to reuse the saved work.')
             self.research.state['phase'] = self.outcome
             self.research.state['finished_at'] = time.time()
             usage['research'] = self.research.progress(dict(usage), len(self._source_refs()))

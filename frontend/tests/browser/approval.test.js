@@ -80,7 +80,11 @@ async function fixture(t, { approval = null, auth = false, durable = false } = {
       state.contextReads.push('turn-project')
       return json({ project_name: 'Infrastructure', profile: 'test', model: 'test-model', history_messages: 0,
         base_instructions: 'Be helpful.', instructions: 'Prefer repairable equipment.', memories: [],
-        calls: [{ profile: 'test', model: 'test-model', kind: 'chat', source_ids: ['source-project'], project_instructions_present: true }],
+        calls: [{ profile: 'test', model: 'test-model', kind: 'chat', source_ids: ['source-project'], project_instructions_present: true,
+          diagnostics: { stage: 'completion_recovery', status: 'completed', finish_reason: 'stop',
+            input_tokens: 2000, reserved_output_tokens: 4000, max_context_tokens: 32000,
+            max_tool_rounds: 20, trimmed: true, reasoning_tokens: 500,
+            setting_sources: { max_tokens: 'runtime', max_context_tokens: 'assistant' } } }],
         sources: [{ id: 'source-project', label: 'S1', title: 'Network notes', available: true, excerpt: 'Retain local backups for 30 days.' }] })
     }
     if (path.startsWith('/api/conversations/alpha/sources/')) {
@@ -274,6 +278,26 @@ async function openApproval(page) {
   await page.getByText('Approval chat', { exact: true }).click()
   await page.getByText('Approval needed', { exact: true }).waitFor()
 }
+
+test('saved answer outcomes and effective model limits remain inspectable', async (t) => {
+  const { page, state } = await fixture(t)
+  state.messages.push({ id: 'incomplete-answer', role: 'assistant', content: 'Saved partial finding.',
+    usage: { turn_id: 'turn-project', outcome: 'limit_reached', total: 120,
+      completion: { reason: 'length', recovered: false, recovery_calls: 2 } } })
+  await page.getByText('Approval chat', { exact: true }).click()
+  await page.getByText('Response incomplete — limit reached. Saved progress is retained.', { exact: true }).waitFor()
+  await page.getByRole('button', { name: 'Context record', exact: true }).click()
+  await page.getByText('Model calls', { exact: true }).click()
+  await page.getByText(/Output reserve: 4,000 · Context limit: 32,000 · tool output shortened/).waitFor()
+  await page.getByText(/finish: stop/).waitFor()
+  await page.getByText('Output: current settings/defaults', { exact: true }).waitFor()
+  state.messages.at(-1).usage = { ...state.messages.at(-1).usage, outcome: 'completed',
+    completion: { reason: 'length', recovered: true, recovery_calls: 1 } }
+  await page.getByText('Other chat', { exact: true }).click()
+  await page.getByText('Approval chat', { exact: true }).click()
+  await page.getByText('Answer completed after automatic continuation.', { exact: true }).waitFor()
+  assert.equal(await page.getByText('Response incomplete — limit reached. Saved progress is retained.', { exact: true }).count(), 0)
+})
 
 for (const [path, failure] of [['config', '503'], ['me', '503'], ['me', 'network']]) {
   test(`startup ${path} ${failure} preserves the session until connection retry`, async (t) => {

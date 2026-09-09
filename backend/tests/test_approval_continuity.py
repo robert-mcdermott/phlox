@@ -129,6 +129,23 @@ def test_lowered_current_limit_blocks_excess_pending_actions(client, db, approva
     assert approval["executed"] == []
 
 
+def test_approval_rechecks_output_and_context_without_extending_saved_limits(client, db, approval, monkeypatch):
+    from app.routers import chat
+    p = approval['pending']
+    saved = copy.deepcopy(p.state)
+    saved['params'].update(max_tokens=1000, max_context_tokens=6000, max_tool_rounds=3)
+    p.state = saved
+    db.commit()
+    monkeypatch.setattr(chat, 'get_settings', lambda *a: {'max_tokens': 500, 'max_context_tokens': 4000, 'max_tool_rounds': 50})
+    response = submit(client, p)
+    pending_id = next(e['pending_id'] for e in frames(response) if e['type'] == 'paused')
+    db.expire_all()
+    params = db.get(PendingApproval, pending_id).state['params']
+    assert params['max_tokens'] == 500 and params['max_context_tokens'] == 4000
+    assert params['max_tool_rounds'] == 3
+    assert params['_setting_sources']['max_tokens'] == 'current_limit'
+
+
 @pytest.mark.parametrize("decisions", [{}, {"extra": "allow"}, {"call-1": "yes"},
                                         {"call-1": "allow", "extra": "deny"}])
 def test_decisions_must_be_exact_and_valid(client, db, approval, decisions):

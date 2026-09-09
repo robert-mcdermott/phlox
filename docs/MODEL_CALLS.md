@@ -24,6 +24,12 @@ Stop, or consumer closure. Call status is `running`, `completed`, `failed`, `can
 `interrupted`; usage status is independently `reported`, `partial`, or `unknown`.
 A process killed before cleanup leaves a running row with unknown or partial usage.
 
+A provider EOF without a terminal signal is now recorded as interrupted, not completed.
+Provider output-limit termination can still be a completed *call* with reported usage;
+it is not a completed *answer*. Message receipts separately record the task `outcome` and
+bounded completion-recovery attempts. Reported reasoning tokens, when available, are a
+subset of output tokens and are never added to usage or cost a second time.
+
 Explicit OpenAI compatibility retries get separate rows linked to their preceding call.
 SDK-internal transport retries are opaque: this is application-call accounting, not an
 invoice-grade log of every HTTP attempt. Failed attempts without provider usage remain
@@ -78,9 +84,52 @@ with an actionable context-limit error; fallback does not bypass it. Compaction 
 own bounded prompt. Long-history compaction remains a separate earlier heuristic and
 does not promise to summarize every oversized request automatically.
 
+## Effective settings and completion recovery
+
+New turns, including turns in existing chats and regeneration, resolve current runtime
+generation settings, then assistant overrides, then explicit conversation overrides. The
+same resolved context window (also bounded by the profile) drives pre-run compaction and
+the final fit check. A truncated compaction summary never replaces the original history.
+Queued durable runs resolve settings when they begin execution. In-flight turns retain
+their prepared parameters. Approval resumes retain saved allowances and apply stricter
+current user/assistant/conversation output, context and round limits; they cannot extend a
+saved allowance or reset cumulative rounds.
+
+Old `Conversation.params` values are historical creation snapshots, not persistent
+generation overrides. This fixes old chats retaining a stale round limit when the user
+changes Settings. API clients can explicitly override generation values through
+`PATCH /api/conversations/{id}` with `params`; these overrides are now marked separately
+and apply consistently to output, context, temperature and rounds. Clients relying on an
+older unmarked custom value should submit that override again. `params: null` clears the
+generation overrides. Conversation model/profile selection keeps its existing behavior.
+
+Ordinary agent tasks with more than one allowed pass reserve their last pass for a final
+answer without tools. Unfinished ordinary text or Research synthesis can continue from
+the retained answer and existing evidence with up to two additional **tool-free** calls,
+only when room remains under the effective Max tool rounds setting. Recovery does not
+increase per-call output/context limits, bypass budget checks or ignore Stop. It never
+executes truncated tool requests, retries uncertain actions or restarts gathering. Repeated
+empty/no-progress output, unavailable context, exhausted rounds and provider/policy failures
+leave a clear incomplete outcome with saved progress. Automatic continuation does not
+guarantee semantic completeness; artifact/workflow verification remains Wave 14 work.
+Automatic continuation is disabled when output guardrail rules are active: joining two
+separately checked streams could reconstruct sensitive text at their boundary. The partial
+answer remains explicitly incomplete and can be continued in a separate Chat turn.
+
+For new calls, `UsageLedger.usage_details.call` stores metadata from the model-call seam:
+effective context/output/round limits, configured profile context cap, original/fitted input
+estimates, trimming, stage, setting origin and provider finish reason. No prompt, tool body
+or secret is stored there. `runtime` means merged user settings/deployment defaults; it
+does not distinguish those two origins. Adapter/SDK-internal behavior remains outside this
+record. Under an answer, open **Context record → Model calls** to inspect linked call
+diagnostics and reported reasoning usage. Legacy calls without this metadata stay unknown;
+the records do not reconstruct their historic limits. Private context access still requires
+conversation ownership, including for admins.
+
 ## Upgrade and verification
 
-Wave 3 introduced nullable ledger columns through the old additive upgrade. Wave 4 now
+Wave 14 diagnostics use existing JSON metadata; no schema migration is required. Wave 3
+introduced nullable ledger columns through the old additive upgrade. Wave 4 now
 uses a checked Alembic baseline and preserves existing rows; see
 [BACKUP_RESTORE.md](BACKUP_RESTORE.md). Worker recovery, call-level admin inspection UI,
 and provider invoice reconciliation remain later work.

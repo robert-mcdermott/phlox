@@ -293,6 +293,22 @@ summarizes older history, and estimated fit checks can reject oversized requests
 sending. Round limits are cumulative across approval resumes. [MODEL_CALLS.md](MODEL_CALLS.md)
 explains estimation, provider ceilings, retries, fallback, and accounting boundaries.
 
+Generation changes apply to the next turn in existing chats as well as new chats; assistant
+and explicit conversation overrides take precedence. Approval resumes can adopt stricter
+limits but never extend the saved allowance. Ordinary agents reserve a final tool-free pass
+when more than one pass is allowed. Empty/truncated answers can use up to two tool-free
+continuation calls within the effective round limit, retaining the answer and collected
+evidence. No truncated tool request is executed. Stop still prevents further calls.
+When output guardrail rules are active, automatic continuation is unavailable; Phlox keeps
+the partial answer marked incomplete so text cannot bypass checks across joined responses.
+
+Saved answers show whether completion recovered or remains incomplete. Open **Context record
+→ Model calls** for effective output/context/round limits, their setting origins, trimming
+and provider finish reasons. Research's separate gathering presets are unchanged; increasing
+Max tool rounds does not enlarge search/read/time/token allowances. If a limit still prevents
+completion, review the saved work and its diagnostic before changing that limit and continuing
+in Chat. A new Research request starts from its own question and selected sources.
+
 ## Appearance
 
 Open **Settings → Appearance** to choose from 18 color themes. Each card previews

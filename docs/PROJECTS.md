@@ -82,6 +82,11 @@ model calls, selected memories, and complete retained passages found in fitted o
 inputs. Calls can include compaction, fallback models, and delegated work. The record
 does not prove that a remote provider processed a request.
 
+New call records also link to effective output/context/round limits, setting origins,
+trimming, stage and finish reasons under **Model calls**. Reported reasoning usage is shown
+when available. Historical calls without that metadata are left unknown. See
+[Model-call accounting](MODEL_CALLS.md) for setting precedence and completion recovery.
+
 Prepared documents are not the same as passages supplied to a model. A tool may gather a
 source before cancellation or before context fitting omits/shortens it. Only complete
 retained excerpts detected in outbound input are listed as supplied. Guardrail redaction

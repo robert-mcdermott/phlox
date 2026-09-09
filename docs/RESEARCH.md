@@ -34,7 +34,7 @@ research workflow.
 
 ## Depth and limits
 
-| Preset | Total model passes | Search calls (web + documents) | Page fetch attempts | Gathering time | Reported-token threshold |
+| Preset | Planned model passes | Search calls (web + documents) | Page fetch attempts | Gathering time | Reported-token threshold |
 |---|---:|---:|---:|---:|---:|
 | Brief | 5 | 3 | 4 | 2 minutes | 20,000 |
 | Standard | 8 | 6 | 8 | 5 minutes | 40,000 |
@@ -42,12 +42,21 @@ research workflow.
 
 A lower user round limit wins. The pass allowance includes planning and a reserved final
 synthesis pass. Duplicate tool requests are not repeated; failures consume attempts too.
+If synthesis is empty, truncated or ends without a completion signal, up to two tool-free
+recovery calls may continue it using existing evidence. They can exceed the preset's
+planned pass count only if they remain within the effective **Max tool rounds** setting.
+They do not increase the per-call output/context limits or repeat searches and page reads.
+With output guardrail rules active, automatic continuation is disabled to avoid joining
+separately checked text into an unchecked sensitive match; the answer remains incomplete.
 Gathering stops admitting reads at its limits, and the next pass writes from the available
 evidence. Planning and synthesis advertise no tools, and unexpected calls in those stages
 are never executed. Search and page fetches also have their own transport limits.
+Exhausted search/read tools are removed from the next advertised tool list, and gathering
+instructions report remaining allowances. Reported usage from the current model call is
+checked before admitting its requested reads, not only before the next model call.
 
 Time and reported-token thresholds are checked between operations. An in-flight provider
-request can take longer, and final synthesis adds time/tokens. Unknown provider usage cannot
+request can take longer, and final synthesis/recovery add time/tokens. Unknown provider usage cannot
 be treated as zero. These thresholds and the displayed model costs **are not a guaranteed
 invoice ceiling**. Search API credits are separate from model accounting. Provider retries
 and fallback behavior retain the [model-call accounting limits](MODEL_CALLS.md).
@@ -64,7 +73,16 @@ unverified; unavailable sources remain explicitly unavailable in the source draw
 **Stop** requests cancellation and prevents subsequent tool/model calls, including synthesis.
 A provider or DDG request already in flight may return before cancellation completes. A
 stopped or failed run retains collected source references and explains that the report was
-not completed. Nothing is automatically retried after an uncertain interruption.
+not completed. Unfinished text may recover within the active turn as described above;
+uncertain tool actions and interrupted server runs are never automatically replayed.
+
+Saved answers show an incomplete outcome when recovery cannot finish, or an automatic
+continuation notice after successful recovery. **Context record → Model calls** shows the
+actual per-call limits, trimming and finish reasons. Increasing Settings now applies to the
+next turn in existing chats too, subject to assistant/explicit conversation overrides.
+Continue in normal Chat to reuse saved conversation work; a new Research turn still starts
+from its current question and selected sources. Preset calibration and configurable larger
+investigation budgets remain planned; the preset numbers above have not been increased.
 
 With [reconnectable runs](RUNS.md) enabled, research events and approval state survive chat
 switches and refreshes. Without runs, keep the chat open: its existing request-bound

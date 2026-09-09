@@ -578,13 +578,8 @@ def prepare_chat(req, db, user, cancel_event, run_id=None, tool_observer=None):
             accounting.turn_id,
         )
 
-    params = {
-        **generation_params(settings),
-        **((assistant.params if assistant else None) or {}),
-        "max_tool_rounds": (conversation.params or {}).get(
-            "max_tool_rounds", settings["max_tool_rounds"]
-        ),
-    }
+    from app.runtime_settings import resolve_generation
+    params = resolve_generation(settings, assistant.params if assistant else None, conversation.params)
 
     if research and int(params['max_tool_rounds']) < 3:
         raise HTTPException(422, 'Research needs at least three model passes. Increase Max tool rounds in Settings → Model.')
@@ -685,7 +680,8 @@ def prepare_chat(req, db, user, cancel_event, run_id=None, tool_observer=None):
             # Compact long histories to stay within the per-user context budget.
             compacted, did = compact_history(
                 ScopedProvider(provider, replace(accounting, kind="compaction"), cancel_event=cancel_event),
-                history, int(settings["max_context_tokens"]),
+                history, min(int(params["max_context_tokens"]),
+                             int(getattr(provider, 'context_window', None) or params['max_context_tokens'])),
             )
             if did:
                 yield events.status("Summarizing earlier context…")
@@ -854,16 +850,19 @@ def prepare_approval(req, db, user, cancel_event, validate_only=False, tool_obse
         allowed_tools.discard("search_documents")
     if not caps.get("tools", True):
         allowed_tools &= {"web_search", "search_documents"}
-    # A newly lowered per-user round limit can restrict a paused run, never extend it.
+    # A newly lowered effective limit can restrict a paused run, never extend it.
     params = dict(state.get("params", {}))
     current_settings = get_settings(db, user.id)
-    params["max_context_tokens"] = min(
-        int(params.get("max_context_tokens", current_settings.get("max_context_tokens", 16000))),
-        int(current_settings.get("max_context_tokens", 16000)),
-    )
-    params["max_tool_rounds"] = min(
-        int(params.get("max_tool_rounds", 12)), int(current_settings["max_tool_rounds"])
-    )
+    assistant_limits = (assistant.params if assistant else None) or {}
+    overrides = (conversation.params or {}).get('_generation_overrides', {})
+    origins = dict.fromkeys(('temperature', 'max_tokens', 'max_context_tokens', 'max_tool_rounds'), 'approval_snapshot')
+    for key, default in [('max_context_tokens', 16000), ('max_tokens', 4096), ('max_tool_rounds', 12)]:
+        saved = int(params.get(key, current_settings.get(key, default)))
+        params[key] = min(saved, int(current_settings.get(key, saved)),
+                          int(assistant_limits.get(key, saved)), int(overrides.get(key, saved)))
+        if params[key] < saved:
+            origins[key] = 'current_limit'
+    params['_setting_sources'] = origins
     from app.model_calls import CallScope
 
     accounting = CallScope(state.get("turn_id") or pending.id, conversation.id, user.id)

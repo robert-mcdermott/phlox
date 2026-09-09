@@ -23,6 +23,7 @@ def _usage_dict(usage) -> dict[str, int]:
         "output": getattr(usage, "completion_tokens", None),
         "total": getattr(usage, "total_tokens", None),
         "cache_read": getattr(getattr(usage, "prompt_tokens_details", None), "cached_tokens", None),
+        "reasoning": getattr(getattr(usage, "completion_tokens_details", None), "reasoning_tokens", None),
     }
 
 
@@ -173,9 +174,10 @@ class OpenAIProvider(LLMProvider):
                 except json.JSONDecodeError:
                     args = None  # Invalid JSON must fail schema validation, never dispatch as {}.
                 calls.append(ToolCall(id=slot["id"] or slot["name"], name=slot["name"], arguments=args))
-            yield StreamDelta(type="tool_calls", tool_calls=calls)
+            yield StreamDelta(type="tool_calls", tool_calls=calls,
+                              stop_reason=finish_reason or "incomplete_stream")
         else:
-            yield StreamDelta(type="done", stop_reason=finish_reason or "stop")
+            yield StreamDelta(type="done", stop_reason=finish_reason or "incomplete_stream")
 
     def _open_stream(self, kwargs: dict):
         """Create the streaming response, retrying without tools if the model rejects

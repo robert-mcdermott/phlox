@@ -77,7 +77,8 @@ class Research:
         domains = self.state['options']['domains']
         return query + (' (' + ' OR '.join('site:' + d for d in domains) + ')' if domains else '')
 
-    def exhausted(self, tokens=0):
+    def exhausted(self, tokens=None):
+        tokens = self.state.get('reported_tokens', 0) if tokens is None else tokens
         if time.time() - self.state['started_at'] >= self.limits['seconds']:
             return 'Research time budget reached; reporting the available evidence.'
         if tokens >= self.limits['tokens']:
@@ -85,7 +86,10 @@ class Research:
         return ''
 
     def before_round(self, rounds_used, max_rounds, tokens):
+        self.state['reported_tokens'] = tokens
         reason = self.exhausted(tokens)
+        if self.phase == 'gather' and not self.available_tools():
+            reason = reason or 'Research search/read allowances exhausted; reporting the available evidence.'
         if self.phase != 'synthesize' and (reason or rounds_used >= max_rounds - 1):
             self.state.update(phase='synthesize', reason=reason or 'Research pass limit reached.')
         if self.phase == 'plan':
@@ -93,7 +97,18 @@ class Research:
         if self.phase == 'synthesize':
             return ('Write the final cited report now from the evidence already collected. No more tool calls. '
                     + (self.state['reason'] or 'Include gaps and disagreements.'))
-        return 'Gather and cross-check evidence for the plan using the selected sources. When ready, give a short handoff for final synthesis.'
+        return ('Gather and cross-check evidence for the plan using the selected sources. '
+                f"Remaining: {max(0, self.limits['searches'] - self.state['searches'])} searches, "
+                f"{max(0, self.limits['reads'] - self.state['reads'])} page reads, "
+                f'{max(0, max_rounds - rounds_used - 1)} gathering passes before reserved synthesis. '
+                'When ready, give a short handoff for final synthesis.')
+
+    def available_tools(self):
+        if self.exhausted():
+            return set()
+        return {name for name in self.allowed_tools()
+                if self.state['reads' if name == 'web_fetch' else 'searches']
+                < self.limits['reads' if name == 'web_fetch' else 'searches']}
 
     def advance(self, text):
         if self.phase == 'plan':
@@ -124,4 +139,5 @@ class Research:
         return {**{k: self.state[k] for k in ('phase', 'started_at', 'searches', 'reads', 'plan', 'reason')},
                 'scope': self.state['options']['scope'], 'depth': self.state['options']['depth'],
                 'finished_at': self.state.get('finished_at'),
+                'recovery_calls': self.state.get('recovery_calls', 0),
                 'limits': self.limits, 'source_count': source_count, 'usage': usage or {}}

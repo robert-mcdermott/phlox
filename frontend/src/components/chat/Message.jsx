@@ -154,6 +154,10 @@ export default function Message({ message, conversationId, isLast }) {
     <div className="group flex justify-start">
       <div className="w-full max-w-[85%]">
         <ResearchProgress research={message.research || message.usage?.research} />
+        {message.usage?.outcome && message.usage.outcome !== 'completed' && <p role="status" className="mb-2 text-xs text-muted">
+          Response {message.usage.outcome === 'limit_reached' ? 'incomplete — limit reached' : message.usage.outcome}. Saved progress is retained.
+        </p>}
+        {message.usage?.completion?.recovered && <p className="mb-2 text-xs text-muted">Answer completed after automatic continuation.</p>}
         {message.thinking && <Thinking text={message.thinking} />}
         <ToolCallGroup calls={toolCalls} />
         {message.content && (

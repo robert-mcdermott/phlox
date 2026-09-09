@@ -143,7 +143,10 @@ export default function ProviderSettings() {
       <p className="mt-1 text-xs text-muted">
         <b>Max output tokens</b> caps a single response (raise it for large files or
         heavy-reasoning models). <b>Max context tokens</b> is the conversation size sent
-        each turn — older turns are summarized beyond it.
+        each turn, including the output reservation. Settings apply to new turns in existing
+        chats; assistant or explicit conversation overrides take precedence. <b>Max tool rounds</b>
+        bounds model passes, including final completion and up to two tool-free recovery calls.
+        Research has separate gathering allowances; raising this setting does not raise them.
       </p>
     </div>
   )

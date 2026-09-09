@@ -455,7 +455,7 @@ version expiry remain outside this wave.
 
 ## Wave 14 — General reliability and task completion
 
-**Status:** in progress; first increment implemented 2026-09-09. **Scope:** application/session/run
+**Status:** in progress; first and second increments implemented 2026-09-09. **Scope:** application/session/run
 reliability across Chat and Research, M2.3 evidence quality and completion budgets, with a
 bounded bridge to M3 deliverables. Schedule ahead of output inspection and portable exports.
 The delivery record below distinguishes implemented changes from the remaining plan.
@@ -491,12 +491,50 @@ retain partial progress and preserve completed outcomes. Diagnostics have redact
 coalescing tests. Native Windows launcher execution and external collector delivery were
 not tested; both launcher command selections are checked.
 
-**Still pending:** W14.1–W14.8 (completion/recovery, effective budgets, extraction, working
-context and analysis/deliverables), plus full process-level signal/draining/deadline work in
+**Second increment — truthful answers and effective generation settings:**
+
+- **W14.1 initial delivery:** empty/reasoning-only answers, output-limit termination and
+  streams without a provider completion signal cannot silently become successful reports.
+  Up to two tool-free continuation calls retain the partial answer and existing evidence
+  within the effective generic round ceiling. Recovery never repeats gathering or executes
+  unfinished tool requests; Stop, current policy and model-call accounting still apply.
+  Repeated empty/no-progress output stops with a clear incomplete outcome. Ordinary agents
+  with more than one pass reserve their last pass for an answer without tools. Saved answers
+  display incomplete outcomes or successful recovery. Truncated compaction summaries never
+  replace retained history.
+- **W14.5 initial delivery:** current generation settings now apply consistently to new turns
+  in existing chats, subject to assistant and explicitly marked conversation overrides.
+  Compaction observes the resolved context allowance and profile cap. Approval resumes can
+  adopt stricter current output/context/round limits without extending their saved allowance.
+  Legacy unmarked conversation parameters are treated as creation seeds; API clients with
+  intentional custom values should PATCH those overrides again. Research removes exhausted
+  tools and checks cumulative reported usage before admitting reads requested by a model call.
+- **Private diagnostics:** existing ledger/context JSON records link effective limits, setting
+  origins, input fitting, stage and finish reason to each call. **Context record → Model calls**
+  exposes these details without copying prompts or tool bodies. Provider-reported reasoning
+  counts remain a subset of output, never an additional charge. No migration is required.
+- **Boundaries:** Research gathering presets are unchanged. Recovery may exceed their planned
+  pass count but never the effective generic round limit. Output guardrail rules disable
+  automatic continuation because separately checked streams must not reconstruct sensitive
+  text at their boundary; separate Chat turns retain the incomplete answer and evidence.
+  Exact repeated answer prefixes are removed from the saved result; semantic completeness
+  and general duplicate detection are not guaranteed. Recovery occurs within the active turn,
+  with no automatic replay after worker loss.
+
+**Second-increment verification:** backend lint and suite (561 passed, 24 skipped), frontend
+production build and all 41 Chromium browser regressions. Scripted tests cover bounded
+recovery, Stop, empty/reasoning-only output, no progress, retained citations without repeated
+fetching, incomplete OpenAI/Bedrock tool streams, output guardrail boundaries, current settings
+in old chats, stricter approval resumes, exhausted reads and reasoning accounting. The
+browser regression inspects saved outcomes and effective call limits. No live provider or
+long-form research evaluation was performed.
+
+**Still pending:** remaining W14.1/W14.5 calibration and recovery UX, W14.2–W14.4 and
+W14.6–W14.8 (extraction, working context and analysis/deliverables), plus full process-level signal/draining/deadline work in
 W14.11. A stalled tool or open event stream can still delay graceful shutdown. No automatic
 replay of uncertain actions, session refresh protocol, durable return hint or distributed
-worker has been introduced. The next increment prioritizes truthful completion and
-effective model/research settings before enlarging allowances.
+worker has been introduced. The next increment should evaluate larger admin-configurable
+Research allowances alongside retained working context and evidence extraction.
 
 **Motivation:** a reviewed long-running research task exposed an empty synthesis saved as
 completed, exhausted search/read allowances, repeated context trimming, and useful financial
@@ -572,15 +610,15 @@ together rather than treating every cutoff as a request for a larger context win
   reasoning tokens where exposed, cumulative usage and tool rounds. Show the effective
   limit and its origin in diagnostics without exposing prompts or secrets.
 - Resolve and snapshot effective settings consistently across new turns, existing chats,
-  assistants, regeneration, approval resume, durable runs and fallback models. Investigate
-  the current split where ordinary preparation reads output/context from runtime/assistant
-  settings but reads tool rounds from the conversation snapshot, while compaction uses the
-  runtime context setting. Existing saved conversation parameters alone cannot establish
+  assistants, regeneration, approval resume, durable runs and fallback models. The second
+  increment resolves the previous split between runtime output/context and conversation
+  round limits, including compaction and stricter approval resumes. Existing saved
+  conversation parameters alone cannot establish
   what each historical provider call received. Persist effective input/output limits,
   research stage, finish reason and trimming metadata per call for reliable diagnosis.
-- Audit the generic harness as well as Research: its round cap currently ends ordinary
-  agents with "Please refine the request" rather than reserving completion or preserving an
-  actionable continuation. Expose preset ceilings alongside generic settings so raising
+- Audit the generic harness as well as Research: the second increment reserves final
+  completion and preserves progress with an actionable incomplete notice. Expose configurable
+  preset ceilings alongside generic settings so raising
   Max tool rounds cannot appear to raise a separate research limit. Give the model accurate
   remaining allowances and supported tools; adapt planning before another doomed call.
 - Use provider-supported output/reasoning controls and task-stage allowances. Keep planning

@@ -1,4 +1,5 @@
 import ResearchProgress from './ResearchProgress'
+import ContextRecord from './ContextRecord'
 import { useEffect, useState } from 'react'
 import { Copy, Check, Brain, Pencil, RefreshCw, FileText, Sparkles } from 'lucide-react'
 import Markdown from '../markdown/Markdown'
@@ -160,6 +161,7 @@ export default function Message({ message, conversationId, isLast }) {
         )}
         {source && <SourcePanel key={`${conversationId}:${source.source_id}`} conversationId={conversationId} reference={source} onClose={() => setSource(null)} />}
         <ArtifactViewer artifacts={message.artifacts} conversationId={conversationId} />
+        {message.usage?.turn_id && <ContextRecord conversationId={conversationId} turnId={message.usage.turn_id} />}
         {message.content && (
           <div className="mt-1 flex items-center gap-2 pl-1">
             <CopyBtn text={message.content} />

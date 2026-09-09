@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { X, Cpu, Palette, FileText, Server, Wrench, Brain, Users, Shield, ShieldCheck, KeyRound, KeySquare, BarChart3, SlidersHorizontal, Wallet, Bot, Sparkles } from 'lucide-react'
 import ProviderSettings from './ProviderSettings'
+import ProjectsPanel from './ProjectsPanel'
 import AssistantsPanel from './AssistantsPanel'
 import ThemeSwitcher from './ThemeSwitcher'
 import MemoryPanel from './MemoryPanel'
@@ -20,6 +21,7 @@ import { useStore } from '../../store/useStore'
 // User-level settings (everyone) and admin-only settings (role === 'admin').
 const USER_TABS = [
   { id: 'providers', label: 'Model', icon: Cpu },
+  { id: 'projects', label: 'Projects', icon: FileText },
   { id: 'appearance', label: 'Appearance', icon: Palette },
   { id: 'documents', label: 'Documents', icon: FileText },
   { id: 'memory', label: 'Memory', icon: Brain },
@@ -194,6 +196,7 @@ export default function SettingsDrawer({ initialTab = 'providers', onClose }) {
 
           <div className="min-w-0 flex-1 overflow-y-auto p-4 sm:p-5">
             {tab === 'providers' && <ProviderSettings />}
+            {tab === 'projects' && <ProjectsPanel />}
             {tab === 'appearance' && <ThemeSwitcher />}
             {tab === 'documents' && <DocumentsPanel />}
             {tab === 'memory' && <MemoryPanel />}

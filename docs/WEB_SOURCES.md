@@ -5,7 +5,7 @@
 Phlox can retain the passages it reads from web pages and attach clickable citations to
 answers. This works in both chat modes, including opt-in reconnectable runs. Wave 8 uses
 the existing source tables: no new migration, database, service, or feature flag is needed.
-The current schema remains `0005_ingestion`. Restart the backend and rebuild the frontend
+The current schema is `0006_projects` (see [Projects](PROJECTS.md)). Restart the backend and rebuild the frontend
 for production; document reprocessing or embedding rebuilds are not required for this wave.
 
 ## Use it

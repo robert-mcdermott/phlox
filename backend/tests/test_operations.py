@@ -60,7 +60,10 @@ def engines(request, tmp_path):
 def populate(engine):
     with Session(engine) as db:
         db.add(User(id='owner', username='owner', password_hash='test-hash', department='Science'))
-        db.add(Conversation(id='conversation', user_id='owner', title='Restored chat'))
+        from app.migrations import expected_metadata
+        table = expected_metadata(status(engine)['current']).tables['conversations']
+        db.execute(table.insert().values(id='conversation', user_id='owner', title='Restored chat',
+                                         created_at=datetime.now(timezone.utc), updated_at=datetime.now(timezone.utc)))
         db.flush()
         # Populate historical schemas through their frozen shape, before new columns exist.
         db.execute(metadata().tables['messages'].insert().values(
@@ -94,7 +97,7 @@ def test_fresh_and_repeated_upgrade_match_models(engines):
     engine = engines()
     upgrade(engine)
     upgrade(engine)
-    assert status(engine) == {'current': '0005_ingestion', 'head': '0005_ingestion'}
+    assert status(engine) == {'current': '0006_projects', 'head': '0006_projects'}
     assert check(engine)['compatible']
     with engine.connect() as conn:
         validate(conn, expected=Base.metadata)
@@ -167,7 +170,7 @@ def test_concurrent_upgrade_serializes(engines):
     engine = engines()
     with ThreadPoolExecutor(max_workers=2) as pool:
         list(pool.map(lambda _: upgrade(engine), range(2)))
-    assert status(engine)['current'] == '0005_ingestion'
+    assert status(engine)['current'] == '0006_projects'
 
 
 def test_different_databases_do_not_share_alembic_context(engines):
@@ -218,7 +221,7 @@ def test_backup_restore_populated_instance(engines, tmp_path, monkeypatch):
     restored = pg_target or sa.create_engine(f'sqlite:///{target / "data/phlox.db"}')
     try:
         assert_content(restored)
-        assert status(restored)['current'] == '0005_ingestion'
+        assert status(restored)['current'] == '0006_projects'
         for name, content in files.items():
             assert (target / 'data' / name).read_bytes() == content
         restored_workspace = target / 'data/workspaces/conversation'
@@ -400,7 +403,7 @@ def test_lifespan_failure_releases_lock_and_readiness_checks_schema(client, monk
         pass
     with maintenance_lock(DATA_DIR, ENGINE):
         pass
-    monkeypatch.setattr('app.migrations.status', lambda _: {'current': None, 'head': '0005_ingestion'})
+    monkeypatch.setattr('app.migrations.status', lambda _: {'current': None, 'head': '0006_projects'})
     response = client.get('/api/readiness')
     assert response.status_code == 503 and response.json()['database']['ready'] is False
 
@@ -500,7 +503,7 @@ def test_wave4_revision_can_be_checked_backed_up_and_upgraded(engines, tmp_path)
                   pg_bin_dir=os.environ.get('PHLOX_TEST_PG_BIN_DIR'))
     upgrade(engine)
     assert_content(engine)
-    assert status(engine)['current'] == '0005_ingestion'
+    assert status(engine)['current'] == '0006_projects'
 
 
 def test_run_evidence_survives_restore_without_replaying(engines, tmp_path):
@@ -644,6 +647,47 @@ def test_wave5_upgrade_and_source_backup_restore(engines, tmp_path):
             assert not inspect_source(db, conv, ref['source_id'])['available']
             assert db.get(Source, ref['source_id']).excerpt is None
             assert db.get(SourceUse, ('source-turn', ref['source_id'])).query == ''
+    finally:
+        restored.dispose()
+
+
+def test_wave11_populated_ingestion_upgrade_and_project_restore(engines, tmp_path):
+    from app.migrations import expected_metadata
+    from app.models import ContextRecord, Project
+    engine = engines()
+    expected_metadata('0005_ingestion').create_all(engine)
+    with engine.begin() as conn:
+        conn.exec_driver_sql('CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL PRIMARY KEY)')
+        conn.exec_driver_sql("INSERT INTO alembic_version VALUES ('0005_ingestion')")
+    populate(engine)
+    assert check(engine)['compatible']
+    upgrade(engine)
+    assert_content(engine)
+    with Session(engine) as db:
+        assert db.get(Conversation, 'conversation').project_id is None
+        project = Project(id='project', user_id='owner', name='Retained project', instructions='Keep the context', document_ids=['document'])
+        db.add(project)
+        db.get(Conversation, 'conversation').project_id = project.id
+        db.add(ContextRecord(turn_id='context-turn', conversation_id='conversation', data={'project_id': project.id, 'calls': []}))
+        db.commit()
+    config = tmp_path / 'config.yml'
+    config.write_text('{}')
+    data = tmp_path / 'data'
+    data.mkdir()
+    bundle = tmp_path / 'project-backup'
+    pg_bin = os.environ.get('PHLOX_TEST_PG_BIN_DIR')
+    create_backup(engine, data, config, bundle, stopped=True, pg_bin_dir=pg_bin)
+    target = tmp_path / 'project-restored'
+    pg_target = engines() if engine.dialect.name == 'postgresql' else None
+    restore_backup(bundle, target, database_url=pg_target.url if pg_target is not None else None,
+                   stopped=True, pg_bin_dir=pg_bin)
+    restored = pg_target or sa.create_engine(f'sqlite:///{target / "data/phlox.db"}')
+    try:
+        assert check(restored)['compatible']
+        with Session(restored) as db:
+            assert db.get(Project, 'project').instructions == 'Keep the context'
+            assert db.get(Conversation, 'conversation').project_id == 'project'
+            assert db.get(ContextRecord, 'context-turn').data['project_id'] == 'project'
     finally:
         restored.dispose()
 

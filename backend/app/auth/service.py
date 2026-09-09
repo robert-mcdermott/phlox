@@ -90,7 +90,7 @@ def delete_user_data(db: Session, user_id: str) -> dict:
     import shutil
 
     from app.config import UPLOADS_DIR, WORKSPACES_DIR
-    from app.models import ApiKey, Budget, Conversation, Document, Memory, Setting
+    from app.models import ApiKey, Budget, Conversation, Document, Memory, Project, Setting
 
     from app import runs
 
@@ -143,6 +143,9 @@ def delete_user_data(db: Session, user_id: str) -> dict:
         db.delete(b)
 
     # NOTE: UsageLedger rows are intentionally NOT deleted here. They are the durable
+    for project in db.query(Project).filter_by(user_id=user_id).all():
+        db.delete(project)
+
     # chargeback record (usage metadata only, identity snapshotted at write time) and must
     # survive account deletion so a departing user's department can still be billed. This is
     # the one deliberate exception to "deletion purges all user data" — see docs/AUTH.md.

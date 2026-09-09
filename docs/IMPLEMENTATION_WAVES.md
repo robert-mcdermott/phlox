@@ -362,9 +362,40 @@ require model loading/JIT; Bedrock listing requires AWS metadata permissions and
 invocation access. Bedrock bearer-key profiles use curated IDs. The gateway's `/v1/models`
 continues to expose its configured catalog. Curated choices are not an authorization boundary.
 
-## Later wave — Projects and inspectable context
+## Wave 11 — Private projects and visible context
 
-Introduce private projects with linked chats, selected knowledge and instructions, then
-show users which context is used. Build versioned artifacts and preserved conversation
-alternatives as the next deliverable wave. Continue measuring Research quality with real
-configured models before increasing autonomy or making competitive quality claims.
+**Status:** implemented and verified, 2026-09-09.
+
+**Scope:** the initial M3.1 delivery. Private project creation/edit/archive, existing/new
+chat membership, selected personal library documents, bounded instructions, a context
+preview with per-turn exclusions, and per-response context records. See [Projects](PROJECTS.md)
+for usage, limits, upgrades and manual verification.
+
+| Task | Delivered behavior | Acceptance |
+|---|---|---|
+| W11.1 — Project organization | Sidebar selection, welcome overview and editor with recent chats, document selection, archive/restore and moving existing chats | Ordinary chats remain supported; creator-only access, revision conflicts, run/approval checks |
+| W11.2 — Selected knowledge | Ready linked documents provide bounded excerpts; project searches, children and approval resumes inherit an exact document ceiling | Another project cannot be searched implicitly; explicit owned attachments and authorized assistant knowledge remain available |
+| W11.3 — Visible context | Primary provider/model, base/project instructions, document selection, history and personal-memory controls | Preview performs no generation; exclusions create a compatible history segment instead of replaying old context |
+| W11.4 — Context records | Prepared context plus attempted calls and complete retained excerpts found in fitted inputs | Sources reauthorize/expire; removed memories are redacted on reads; normal and durable turns remain inspectable after reload |
+| W11.5 — Upgrade/retention | Additive `0006_projects`, frozen historical schema checks, conversation/account cleanup | Populated SQLite/Postgres upgrades and backup/restore retain existing chats and new project/context metadata |
+
+**Verification:** 515 backend tests passed with disposable Postgres coverage enabled; one
+inapplicable SQLite case skipped. All 26 Chromium scenarios, Ruff, frontend production
+build, local documentation links and `git diff --check` passed. Desktop and phone project
+context controls were visually reviewed using synthetic data. No live model calls or
+user database mutations were used for verification. Existing deprecation and bundle-size
+warnings remain. The guide includes configured-provider manual checks.
+
+Boundaries: personal memory defaults off in projects; project turns cannot save global
+memory automatically. This wave does not add dedicated project memory, sharing, generated
+decisions/tasks, artifact versions, default data policies or message branching. Context
+records identify dispatch attempts, not proof of remote processing; they do not log all
+embedding/tool traffic or claim shortened excerpts were supplied in full. Exclusions do
+not erase old transcripts or isolate workspace files. Project context changes affect
+subsequent model calls, not an already in-flight provider request.
+
+## Later wave — Conversation alternatives and versioned output
+
+Preserve edited/regenerated message alternatives, then build editable versioned artifacts
+with clear workspace-state semantics. Continue evaluating Research quality with configured
+models before increasing autonomy or making competitive quality claims.

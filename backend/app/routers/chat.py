@@ -67,10 +67,10 @@ def _resolve_assistant(db: Session, assistant_id: str | None, user: User) -> Ass
     return a
 
 
-def _build_history(conversation: Conversation, system_prompt: str) -> list[dict]:
+def _build_history(conversation: Conversation, system_prompt: str, selected_messages=None) -> list[dict]:
     """Reconstruct canonical message history (incl. tool steps) for the provider."""
     history: list[dict] = [{"role": "system", "content": system_prompt}]
-    for m in conversation.messages:
+    for m in conversation.messages if selected_messages is None else selected_messages:
         if m.role == "user":
             content = m.content
             doc_refs = [a for a in (m.attachments or []) if a.get("type") == "document"]
@@ -197,7 +197,7 @@ def _latest_user_document_ids(conversation: Conversation) -> list[str]:
         return [
             ref.get("document_id")
             for ref in (message.attachments or [])
-            if ref.get("type") == "document" and ref.get("document_id")
+            if ref.get("type") == "document" and ref.get("document_id") and not ref.get('project_document')
         ]
     return []
 
@@ -222,11 +222,13 @@ def _referenced_document_context(
     retrieval_notice = None
     per_doc_seed = 2 if len(docs) == 1 else 1
     for doc in docs:
+        if len(selected) >= MAX_REFERENCED_DOC_CHUNKS:
+            break
         rows = (
             db.query(DocChunk)
             .filter(DocChunk.document_id == doc.id)
             .order_by(DocChunk.ordinal)
-            .limit(per_doc_seed)
+        .limit(min(per_doc_seed, MAX_REFERENCED_DOC_CHUNKS - len(selected)))
             .all()
         )
         for row in rows:
@@ -377,12 +379,20 @@ def prepare_chat(req, db, user, cancel_event, run_id=None, tool_observer=None):
             previous = next((a for a in (latest.attachments or []) if a.get('type') == 'research'), None) if latest else None
             if previous:
                 req = req.model_copy(update={'research': ResearchOptions.model_validate(previous)})
+        if req.regenerate:
+            from app.schemas import ContextOptions
+            latest = next((m for m in reversed(list(conversation.messages)) if m.role == 'user'), None)
+            marker = next((a for a in latest.attachments or [] if a.get('type') == 'context'), {}) if latest else {}
+            req = req.model_copy(update={'message': latest.content if latest else req.message,
+                                         'context': ContextOptions.model_validate(marker.get('options', {}))})
 
     # The pinned assistant wins on existing conversations; req.assistant_id only applies
     # when creating a new one (prevents retrieval-scope spoofing via the request body).
     assistant = _resolve_assistant(
         db, conversation.assistant_id if conversation else req.assistant_id, user
     )
+    from app import projects
+    context_data = projects.selection(db, req, conversation, user.id, assistant)
 
     profile = req.profile or (assistant.profile if assistant else None) or settings["active_profile"]
     model = req.model or (assistant.model if assistant else None) or settings.get("model")
@@ -419,6 +429,7 @@ def prepare_chat(req, db, user, cancel_event, run_id=None, tool_observer=None):
             or settings["system_prompt"],
             params={**generation_params(settings), **((assistant.params if assistant else None) or {})},
             assistant_id=assistant.id if assistant else None,
+            project_id=context_data['project_id'],
             user_id=user.id,
         )
         db.add(conversation)
@@ -435,11 +446,19 @@ def prepare_chat(req, db, user, cancel_event, run_id=None, tool_observer=None):
         or conversation.system_prompt
         or settings["system_prompt"]
     )
-    # Inject relevant long-term memories (this user's, cross-conversation) into the prompt.
-    from app.memory import memory_preamble
-
-    if not req.research:
-        system_prompt += memory_preamble(db, req.message, user.id)
+    context_data['base_instructions'] = system_prompt
+    if context_data['instructions']:
+        system_prompt += '\n\nProject instructions:\n' + context_data['instructions']
+    from app.memory import retrieve_memories
+    memories = []
+    if context_data['memory_enabled']:
+        memories = [m for m in retrieve_memories(db, req.message, user_id=user.id)
+                    if m.id not in req.context.excluded_memory_ids]
+        if memories:
+            system_prompt += '\n\nRelevant personal memory (use if helpful):\n' + '\n'.join(
+                f'- ({m.kind}) {m.content[:4000]}' for m in memories)
+    context_data['memories'] = {m.id: m.content[:4000] for m in memories}
+    context_data['memory_ids'] = [m.id for m in memories]
 
     referenced_docs: list[Document]
     if req.regenerate:
@@ -448,10 +467,26 @@ def prepare_chat(req, db, user, cancel_event, run_id=None, tool_observer=None):
         )
     else:
         referenced_docs = _resolve_document_refs(db, user, conversation, req.document_ids)
+    excluded = set(req.context.excluded_document_ids)
+    referenced_docs = [d for d in referenced_docs if d.id not in excluded]
+    project_docs = _resolve_document_refs(db, user, conversation, context_data['project_document_ids'])
+    referenced_docs = list({d.id: d for d in [*referenced_docs, *project_docs]}.values())
 
     # Capability limits are hard server-side rules; the UI mirrors them as disabled
     # toggles. A missing key means allowed.
     caps = (assistant.capabilities or {}) if assistant else {}
+    if not caps.get('document_search', True):
+        referenced_docs = []
+    document_scope = None
+    if context_data['project_id'] or excluded:
+        # Resolve exact SQL-authorized IDs up front; children and resumes inherit this
+        # ceiling. No model-supplied document_ids argument can widen it.
+        personal = [d.id for d in referenced_docs] if context_data['project_id'] else [d.id for d in db.query(Document).filter(
+            Document.user_id == user.id, Document.status == 'ready',
+            Document.conversation_id.is_(None) | (Document.conversation_id == conversation.id)).all()]
+        shared = [d.id for d in db.query(Document).filter_by(assistant_id=assistant.id, status='ready').all()] if assistant else []
+        document_scope = sorted((set(personal) | set(shared)) - excluded) if caps.get('document_search', True) else []
+    context_data['document_scope'] = document_scope
     research = None
     if req.research:
         from app.research import Research, INSTRUCTIONS
@@ -539,16 +574,36 @@ def prepare_chat(req, db, user, cancel_event, run_id=None, tool_observer=None):
             from app.attachments import save_message_images
 
             attachment_refs.extend(save_message_images(user_msg.id, req.images))
-        attachment_refs.extend(_document_attachment(doc) for doc in referenced_docs)
+        attachment_refs.extend({**_document_attachment(doc),
+                                'project_document': doc.id in context_data['project_document_ids'] and doc.id not in req.document_ids}
+                               for doc in referenced_docs)
         attachment_refs.extend(
             {"type": "skill", "skill_id": s.id, "name": s.name} for s in invoked_skills
         )
+        attachment_refs.append({'type': 'context', 'key': context_data['key'], 'options': req.context.model_dump()})
         if attachment_refs:
             user_msg.attachments = attachment_refs
             db.commit()
         db.refresh(conversation)
 
-    history = _build_history(conversation, system_prompt)
+    # Regeneration keeps the original context choice, subject to current project access.
+    if req.regenerate:
+        latest = next((m for m in reversed(list(conversation.messages)) if m.role == 'user'), None)
+        if latest:
+            explicit_ids = set(_latest_user_document_ids(conversation))
+            referenced_ids = {doc.id for doc in referenced_docs}
+            latest.attachments = [a for a in latest.attachments or [] if a.get('type') != 'context' and not a.get('project_document')] + [
+                {**_document_attachment(doc), 'project_document': True} for doc in project_docs
+                if doc.id in referenced_ids and doc.id not in explicit_ids] + [
+                {'type': 'context', 'key': context_data['key'], 'options': req.context.model_dump()}]
+            db.commit()
+    selected_history = projects.history_messages(conversation, context_data)
+    history = _build_history(conversation, system_prompt, selected_history)
+    context_data.update(profile=profile, model=model, history_messages=max(0, len(selected_history) - 1),
+                        referenced_document_ids=[d.id for d in referenced_docs], calls=[])
+    from app.models import ContextRecord
+    db.add(ContextRecord(turn_id=accounting.turn_id, conversation_id=conversation.id, data=context_data))
+    db.commit()
     if research:
         # Selected-source research starts from the current question, not evidence from unrelated turns.
         latest_user = next((m for m in reversed(history) if m['role'] == 'user'), {'role': 'user', 'content': req.message})
@@ -602,6 +657,8 @@ def prepare_chat(req, db, user, cancel_event, run_id=None, tool_observer=None):
             # Only advertise use_skill when the prompt actually lists skills to load.
             if not skill_listing:
                 enabled_tools.discard("use_skill")
+            if context_data['project_id'] or not context_data['memory_enabled']:
+                enabled_tools.discard('save_memory')
             if not caps.get("tools", True):
                 # Chat + knowledge only: no code execution, shell, files, or MCP tools.
                 enabled_tools &= {"web_search", "search_documents"}
@@ -614,6 +671,7 @@ def prepare_chat(req, db, user, cancel_event, run_id=None, tool_observer=None):
                 cancel_event=cancel_event,
                 assistant_id=assistant.id if assistant else None,
                 accounting=accounting, tool_observer=tool_observer, research=research,
+                document_scope=document_scope,
             )
             yield from session.run(compacted)
         finally:
@@ -698,6 +756,11 @@ def prepare_approval(req, db, user, cancel_event, validate_only=False, tool_obse
     pending, conversation = approvals.owned_approval(db, req.pending_id, user)
     approvals.validate_resume(pending, req.decisions)
     state = pending.state
+    from app.models import ContextRecord
+    from app.projects import validate_record
+    record = db.get(ContextRecord, state.get('turn_id')) if state.get('turn_id') else None
+    if record:
+        validate_record(db, conversation, record.data)
     assistant = _resolve_assistant(db, conversation.assistant_id, user)
     # A hidden/deleted assistant's prompt and KB excerpts remain in the snapshot.
     # Reject the entire resume, rather than merely removing future search access.

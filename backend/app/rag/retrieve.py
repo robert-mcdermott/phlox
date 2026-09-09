@@ -47,7 +47,7 @@ def search_chunks(
                 shared = Document.assistant_id == assistant_id
         q = db.query(DocChunk, Document).options(defer(DocChunk.embedding)).join(Document).filter(Document.status == 'ready', personal | shared)
         q = q.filter(Document.conversation_id.is_(None) | (Document.conversation_id == conversation_id))
-        if document_ids:
+        if document_ids is not None:
             q = q.filter(Document.id.in_(document_ids))
         return q.populate_existing().order_by(DocChunk.id)
 

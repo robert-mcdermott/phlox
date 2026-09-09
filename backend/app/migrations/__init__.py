@@ -34,6 +34,13 @@ def known_revision(revision):
 
 
 def expected_metadata(revision):
+    if revision == '0005_ingestion':
+        import sqlalchemy as sa
+        result = expected_metadata('0004_sources')
+        result.tables['documents'].append_column(sa.Column('ingestion', sa.JSON, nullable=True))
+        result.tables['doc_chunks'].append_column(sa.Column('provenance', sa.JSON, nullable=True))
+        result.tables['doc_chunks'].append_column(sa.Column('embedding_identity', sa.JSON, nullable=True))
+        return result
     # Historical revisions must remain checkable/back-upable before upgrade.
     if revision in {None, '0001_wave3', '0002_ledger_width'}:
         from app.migrations.baseline import metadata

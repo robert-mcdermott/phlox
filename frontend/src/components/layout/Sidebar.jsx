@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Plus, MessageSquare, Trash2, Pencil, FileText, Server, Wrench, Palette, Search, Download } from 'lucide-react'
+import { Plus, MessageSquare, Trash2, Pencil, FileText, Server, Wrench, Palette, Search, Download, Folder } from 'lucide-react'
 import { useStore } from '../../store/useStore'
 
 function IconBtn({ title, onClick, children }) {
@@ -17,6 +17,9 @@ function IconBtn({ title, onClick, children }) {
 
 export default function Sidebar({ onOpenSettings }) {
   const conversations = useStore((s) => s.conversations)
+  const projects = useStore(s => s.projects)
+  const activeProjectId = useStore(s => s.activeProjectId)
+  const openProject = useStore(s => s.openProject)
   const activeId = useStore((s) => s.activeId)
   const select = useStore((s) => s.selectConversation)
   const newConv = useStore((s) => s.newConversation)
@@ -40,9 +43,8 @@ export default function Sidebar({ onOpenSettings }) {
     setEditing(null)
   }
 
-  const filtered = query.trim()
-    ? conversations.filter((c) => c.title.toLowerCase().includes(query.trim().toLowerCase()))
-    : conversations
+  const filtered = conversations.filter(c => (!activeProjectId || c.project_id === activeProjectId) &&
+    (!query.trim() || c.title.toLowerCase().includes(query.trim().toLowerCase())))
 
   return (
     <aside
@@ -56,6 +58,14 @@ export default function Sidebar({ onOpenSettings }) {
         >
           <Plus size={16} /> New chat
         </button>
+        <label className="mt-3 block text-xs">Project
+          <select aria-label="Project" value={activeProjectId || ''} onChange={e => openProject(e.target.value)}
+            className="mt-1 w-full rounded-lg border-border bg-surface py-1.5 text-sm text-content focus:ring-accent">
+            <option value="">All chats / no project</option>
+            {projects.filter(p => !p.archived || p.id === activeProjectId).map(p => <option key={p.id} value={p.id}>{p.name}{p.archived ? ' (archived)' : ''}</option>)}
+          </select>
+        </label>
+        <button onClick={() => onOpenSettings('projects')} className="mt-2 flex items-center gap-2 text-xs hover:underline"><Folder size={14} /> Manage projects</button>
         <div className="relative mt-2">
           <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 opacity-50" />
           <input

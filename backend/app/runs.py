@@ -92,6 +92,8 @@ def create(db, user, req, key=None):
                 raise HTTPException(409, 'Idempotency-Key was already used for a different request.')
             return previous
         conv = require_owned_conversation(db, req.conversation_id, user) if req.conversation_id else None
+        from app.projects import resolve
+        project = resolve(db, req, conv, user.id)
         if conv:
             require_idle(db, conv.id)
             approvals.require_no_approval(db, conv.id)
@@ -112,6 +114,7 @@ def create(db, user, req, key=None):
             raise HTTPException(400, 'Message blocked by current guardrails policy.')
         if not conv:
             conv = Conversation(id=uuid.uuid4().hex, user_id=user.id, title=req.message[:60] or 'New chat',
+                                project_id=project.id if project else None,
                                 profile=profile, model=model, assistant_id=assistant.id if assistant else None,
                                 system_prompt=(assistant.system_prompt if assistant else None) or settings['system_prompt'],
                                 params={**generation_params(settings), **((assistant.params if assistant else None) or {})})

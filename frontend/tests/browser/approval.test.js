@@ -38,6 +38,7 @@ async function fixture(t, { approval = null, auth = false, durable = false } = {
   const page = await context.newPage()
   page.setDefaultTimeout(8000)
   const state = {
+    projects: [], projectSaves: [], conversationProjects: {}, contextReads: [],
     settings: { active_profile: 'test', model: 'test-model', theme: 'phlox-dark', max_tokens: 1000, max_tool_rounds: 3 },
     modelCatalog: { profile: 'test', models: ['test-model'] }, modelReads: 0,
     discoveryRequests: [], profileSaves: [],
@@ -68,7 +69,14 @@ async function fixture(t, { approval = null, auth = false, durable = false } = {
       return json({ token: 'synthetic-test-token', user })
     }
     if (path === '/api/auth/change-password') { state.setup = false; return json({ ...user, must_change_password: false }) }
-    if (path === '/api/conversations') return json([{ id: 'alpha', title: 'Approval chat' }, { id: 'beta', title: 'Other chat' }])
+    if (path === '/api/conversations') return json([{ id: 'alpha', title: 'Approval chat', project_id: state.conversationProjects.alpha }, { id: 'beta', title: 'Other chat', project_id: state.conversationProjects.beta }])
+    if (path === '/api/conversations/alpha/context/turn-project') {
+      state.contextReads.push('turn-project')
+      return json({ project_name: 'Infrastructure', profile: 'test', model: 'test-model', history_messages: 0,
+        base_instructions: 'Be helpful.', instructions: 'Prefer repairable equipment.', memories: [],
+        calls: [{ profile: 'test', model: 'test-model', kind: 'chat', source_ids: ['source-project'], project_instructions_present: true }],
+        sources: [{ id: 'source-project', label: 'S1', title: 'Network notes', available: true, excerpt: 'Retain local backups for 30 days.' }] })
+    }
     if (path.startsWith('/api/conversations/alpha/sources/')) {
       const id = path.split('/').at(-1)
       state.sourceReads.push(id)
@@ -82,7 +90,10 @@ async function fixture(t, { approval = null, auth = false, durable = false } = {
       state.exportReads++
       return json({ markdown: state.exportMarkdown })
     }
-    if (path === '/api/conversations/alpha') return json({ id: 'alpha', title: 'Approval chat', messages: state.messages })
+    if (path === '/api/conversations/alpha') {
+      if (method === 'PATCH') state.conversationProjects.alpha = route.request().postDataJSON().project_id
+      return json({ id: 'alpha', title: 'Approval chat', messages: state.messages, project_id: state.conversationProjects.alpha })
+    }
     if (path === '/api/conversations/beta') return json({ id: 'beta', title: 'Other chat', messages: [{ id: 'b', role: 'user', content: 'Only the other conversation' }] })
     if (path === '/api/chat/approvals/alpha') return json(state.approval ? [state.approval] : [])
     if (path === '/api/chat/approvals/beta') return json([])
@@ -90,6 +101,32 @@ async function fixture(t, { approval = null, auth = false, durable = false } = {
     if (path === '/api/settings') {
       if (method === 'PATCH') Object.assign(state.settings, route.request().postDataJSON())
       return json(state.settings)
+    }
+    if (path === '/api/projects') {
+      if (method === 'POST') {
+        const row = { ...route.request().postDataJSON(), id: 'project-1', revision: 1 }
+        state.projects.push(row); state.projectSaves.push(row)
+        return json(row)
+      }
+      return json(state.projects)
+    }
+    if (path.startsWith('/api/projects/')) {
+      const id = path.split('/').at(-1)
+      const index = state.projects.findIndex(p => p.id === id)
+      if (method === 'PUT') {
+        state.projects[index] = { ...route.request().postDataJSON(), id, revision: state.projects[index].revision + 1 }
+        state.projectSaves.push(state.projects[index])
+      }
+      return json({ ...state.projects[index], conversations: Object.keys(state.conversationProjects).filter(c => state.conversationProjects[c] === id).map(c => ({ id: c, title: 'Approval chat' })) })
+    }
+    if (path === '/api/context/preview') {
+      const body = route.request().postDataJSON()
+      const p = state.projects.find(p => p.id === (state.conversationProjects[body.conversation_id] || body.project_id))
+      return json({ project_id: p?.id, project_name: p?.name, profile: 'test', model: 'test-model', destination: 'localhost', base_instructions: 'Be helpful.',
+        instructions: body.context.project_instructions === false ? '' : p?.instructions, history_messages: 0,
+        memory_enabled: body.context.memory ?? !p,
+        memories: body.context.memory ? [{ id: 'memory-1', content: 'Personal preference', selected: true }] : [],
+        documents: state.docs.filter(d => p?.document_ids.includes(d.id)).map(d => ({ ...d, selected: !(body.context.excluded_document_ids || []).includes(d.id) })) })
     }
     if (path === '/api/providers') return json({ profiles: [{ name: 'test', label: 'Test', model: 'test-model' }] })
     if (path === '/api/providers/test/models') { state.modelReads++; return json(state.modelCatalog) }
@@ -311,6 +348,88 @@ test('phone settings give model selection and provider setup the full content wi
   const picker = await page.getByRole('button', { name: 'Choose default model', exact: true }).boundingBox()
   assert.ok(picker.x >= 0 && picker.x + picker.width <= 390)
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true)
+})
+
+test('projects can be created, selected, excluded per turn, and archived without deleting chats', async (t) => {
+  const { page, state } = await fixture(t)
+  state.docs = [{ id: 'project-doc', filename: 'Network notes.txt', status: 'ready' }]
+  await page.getByRole('button', { name: 'Manage projects', exact: true }).click()
+  const panel = page.getByRole('region', { name: 'Projects', exact: true })
+  await panel.getByLabel('Name', { exact: true }).fill('Infrastructure')
+  await panel.getByLabel('Project instructions', { exact: true }).fill('Prefer repairable equipment.')
+  await panel.getByRole('checkbox', { name: /Network notes/ }).check()
+  await panel.getByRole('button', { name: 'Save project', exact: true }).click()
+  await panel.getByText('Project saved.', { exact: true }).waitFor()
+  assert.deepEqual(state.projectSaves[0].document_ids, ['project-doc'])
+  await page.keyboard.press('Escape')
+  await page.getByLabel('Project', { exact: true }).selectOption('project-1')
+  await page.getByRole('heading', { name: 'Infrastructure', exact: true }).waitFor()
+  await page.getByRole('button', { name: 'Context · Project', exact: true }).click()
+  const preview = page.getByRole('region', { name: 'Context preview', exact: true })
+  await preview.getByText(/localhost/).waitFor()
+  assert.equal(await preview.getByRole('checkbox', { name: 'Use personal memory', exact: true }).isChecked(), false)
+  await preview.getByRole('checkbox', { name: 'Use project instructions', exact: true }).uncheck()
+  await preview.getByRole('checkbox', { name: /Network notes/ }).uncheck()
+  await page.getByPlaceholder('Message Phlox…').fill('Review this plan without the project background.')
+  await page.getByRole('button', { name: 'Send', exact: true }).click()
+  await page.getByText('Approval needed', { exact: true }).waitFor()
+  assert.equal(state.chatRequests[0].project_id, 'project-1')
+  assert.deepEqual(state.chatRequests[0].context.excluded_document_ids, ['project-doc'])
+  assert.equal(state.chatRequests[0].context.project_instructions, false)
+  await page.getByRole('button', { name: 'Manage projects', exact: true }).click()
+  await panel.getByLabel('Edit project', { exact: true }).selectOption('project-1')
+  await panel.getByRole('checkbox', { name: /Archived/ }).check()
+  await panel.getByRole('button', { name: 'Save project', exact: true }).click()
+  await panel.getByText('Project saved.', { exact: true }).waitFor()
+  assert.equal(state.projectSaves.at(-1).archived, true)
+})
+
+test('existing chats move into projects and saved context records remain inspectable after reload', async (t) => {
+  const { page, state } = await fixture(t)
+  state.projects = [{ id: 'project-1', name: 'Infrastructure', description: '', instructions: 'Prefer repairable equipment.', document_ids: [], revision: 1, archived: false }]
+  state.messages.push({ id: 'answer-project', role: 'assistant', content: 'Keep local backups.', usage: { turn_id: 'turn-project', total: 25 } })
+  await page.reload()
+  await page.getByText('Approval chat', { exact: true }).click()
+  await page.getByRole('button', { name: 'Context record', exact: true }).click()
+  let record = page.getByRole('region', { name: 'Context record', exact: true })
+  await record.getByText('[S1] Network notes', { exact: true }).click()
+  await record.getByText('Retain local backups for 30 days.', { exact: true }).waitFor()
+  await page.getByRole('button', { name: 'Manage projects', exact: true }).click()
+  await page.getByLabel('Edit project', { exact: true }).selectOption('project-1')
+  await page.getByRole('button', { name: 'Move current chat here', exact: true }).click()
+  await page.getByText('Chat updated. Close Settings to continue.', { exact: true }).waitFor()
+  assert.equal(state.conversationProjects.alpha, 'project-1')
+  await page.reload()
+  await page.getByText('Approval chat', { exact: true }).click()
+  await page.getByRole('button', { name: 'Context record', exact: true }).click()
+  assert.equal(await page.getByLabel('Project', { exact: true }).inputValue(), 'project-1')
+  record = page.getByRole('region', { name: 'Context record', exact: true })
+  await record.getByText('[S1] Network notes', { exact: true }).waitFor()
+  assert.equal(state.contextReads.length, 2)
+})
+
+test('project knowledge is selected in Research and document exclusions update both controls', async (t) => {
+  const { page, state } = await fixture(t)
+  state.docs = [{ id: 'project-doc', filename: 'Network notes.txt', status: 'ready' }]
+  state.projects = [{ id: 'project-1', name: 'Infrastructure', description: '', instructions: '', document_ids: ['project-doc'], revision: 1, archived: false }]
+  await page.reload()
+  await page.getByLabel('Project', { exact: true }).selectOption('project-1')
+  await page.getByRole('heading', { name: 'Infrastructure', exact: true }).waitFor()
+  await page.getByRole('combobox', { name: 'Chat mode' }).selectOption('research')
+  await page.getByRole('combobox', { name: 'Research sources' }).selectOption('documents')
+  const documents = page.getByRole('group', { name: 'Choose documents' })
+  assert.equal(await documents.getByRole('checkbox', { name: 'Network notes.txt' }).isChecked(), true)
+  await page.getByPlaceholder('Message Phlox…').fill('Research the retention policy.')
+  assert.equal(await page.getByRole('button', { name: 'Send', exact: true }).isEnabled(), true)
+  await documents.getByRole('checkbox', { name: 'Network notes.txt' }).uncheck()
+  assert.equal(await page.getByRole('button', { name: 'Send', exact: true }).isEnabled(), false)
+  await documents.getByRole('checkbox', { name: 'Network notes.txt' }).check()
+  await page.getByRole('button', { name: 'Send', exact: true }).click()
+  await page.getByText('Approval needed', { exact: true }).waitFor()
+  assert.equal(state.chatRequests[0].project_id, 'project-1')
+  assert.equal(state.chatRequests[0].research.scope, 'documents')
+  assert.deepEqual(state.chatRequests[0].document_ids, [])
+  assert.deepEqual(state.chatRequests[0].context.excluded_document_ids, [])
 })
 
 test('pricing keeps blank rates unknown and saves explicit zero and cache rates', async (t) => {

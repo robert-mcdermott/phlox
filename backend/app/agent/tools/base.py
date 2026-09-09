@@ -54,6 +54,8 @@ class ToolContext:
     # Optional thread-safe durable journal for child tool dispatch/results.
     tool_observer: Any = None
     research: Any = None
+    # None preserves ordinary search; an empty list explicitly permits no documents.
+    document_scope: list[str] | None = None
 
 
 @dataclass

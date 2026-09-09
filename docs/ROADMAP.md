@@ -7,8 +7,9 @@ and verification; the [original roadmap](ROADMAP_LEGACY.md) preserves the delive
 foundations, document/web evidence, and opt-in bounded Research with admin-managed search.
 **Wave 10 adds automatic model discovery** and a shared searchable picker for user settings,
 assistants and provider setup; see the [wave log](IMPLEMENTATION_WAVES.md) and
-[discovery guide](MODEL_DISCOVERY.md). Projects are deferred to a later wave by user choice.
-The wave log records verification and remaining limits. M3–M5 remain proposed. Existing features and
+[discovery guide](MODEL_DISCOVERY.md). **Wave 11 delivers private projects and context inspection**;
+see [Projects](PROJECTS.md). Richer project memory, extracted tasks, and artifact versions remain proposed.
+The wave log records verification and remaining limits. M3 has an initial delivery; M4–M5 remain proposed. Existing features and
 completed work are identified explicitly; unchecked entries do not yet ship.
 
 ## 1. Product direction
@@ -294,6 +295,13 @@ evidence. Benchmark grounding, usefulness, latency, and cost against Quick answe
 ## 6. M3 — Projects and deliverables
 
 ### M3.1 — Introduce projects and inspectable context
+
+**Initial delivery (Wave 11):** private project CRUD/archive, chat membership, selected library
+documents and instructions, per-turn exclusions, context-compatible history, and records of
+complete retained passages found in fitted model inputs. Personal memory defaults off in
+projects; automatic global memory writes are disabled there. This is a bounded subset of
+the broader work below, not completion of extracted decisions/tasks, project memory, data
+policies, sharing, pagination or full-text search.
 
 - [ ] Add a private `Project` above conversations, with instructions, linked documents,
   pinned decisions, open tasks, artifacts, and default provider/data policy. Keep chats

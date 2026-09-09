@@ -16,11 +16,11 @@ See [WEB_SOURCES.md](WEB_SOURCES.md) for web discovery, capture, failure handlin
 This feature is enabled without a configuration flag, in both the default chat mode and
 opt-in [reconnectable runs](RUNS.md). No new service, provider, or model configuration is
 required. Stop Phlox and preserve a [backup](BACKUP_RESTORE.md) before upgrading. Normal
-startup applies migrations through `0005_ingestion`; `0004_sources` adds two tables and
+startup applies migrations through `0006_projects`; `0004_sources` adds two tables and
 nullable message citations, and `0005_ingestion` adds document provenance/processing fields.
 Existing messages remain intact; old numeric/D-prefixed citations are
 not retroactively assigned sources.
-Wave 8 adds web capture using the existing tables; the schema remains `0005_ingestion`.
+Wave 8 added web capture using existing tables. Wave 11 adds [projects and context records](PROJECTS.md).
 
 Attach or reference a ready document, or enable **Search documents** for the prompt. Ask
 Phlox to answer from the document and cite its sources. The model still decides whether

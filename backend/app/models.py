@@ -131,6 +131,30 @@ class Skill(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
 
 
+class Project(Base):
+    __tablename__ = 'projects'
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(String(32), index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    description: Mapped[str] = mapped_column(Text, default='')
+    instructions: Mapped[str] = mapped_column(Text, default='')
+    document_ids: Mapped[list] = mapped_column(JSON, default=list)
+    archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
+
+
+class ContextRecord(Base):
+    __tablename__ = 'context_records'
+
+    turn_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    conversation_id: Mapped[str] = mapped_column(ForeignKey('conversations.id', ondelete='CASCADE'), index=True)
+    data: Mapped[dict] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
 class Conversation(Base):
     __tablename__ = "conversations"
 
@@ -139,6 +163,7 @@ class Conversation(Base):
     # Assistant pinned at creation; dangles (no FK) after assistant deletion so the
     # conversation keeps running on its snapshotted profile/model/system_prompt.
     assistant_id: Mapped[str | None] = mapped_column(String(32), index=True, nullable=True)
+    project_id: Mapped[str | None] = mapped_column(String(32), index=True, nullable=True)
     title: Mapped[str] = mapped_column(String(300), default="New chat")
     profile: Mapped[str | None] = mapped_column(String(100), nullable=True)
     model: Mapped[str | None] = mapped_column(String(200), nullable=True)
@@ -148,6 +173,7 @@ class Conversation(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
 
     sources: Mapped[list["Source"]] = relationship(cascade="all, delete-orphan")
+    context_records: Mapped[list["ContextRecord"]] = relationship(cascade="all, delete-orphan")
 
     runs: Mapped[list["Run"]] = relationship(cascade="all, delete-orphan")
 

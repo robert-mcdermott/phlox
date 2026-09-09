@@ -16,6 +16,7 @@ specialized deployment guides when making it available to others.
 - [Appearance](#appearance)
 - [Reconnectable runs and Stop](#reconnectable-runs-and-stop)
 - [Chat and everyday use](#chat-and-everyday-use)
+- [Projects and context](PROJECTS.md)
 - [Documents, search, and citations](#documents-search-and-citations)
 - [Assistants, skills, memory, and MCP](#assistants-skills-memory-and-mcp)
 - [Accounts, execution, and costs](#accounts-execution-and-costs)
@@ -548,7 +549,7 @@ secret environment**. Enabling runs or citations does not require a fresh databa
    frontend (`npm ci` then `npm run build`) for production. The development launcher does
    not refresh existing frontend dependencies automatically after every lockfile change.
 4. Start normally. Checked Alembic migrations run before application bootstrap. Current
-   head is `0005_ingestion`; this includes the earlier run/source migrations even with runs
+   head is `0006_projects`; this includes projects and the earlier run/source migrations even with runs
    disabled. Do not stamp a database manually or overwrite it with an empty one.
 5. Check `/api/readiness`, sign in, and verify an existing conversation and document.
 
@@ -596,6 +597,7 @@ and a representative document question after setup.
 |---|---|
 | Server installation and containers | [DEPLOYMENT.md](DEPLOYMENT.md), [DOCKER.md](DOCKER.md) |
 | Model catalogs and provider setup | [MODEL_DISCOVERY.md](MODEL_DISCOVERY.md) |
+| Private projects and context inspection | [PROJECTS.md](PROJECTS.md) |
 | Runs, approvals, document evidence | [RUNS.md](RUNS.md), [APPROVALS.md](APPROVALS.md), [SOURCES.md](SOURCES.md), [INGESTION.md](INGESTION.md) |
 | Accounts and Entra ID | [AUTH.md](AUTH.md) |
 | Execution environments | [SANDBOX.md](SANDBOX.md) |

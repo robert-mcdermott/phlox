@@ -97,6 +97,7 @@ class AgentSession:
         accounting=None,
         tool_observer=None,
         research=None,
+        document_scope=None,
     ):
         from app.model_calls import CallScope
 
@@ -147,6 +148,7 @@ class AgentSession:
             accounting=self.accounting,
             tool_observer=tool_observer,
             research=research,
+            document_scope=deepcopy(document_scope),
         )
 
     def _observe_child_tool(self, kind, call, **data):
@@ -186,6 +188,7 @@ class AgentSession:
     def resume(self, state: dict, decisions: dict[str, str]) -> Iterator[str]:
         """Continue a paused turn with the user's approval decisions (call_id -> allow|deny)."""
         state = deepcopy(state)
+        self.ctx.document_scope = state.get('document_scope')
         if state.get('research'):
             from app.research import Research
             self.research = self.ctx.research = Research(state=state['research'])
@@ -657,6 +660,7 @@ class AgentSession:
         totals = turn_usage(self.accounting)
         self.turn_usage = {k: totals[k] for k in ("input", "output", "total")}
         state = {
+            "document_scope": self.ctx.document_scope,
             "research": deepcopy(self.research.state) if self.research else None,
             "sources": self._source_refs(),
             "version": 3,

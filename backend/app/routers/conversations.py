@@ -45,8 +45,12 @@ def list_conversations(db: Session = Depends(get_db), user: User = Depends(get_c
 def create_conversation(
     body: ConversationCreate, db: Session = Depends(get_db), user: User = Depends(get_current_user)
 ):
+    from app import projects
+    if body.project_id:
+        projects.owned(db, body.project_id, user.id, active=True)
     conv = Conversation(
-        title=body.title or "New chat", profile=body.profile, model=body.model, user_id=user.id
+        title=body.title or "New chat", profile=body.profile, model=body.model, user_id=user.id,
+        project_id=body.project_id,
     )
     db.add(conv)
     db.commit()
@@ -69,8 +73,19 @@ def update_conversation(
     with runs.LOCK:
         conv = _owned(db, conversation_id, user)
         runs.require_idle(db, conversation_id)
+        from app import projects, approvals
+        approvals.require_no_approval(db, conversation_id)
+        if body.project_id:
+            projects.owned(db, body.project_id, user.id, active=True)
+        old_project = conv.project_id
+        old_membership = (conv.params or {}).get('project_membership')
         for field, value in body.model_dump(exclude_unset=True).items():
             setattr(conv, field, value)
+        if conv.project_id != old_project:
+            import uuid
+            old_membership = uuid.uuid4().hex
+        if old_membership:
+            conv.params = {**(conv.params or {}), 'project_membership': old_membership}
         db.commit()
         db.refresh(conv)
         return conv

@@ -1,6 +1,7 @@
 import ResearchControls from './ResearchControls'
 import { useConversationDraft } from '../../utils/drafts'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import ContextControls from './ContextControls'
 import {
   Send,
   Square,
@@ -42,6 +43,9 @@ export default function Composer() {
   const owner = useStore(s => s.user?.id || s.user?.username || 'anonymous')
   const runsEnabled = useStore(s => s.authConfig?.runs_enabled)
   const [mode, setMode] = useState('chat')
+  const [context, setContext] = useState({})
+  const projectId = useStore(s => s.activeProjectId)
+  const project = useStore(s => s.projects.find(p => p.id === s.activeProjectId))
   const [research, setResearch] = useState({ scope: 'web', depth: 'standard', domainsText: '' })
   const [autoApprove, setAutoApprove] = useState(false)
   const [webSearch, setWebSearch] = useState(false)
@@ -93,13 +97,14 @@ export default function Composer() {
 
   useEffect(() => {
     setMode('chat')
+    setContext({})
     setImages([])
     setDocumentRefs([])
     setDocPicker({ open: false, query: '', start: 0, end: 0 })
     setSkillRefs([])
     setSkillPicker({ open: false, query: '', end: 0 })
     loadDocuments()
-  }, [activeId, loadDocuments])
+  }, [activeId, projectId, loadDocuments])
 
   useEffect(() => {
     if (!documentRefs.some((d) => d.status && d.status !== 'ready')) return undefined
@@ -140,14 +145,27 @@ export default function Composer() {
   const pendingDocs = documentRefs.filter((d) => d.status && d.status !== 'ready')
   const erroredDocs = documentRefs.filter((d) => ['error', 'interrupted'].includes(d.status))
   const documentIds = documentRefs.map((d) => d.id || d.document_id).filter(Boolean)
+  const projectDocuments = documents.filter(d => project?.document_ids.includes(d.id) && d.status === 'ready')
+  const selectedProjectDocuments = projectDocuments.filter(d => !(context.excluded_document_ids || []).includes(d.id))
+  const projectDocumentCount = selectedProjectDocuments.length
+  const researchDocuments = [...new Map([...documentRefs, ...selectedProjectDocuments].map(d => [d.id || d.document_id, d])).values()]
+  const selectResearchDocuments = selected => {
+    const projectIds = new Set(projectDocuments.map(d => d.id))
+    const selectedIds = new Set(selected.map(d => d.id || d.document_id))
+    setDocumentRefs(selected.filter(d => !projectIds.has(d.id || d.document_id)))
+    setContext(old => ({ ...old, excluded_document_ids: [
+      ...(old.excluded_document_ids || []).filter(id => !projectIds.has(id)),
+      ...[...projectIds].filter(id => !selectedIds.has(id)),
+    ] }))
+  }
   const canSubmit =
     (text.trim() || images.length > 0 || documentIds.length > 0 || skillRefs.length > 0) &&
-    !uploading &&
+    !uploading && !project?.archived &&
     pendingDocs.length === 0 &&
     erroredDocs.length === 0 &&
     (mode !== 'research' || (skillsAllowed && images.length === 0 &&
       (research.scope === 'documents' || webSearchAllowed) &&
-      (research.scope === 'web' ? documentIds.length === 0 : documentSearchAllowed && documentIds.length > 0)))
+      (research.scope === 'web' ? documentIds.length === 0 : documentSearchAllowed && documentIds.length + projectDocumentCount > 0)))
 
   const updateMentionPicker = (value, cursor) => {
     const before = value.slice(0, cursor)
@@ -212,6 +230,7 @@ export default function Composer() {
     if (!canSubmit) return
     // While streaming, the store queues this as a follow-up (steering).
     send(text.trim(), {
+      context,
       research: mode === 'research' ? { scope: research.scope, depth: research.depth, domains: research.scope === 'documents' ? [] : research.domainsText.split(',').map(s => s.trim()).filter(Boolean) } : null,
       autoApprove: mode === 'research' ? false : autoApprove,
       webSearch: webSearch && webSearchAllowed,
@@ -224,6 +243,7 @@ export default function Composer() {
       skillsEnabled: skillsEnabled && skillsAllowed,
     })
     setText('')
+    setContext({})
     setMode('chat')
     setImages([])
     setDocumentRefs([])
@@ -325,7 +345,10 @@ export default function Composer() {
   return (
     <div className="border-t border-border bg-surface px-4 py-3">
       <div className="mx-auto max-w-3xl">
-        {mode === 'research' && <ResearchControls value={research} onChange={setResearch} documents={documents} selected={documentRefs} onSelect={setDocumentRefs} webAllowed={webSearchAllowed} docsAllowed={documentSearchAllowed} runsEnabled={runsEnabled} />}
+        <ContextControls value={context} onChange={setContext} documentIds={documentIds}
+          research={mode === 'research' ? { scope: research.scope, depth: research.depth } : null} disabled={streaming} />
+        {mode === 'research' && <ResearchControls value={research} onChange={setResearch} documents={documents} selected={researchDocuments} onSelect={selectResearchDocuments} webAllowed={webSearchAllowed} docsAllowed={documentSearchAllowed} runsEnabled={runsEnabled} />}
+        {mode === 'research' && research.scope !== 'web' && projectDocumentCount > 0 && <p className="mb-2 text-xs text-muted">{projectDocumentCount} ready project documents included. Use Context to exclude individual files.</p>}
         {mode === 'research' && (images.length > 0 || (research.scope === 'web' && documentIds.length > 0)) && <p role="status" className="mb-2 text-xs text-muted">Remove images for Research mode. To research attached documents, choose Selected documents or Documents + web.</p>}
         {draftError && <p role="status" className="mb-2 text-xs text-muted">{draftError}</p>}
         {queued && (

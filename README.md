@@ -41,6 +41,9 @@ everyday use, upgrades, and troubleshooting.
 - **Custom assistants and skills** — create specialized assistants with their own prompts,
   knowledge bases, and capabilities. Invoke reusable [skills](docs/SKILLS.md) with slash
   commands or let the agent discover relevant workflows.
+- **Projects and visible context** — organize ongoing work in private [projects](docs/PROJECTS.md)
+  with selected documents and shared instructions. Review context before sending and inspect
+  retained passages supplied to model calls afterward.
 - **Cross-conversation memory** — save useful facts and preferences for recall in future
   chats, with a Memory panel to review and manage them.
 - **MCP and API integration** — connect external tools through the Model Context Protocol,

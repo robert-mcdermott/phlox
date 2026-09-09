@@ -46,6 +46,12 @@ async function openBlob(path, filename, newTab = false) {
 }
 
 export const api = {
+  listProjects: () => req('GET', '/api/projects'),
+  getProject: id => req('GET', `/api/projects/${id}`),
+  createProject: body => req('POST', '/api/projects', body),
+  updateProject: (id, body) => req('PUT', `/api/projects/${id}`, body),
+  previewContext: body => req('POST', '/api/context/preview', body),
+  getContext: (conversation, turn) => req('GET', `/api/conversations/${conversation}/context/${turn}`),
   exportConversation: (id) => req('GET', `/api/conversations/${id}/export`),
   getBlob,
   downloadFile: (path, filename) => openBlob(path, filename, false),

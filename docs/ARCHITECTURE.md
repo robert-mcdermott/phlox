@@ -8,7 +8,8 @@
 > [codebase review](CODEBASE_REVIEW.md) records its recovery, accounting, retrieval, and
 > operational limitations. The [active roadmap](ROADMAP.md) describes proposed changes;
 > opt-in [reconnectable runs](RUNS.md), [document citations](SOURCES.md), and
-> [captured web sources](WEB_SOURCES.md) now ship. Projects and artifact versioning remain proposed.
+> [captured web sources](WEB_SOURCES.md) and private [projects/context records](PROJECTS.md) now ship.
+> Artifact versioning remains proposed.
 
 Phlox is a feature-rich, ChatGPT-style web app. It does
 chat, an agentic tool-using harness (code execution, filesystem, shell, web), document
@@ -85,6 +86,25 @@ deals with provider-specific shapes.
 
 ### Evidence seam
 
+`projects.py` resolves the conversation's pinned project, selected library documents,
+per-turn context options and history compatibility key. `routers/projects.py` exposes
+creator-only CRUD, a read-only preview and reauthorized context-record reads. Project
+membership never replays other chats. Changed selections exclude earlier incompatible
+segments while preserving the transcript; project instructions are capped at 8,000 chars.
+Personal memory defaults off and global memory writes are disabled for project turns.
+
+`Conversation.project_id` is nullable; moving a chat validates ownership and idle/approval
+state. `Project.revision` provides optimistic editor conflict detection. Exact document
+ceilings travel through `ToolContext.document_scope`, sub-agents and approval snapshots;
+empty means no documents. SQL retrieval still rechecks ownership and assistant visibility.
+Both request-bound chat and the run worker use this same preparation path.
+
+`ContextRecord` is conversation-cascaded, keyed by accounting turn. `model_calls.stream_model`
+records which complete retained source excerpts occur in fitted outbound inputs (including
+guardrail redaction) before provider dispatch. It records attempted calls, not receipt by
+the provider, and caps the call list at 128. Source snapshots remain in the existing source
+tables; record reads reauthorize them and suppress deleted memory content. See [Projects](PROJECTS.md).
+
 `app/sources.py` captures authorized SQL passages for direct document references and
 `search_documents`, using conversation-stable `Source` records and accounting-turn
 `SourceUse` links. Registration commits before the model sees its S-label. The harness
@@ -110,6 +130,7 @@ source router. Wave 8 reuses existing schema fields. See [WEB_SOURCES.md](WEB_SO
 | **Config** | `config.py`, `runtime_settings.py`, `app_config.py` | `config.yml` seed (profiles/defaults) + DB-backed per-user settings + admin deployment overrides (live overlay) |
 | **Runs** | `runs.py`, `routers/runs.py` | Opt-in queue/worker, event replay, explicit cancellation, approval links and interruption review |
 | **Persistence** | `database.py`, `models.py`, `schemas.py`, `migrations/` | SQLite / Postgres, checked Alembic migrations, ORM tables, Pydantic I/O |
+| **Projects/context** | `projects.py`, `routers/projects.py` | Private project CRUD, bounded context selection, compatible history segments, fitted outbound evidence records |
 | **Operations** | `ops.py`, `backup.py`, `maintenance.py` | Offline verified bundles, restore into new destinations, server/maintenance exclusion. See [BACKUP_RESTORE.md](BACKUP_RESTORE.md) |
 | **Providers** | `providers/base.py`, `openai_provider.py`, `bedrock_provider.py`, `registry.py`, `discovery.py` | Provider abstraction, streaming, embeddings, and read-only model catalogs ([discovery](MODEL_DISCOVERY.md)) |
 | **Agent** | `agent/harness.py`, `registry.py`, `permissions.py`, `events.py`, `context.py` | The resumable loop, tool registry, permission gate, SSE events, context compaction |

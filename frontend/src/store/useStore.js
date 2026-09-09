@@ -14,6 +14,8 @@ function emptyLive() {
 
 export const useStore = create((set, get) => ({
   conversations: [],
+  projects: [],
+  activeProjectId: null,
   activeId: null,
   messages: [],
   settings: null,
@@ -82,7 +84,30 @@ export const useStore = create((set, get) => ({
     await Promise.all([
       get().loadConversations(), get().loadSettings(), get().loadProviders(), get().loadBudget(),
       get().loadAssistants(), get().loadSkills(), get().loadSuggestions(),
+      get().loadProjects(),
     ])
+  },
+
+  async loadProjects() {
+    const owner = get().user
+    try {
+      const projects = await api.listProjects()
+      if (get().user === owner) set({ projects })
+    } catch { if (get().user === owner) set({ projects: [] }) }
+  },
+
+  openProject(id) {
+    set({ activeProjectId: id || null })
+    get().newConversation()
+  },
+
+  async moveConversation(projectId) {
+    const id = get().activeId
+    const version = get().streamVersion
+    if (!id) { get().openProject(projectId); return }
+    await api.updateConversation(id, { project_id: projectId || null })
+    if (get().activeId === id && get().streamVersion === version) set({ activeProjectId: projectId || null })
+    await get().loadConversations()
   },
 
   async loadSuggestions() {
@@ -178,6 +203,7 @@ export const useStore = create((set, get) => ({
       streamVersion: get().streamVersion + 1,
       user: null, conversations: [], messages: [], activeId: null, live: null, canvas: null,
       assistants: [], activeAssistantId: null, skills: [], providers: [], settings: null,
+      projects: [], activeProjectId: null,
       budget: null, lastUsage: null, error: null,
     })
   },
@@ -233,7 +259,7 @@ export const useStore = create((set, get) => ({
     try {
       const conv = await api.getConversation(id)
       if (get().streamVersion !== version || get().activeId !== id) return
-      set({ messages: conv.messages, activeAssistantId: conv.assistant_id || null })
+      set({ messages: conv.messages, activeAssistantId: conv.assistant_id || null, activeProjectId: conv.project_id || null })
       if (!await get().recoverRun(id, version)) await get().recoverApproval(id, version)
     } catch (err) {
       if (get().streamVersion === version) set({ error: String(err) })
@@ -321,6 +347,7 @@ export const useStore = create((set, get) => ({
       skillRefs = [],
       skillsEnabled = true,
       research = null,
+      context = {},
     } = {},
   ) {
     if (!text.trim() && images.length === 0 && documentIds.length === 0 && skills.length === 0) return
@@ -329,7 +356,7 @@ export const useStore = create((set, get) => ({
       set({
         queued: {
           text, images, documentIds, documentRefs, autoApprove, webSearch, documentSearch,
-          skills, skillRefs, skillsEnabled, research,
+          skills, skillRefs, skillsEnabled, research, context,
         },
       })
       return
@@ -380,6 +407,8 @@ export const useStore = create((set, get) => ({
       skills,
       skills_enabled: skillsEnabled,
       research,
+      context,
+      project_id: get().activeProjectId,
       // Only meaningful for a new conversation; the server pins it there and ignores
       // it on existing ones.
       assistant_id: get().activeAssistantId,
@@ -412,14 +441,15 @@ export const useStore = create((set, get) => ({
     const version = get().streamVersion
     const previousAttachments = get().messages[idx].attachments || []
     const research = previousAttachments.find(a => a.type === 'research')
-    const documents = previousAttachments.filter(a => a.type === 'document')
+    const documents = previousAttachments.filter(a => a.type === 'document' && !a.project_document)
     await api.truncateFrom(get().activeId, messageId)
     if (get().streamVersion !== version) return
     set((s) => ({ messages: s.messages.slice(0, idx) }))
-    await get().sendMessage(newText, research ? {
-      research: { scope: research.scope, depth: research.depth, domains: research.domains || [] },
+    await get().sendMessage(newText, {
+      context: previousAttachments.find(a => a.type === 'context')?.options || {},
+      research: research ? { scope: research.scope, depth: research.depth, domains: research.domains || [] } : null,
       documentIds: documents.map(d => d.document_id), documentRefs: documents,
-    } : {})
+    })
   },
 
   _onEvent(ev) {

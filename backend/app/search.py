@@ -49,7 +49,7 @@ def json_request(url, cancel=None, payload=None, headers=None):
             conn.sock.settimeout(min(RESPONSE_TIMEOUT_SECONDS, deadline.until - time.monotonic()))
             parts = urlsplit(url)
             request_headers = {'Accept': 'application/json', 'Accept-Encoding': 'identity',
-                               'User-Agent': 'Phlox', 'Connection': 'close', **(headers or {})}
+                               'User-Agent': web_fetch.USER_AGENT, 'Connection': 'close', **(headers or {})}
             body = json.dumps(payload).encode() if payload is not None else None
             if body:
                 request_headers['Content-Type'] = 'application/json'

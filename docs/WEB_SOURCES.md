@@ -78,6 +78,15 @@ and do not revoke an already retained snapshot.
 
 ## Fetch configuration and limits
 
+Page fetching and the Serper/SearXNG search clients use a fixed desktop Chrome User-Agent,
+matching Collomia. Its shared value is maintained in `backend/app/web_fetch.py`.
+Page requests also match Collomia's weighted `Accept` header and `Accept-Language:
+en-US,en;q=0.9` for compatibility with sites that reject minimal request headers. The
+fetcher still validates the returned content type and only extracts supported HTML/text.
+DuckDuckGo requests use the `ddgs` library's own browser identity handling. A browser
+User-Agent can improve compatibility, but does not execute JavaScript or provide a logged-in
+browser session; sites may still return HTTP 403.
+
 Existing file-only `web_fetch.allow_private_networks` and `web_fetch.allowlist_hosts`
 settings remain in effect. By default, every resolved address must be public. Each redirect
 is checked independently, and the HTTP connection uses a validated numeric address with

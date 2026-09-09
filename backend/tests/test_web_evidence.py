@@ -96,6 +96,11 @@ def test_real_fetch_redirect_extract_capture_and_export(db, client, pages, web_c
     repeated = WebFetch().run(ctx, url=pages.url + '/article#different')
     assert '[S1]' in repeated.content and db.query(Source).filter_by(conversation_id=conv.id).count() == 1
     assert all('Cookie' not in headers and 'Authorization' not in headers for _, headers in pages.requests)
+    assert all(headers['User-Agent'] == web_fetch.USER_AGENT for _, headers in pages.requests)
+    assert all(headers['Accept-Language'] == 'en-US,en;q=0.9' for _, headers in pages.requests)
+    assert all(headers['Accept'] == 'text/html,application/xhtml+xml,application/xml;q=0.9,'
+                                   'text/plain;q=0.8,application/json;q=0.8,*/*;q=0.5'
+               for _, headers in pages.requests)
     ref = {'label': 'S1', 'source_id': row.id}
     db.add(Message(conversation_id=conv.id, role='assistant', content='Meals cost $45 [S1].', citations=[ref]))
     db.commit()

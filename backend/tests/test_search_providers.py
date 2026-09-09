@@ -245,10 +245,11 @@ def test_json_transport_fails_closed_and_closes_connection(monkeypatch, status, 
 
     stream = io.BytesIO(body)
     closed = []
+    requests = []
     response = SimpleNamespace(status=status, getheader=lambda *a: "identity", read1=stream.read)
     conn = SimpleNamespace(
         sock=SimpleNamespace(settimeout=lambda value: None),
-        request=lambda *a, **kw: None,
+        request=lambda *a, **kw: requests.append(kw),
         getresponse=lambda: response,
         close=lambda: closed.append(True),
     )
@@ -257,6 +258,7 @@ def test_json_transport_fails_closed_and_closes_connection(monkeypatch, status, 
     with pytest.raises((ValueError, json.JSONDecodeError)):
         search.json_request("https://example.com/search")
     assert closed == [True]
+    assert requests[0]['headers']['User-Agent'] == search.web_fetch.USER_AGENT
 
 
 @pytest.mark.parametrize("cancelled", [False, True])

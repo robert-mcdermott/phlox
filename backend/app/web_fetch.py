@@ -25,6 +25,12 @@ MAX_CHARS = 20_000
 MAX_REDIRECTS = 5
 MAX_SECONDS = 30
 MAX_URL_CHARS = 2048
+# Match Collomia's fixed desktop Chrome identity for public web requests.
+# Review the browser version when preparing a release.
+USER_AGENT = (
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+    'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36'
+)
 _DNS_SLOTS = threading.BoundedSemaphore(4)
 
 
@@ -266,8 +272,10 @@ def fetch(url, cancel=None, url_policy=None):
                 try:
                     parts = urlsplit(current)
                     conn.request('GET', parts.path + ('?' + parts.query if parts.query else ''),
-                                 headers={'User-Agent': 'Phlox/0.1', 'Accept-Encoding': 'identity',
-                                          'Accept': 'text/html, text/plain, application/xhtml+xml', 'Connection': 'close'})
+                                 headers={'User-Agent': USER_AGENT, 'Accept-Encoding': 'identity',
+                                          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,'
+                                                    'text/plain;q=0.8,application/json;q=0.8,*/*;q=0.5',
+                                          'Accept-Language': 'en-US,en;q=0.9', 'Connection': 'close'})
                     resp = conn.getresponse()
                     if resp.status in {301, 302, 303, 307, 308}:
                         if not resp.getheader('Location') or hop == MAX_REDIRECTS:

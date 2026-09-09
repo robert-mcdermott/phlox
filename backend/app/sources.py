@@ -235,7 +235,8 @@ def export_markdown(db, conv):
     blocks = [f'# {conv.title}\n', f'_Exported {datetime.now(timezone.utc).isoformat()}_']
     references = {}
     unknown = set()
-    for message in conv.messages:
+    from app.branches import active
+    for message in active(conv):
         if message.role not in {'user', 'assistant'}:
             continue
         heading = 'You' if message.role == 'user' else 'Assistant' + (f' · {message.model}' if message.model else '')

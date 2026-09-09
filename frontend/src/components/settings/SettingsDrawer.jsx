@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { X, Cpu, Palette, FileText, Server, Wrench, Brain, Users, Shield, ShieldCheck, KeyRound, KeySquare, BarChart3, SlidersHorizontal, Wallet, Bot, Sparkles } from 'lucide-react'
 import ProviderSettings from './ProviderSettings'
+import ProjectsPanel from './ProjectsPanel'
 import AssistantsPanel from './AssistantsPanel'
 import ThemeSwitcher from './ThemeSwitcher'
 import MemoryPanel from './MemoryPanel'
@@ -20,6 +21,7 @@ import { useStore } from '../../store/useStore'
 // User-level settings (everyone) and admin-only settings (role === 'admin').
 const USER_TABS = [
   { id: 'providers', label: 'Model', icon: Cpu },
+  { id: 'projects', label: 'Projects', icon: FileText },
   { id: 'appearance', label: 'Appearance', icon: Palette },
   { id: 'documents', label: 'Documents', icon: FileText },
   { id: 'memory', label: 'Memory', icon: Brain },
@@ -156,7 +158,7 @@ export default function SettingsDrawer({ initialTab = 'providers', onClose }) {
           onTouchStart={startResize}
           onDoubleClick={() => setWidth(clampWidth(DEFAULT_WIDTH))}
           onKeyDown={onHandleKeyDown}
-          className="group absolute left-0 top-0 z-10 flex h-full w-2 -translate-x-1/2 cursor-col-resize touch-none items-center justify-center outline-none"
+          className="group absolute left-0 top-0 z-10 hidden h-full w-2 -translate-x-1/2 cursor-col-resize touch-none items-center justify-center outline-none sm:flex"
         >
           <span
             className={`h-full w-0.5 transition-colors ${
@@ -172,8 +174,15 @@ export default function SettingsDrawer({ initialTab = 'providers', onClose }) {
           </button>
         </div>
 
+        <div className="border-b border-border px-4 py-2 sm:hidden">
+          <select aria-label="Settings section" value={tab} onChange={e => setTab(e.target.value)}
+            className="w-full rounded-lg border-border bg-surface text-sm text-content focus:border-accent focus:ring-accent">
+            {USER_TABS.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+            {isAdmin && <optgroup label="Admin">{ADMIN_TABS.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}</optgroup>}
+          </select>
+        </div>
         <div className="flex flex-1 min-h-0">
-          <nav className="w-44 shrink-0 overflow-y-auto border-r border-border p-2">
+          <nav className="hidden w-44 shrink-0 overflow-y-auto border-r border-border p-2 sm:block">
             {USER_TABS.map((t) => <TabButton key={t.id} t={t} />)}
             {isAdmin && (
               <>
@@ -185,8 +194,9 @@ export default function SettingsDrawer({ initialTab = 'providers', onClose }) {
             )}
           </nav>
 
-          <div className="flex-1 overflow-y-auto p-5">
+          <div className="min-w-0 flex-1 overflow-y-auto p-4 sm:p-5">
             {tab === 'providers' && <ProviderSettings />}
+            {tab === 'projects' && <ProjectsPanel />}
             {tab === 'appearance' && <ThemeSwitcher />}
             {tab === 'documents' && <DocumentsPanel />}
             {tab === 'memory' && <MemoryPanel />}

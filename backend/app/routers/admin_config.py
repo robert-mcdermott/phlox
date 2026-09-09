@@ -21,6 +21,7 @@ from app import app_config, config, guardrails
 from app.auth.deps import require_admin
 from app.models import User
 from app.schemas import (
+    ProfileIn,
     GenerationUpdate,
     GuardrailsPreviewRequest,
     GuardrailsUpdate,
@@ -142,6 +143,32 @@ def test_web_search(body: WebSearchUpdate, _: User = Depends(require_admin)):
         return {'ok': False, 'error': str(exc)}
 
 
+@router.post('/profiles/discover')
+def discover_profile(body: ProfileIn, user: User = Depends(require_admin)):
+    """Preview an unsaved catalog, preserving an existing profile's blank secrets."""
+    from app.providers.discovery import catalog
+    from app.rate_limit import check_rate_limit
+
+    check_rate_limit('model-discovery-preview', user.id, limit=20, window_seconds=60)
+    name = body.name.strip()
+    if not name or body.type not in {'openai', 'bedrock'}:
+        raise HTTPException(422, 'Provide a profile name and a supported provider type.')
+    cfg = _profile_config(body, config.get_profiles().get(name, {}))
+    return {'profile': name, **catalog(name, cfg=cfg, refresh=True)}
+
+
+def _profile_config(profile, previous):
+    pd = profile.model_dump(exclude={'name'})
+    cfg = {k: v for k, v in pd.items() if v is not None and k not in SECRET_FIELDS}
+    for field in SECRET_FIELDS:
+        incoming = (pd.get(field) or '').strip()
+        if incoming:
+            cfg[field] = incoming
+        elif previous.get(field):
+            cfg[field] = previous[field]
+    return cfg
+
+
 @router.put("/profiles")
 def update_profiles(body: ProfilesUpdate, user: User = Depends(require_admin)):
     """Replace the profile catalog. Secrets left blank are preserved from current config."""
@@ -154,21 +181,10 @@ def update_profiles(body: ProfilesUpdate, user: User = Depends(require_admin)):
     current = config.get_profiles()  # effective (overlay or file) — holds the real secrets
     new: dict[str, dict] = {}
     for p in body.profiles:
-        pd = p.model_dump()
-        name = pd.pop("name").strip()
-        if pd.get("type") not in ("openai", "bedrock"):
+        name = p.name.strip()
+        if p.type not in ("openai", "bedrock"):
             raise HTTPException(422, f"Profile {name!r}: type must be 'openai' or 'bedrock'")
-        # Non-secret fields: keep what was provided (drop unset/None to keep storage clean).
-        cfg = {k: v for k, v in pd.items() if v is not None and k not in SECRET_FIELDS}
-        # Secret-preserve: a non-empty incoming value overwrites; otherwise keep the existing.
-        prev = current.get(name, {})
-        for f in SECRET_FIELDS:
-            incoming = (pd.get(f) or "").strip() if isinstance(pd.get(f), str) else pd.get(f)
-            if incoming:
-                cfg[f] = incoming
-            elif prev.get(f):
-                cfg[f] = prev[f]
-        new[name] = cfg
+        new[name] = _profile_config(p, current.get(name, {}))
 
     app_config.set_section("profiles", new, user.id)
     return _effective_config()

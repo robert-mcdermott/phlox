@@ -1,3 +1,4 @@
+import { AlternativeNotice } from '../components/chat/AlternativeNavigation'
 import { useEffect, useRef, useState } from 'react'
 import { AlertTriangle, Ban } from 'lucide-react'
 import Message from '../components/chat/Message'
@@ -45,6 +46,9 @@ function BudgetBanner() {
 }
 
 function Welcome() {
+  const projectId = useStore(s => s.activeProjectId)
+  const projects = useStore(s => s.projects)
+  const project = projects.find(p => p.id === projectId)
   const send = useStore((s) => s.sendMessage)
   const assistants = useStore((s) => s.assistants)
   const activeAssistantId = useStore((s) => s.activeAssistantId)
@@ -72,13 +76,14 @@ function Welcome() {
         <img src="/phlox-logo.svg" alt="Phlox" className="mb-6 h-14" />
       )}
       <h1 className="mb-2 text-2xl font-semibold text-content">
-        {assistant ? assistant.name : 'How can I help you today?'}
+        {project ? project.name : assistant ? assistant.name : 'How can I help you today?'}
       </h1>
       <p className="mb-8 max-w-md text-muted">
-        {assistant
+        {project ? project.description || 'Continue this project with its selected knowledge and instructions.' : assistant
           ? assistant.description || 'Ask me anything in my area of expertise.'
           : 'Chat, run code, search your documents, and use connected tools — powered by your choice of model provider.'}
       </p>
+      {project && <p className="mb-4 text-xs text-muted">{project.archived ? 'Archived — restore in Manage projects to continue.' : `${project.document_ids.length} linked documents · personal memory off by default`}<br />Review or adjust this turn’s inputs with Context below.</p>}
 
       {assistants.length > 0 && (
         <div className="mb-8 flex w-full max-w-2xl flex-wrap justify-center gap-2">
@@ -206,6 +211,7 @@ export default function ChatPage() {
           <Welcome />
         ) : (
           <div className="mx-auto max-w-3xl space-y-5 px-4 py-6">
+            <AlternativeNotice />
             {messages.map((m, i) => (
               <Message
                 key={m.id}

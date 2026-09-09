@@ -131,6 +131,30 @@ class Skill(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
 
 
+class Project(Base):
+    __tablename__ = 'projects'
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(String(32), index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    description: Mapped[str] = mapped_column(Text, default='')
+    instructions: Mapped[str] = mapped_column(Text, default='')
+    document_ids: Mapped[list] = mapped_column(JSON, default=list)
+    archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
+
+
+class ContextRecord(Base):
+    __tablename__ = 'context_records'
+
+    turn_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    conversation_id: Mapped[str] = mapped_column(ForeignKey('conversations.id', ondelete='CASCADE'), index=True)
+    data: Mapped[dict] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
 class Conversation(Base):
     __tablename__ = "conversations"
 
@@ -139,6 +163,7 @@ class Conversation(Base):
     # Assistant pinned at creation; dangles (no FK) after assistant deletion so the
     # conversation keeps running on its snapshotted profile/model/system_prompt.
     assistant_id: Mapped[str | None] = mapped_column(String(32), index=True, nullable=True)
+    project_id: Mapped[str | None] = mapped_column(String(32), index=True, nullable=True)
     title: Mapped[str] = mapped_column(String(300), default="New chat")
     profile: Mapped[str | None] = mapped_column(String(100), nullable=True)
     model: Mapped[str | None] = mapped_column(String(200), nullable=True)
@@ -147,7 +172,12 @@ class Conversation(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
 
+    active_leaf_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    branch_choices: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
     sources: Mapped[list["Source"]] = relationship(cascade="all, delete-orphan")
+    context_records: Mapped[list["ContextRecord"]] = relationship(cascade="all, delete-orphan")
+    editable_artifacts: Mapped[list["Artifact"]] = relationship(cascade="all, delete-orphan")
 
     runs: Mapped[list["Run"]] = relationship(cascade="all, delete-orphan")
 
@@ -167,6 +197,7 @@ class Message(Base):
     conversation_id: Mapped[str] = mapped_column(
         ForeignKey("conversations.id", ondelete="CASCADE"), index=True
     )
+    parent_id: Mapped[str | None] = mapped_column(String(32), index=True, nullable=True)
     # role: user | assistant | system | tool
     role: Mapped[str] = mapped_column(String(20))
     content: Mapped[str] = mapped_column(Text, default="")
@@ -184,6 +215,36 @@ class Message(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now, index=True)
 
     conversation: Mapped[Conversation] = relationship(back_populates="messages")
+
+
+class Artifact(Base):
+    """A conversation's versioned text output, independent of its live workspace."""
+    __tablename__ = 'artifacts'
+    __table_args__ = (UniqueConstraint('conversation_id', 'path_key'),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    conversation_id: Mapped[str] = mapped_column(ForeignKey('conversations.id', ondelete='CASCADE'), index=True)
+    path: Mapped[str] = mapped_column(String(1000))
+    path_key: Mapped[str] = mapped_column(String(64))
+    head_version_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    versions: Mapped[list["ArtifactVersion"]] = relationship(cascade='all, delete-orphan')
+
+
+class ArtifactVersion(Base):
+    """Immutable UTF-8 text; database backups include all versions."""
+    __tablename__ = 'artifact_versions'
+    __table_args__ = (UniqueConstraint('artifact_id', 'number'),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    artifact_id: Mapped[str] = mapped_column(ForeignKey('artifacts.id', ondelete='CASCADE'), index=True)
+    number: Mapped[int] = mapped_column(Integer)
+    content: Mapped[str] = mapped_column(Text)
+    sha256: Mapped[str] = mapped_column(String(64))
+    parent_version_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    origin: Mapped[str] = mapped_column(String(30))
+    source_message_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    details: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
 
 class Document(Base):

@@ -12,6 +12,8 @@ including local models like Ollama).
 **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — the system map and the request
 lifecycle. Then the focused guides:
 - [docs/USER_GUIDE.md](docs/USER_GUIDE.md) — installation, configuration, usage, and troubleshooting
+- [docs/CONVERSATION_ALTERNATIVES.md](docs/CONVERSATION_ALTERNATIVES.md) — preserved edits/retries, selected history and saved answer files
+- [docs/PROJECTS.md](docs/PROJECTS.md) — private projects, context selection/records, and migration
 - [docs/RUNS.md](docs/RUNS.md) — opt-in reconnectable execution, Stop, and recovery
 - [docs/INGESTION.md](docs/INGESTION.md) — document queue/retry, embedding identity, staged index rebuilds
 - [docs/WEB_SOURCES.md](docs/WEB_SOURCES.md) — bounded web fetching, captured passages/failures, private citations
@@ -115,3 +117,19 @@ through approval/replay/export. M1/M2 remain in progress; OCR, semantic retrieva
 and a bounded Research workflow are still roadmap work. Consult the wave log
 for verification and remaining boundaries. Sensitive-data/PHI governance remains a separate
 deployment gate. Extend along the documented seams above.
+
+**Waves 9–11 also ship:** opt-in Research/admin search, automatic model discovery, and private
+projects with context inspection. Project search ceilings live in `ToolContext.document_scope`
+and must survive delegation/resume; empty scope means no documents. Per-turn `ContextRecord`
+rows track complete retained passages in fitted outbound input and cascade with conversations.
+**Wave 12 ships conversation alternatives:** use `branches.active()` for model history and
+exports; `Conversation.messages` contains every saved path and is for ownership/deletion.
+Persist answers with their pinned parent, including approval resumes. Request-bound streams
+and durable runs block branch/project mutation while active. File snapshots retain bounded
+answer output separately from the shared workspace; selection never restores files.
+**Wave 13 adds editable artifacts:** immutable bounded text versions live in SQL; saving
+and restoring are independent of explicit hash-checked workspace publication. Selected-text
+AI revision uses the shared model-call accounting/budget seam and both guardrail directions;
+proposals require review and never write automatically. Observe run/approval admission
+guards for mutations and preserve the original answer snapshot. See [docs/ARTIFACTS.md](docs/ARTIFACTS.md).
+Current schema head is `0008_artifacts`; older revision metadata must remain checkable.

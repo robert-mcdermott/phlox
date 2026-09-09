@@ -34,6 +34,36 @@ def known_revision(revision):
 
 
 def expected_metadata(revision):
+    if revision == '0007_branches':
+        import sqlalchemy as sa
+        result = expected_metadata('0006_projects')
+        messages = result.tables['messages']
+        messages.append_column(sa.Column('parent_id', sa.String(32), nullable=True))
+        sa.Index('ix_messages_parent_id', messages.c.parent_id)
+        conversations = result.tables['conversations']
+        conversations.append_column(sa.Column('active_leaf_id', sa.String(32), nullable=True))
+        conversations.append_column(sa.Column('branch_choices', sa.JSON, nullable=True))
+        return result
+    if revision == '0006_projects':
+        import json
+        import sqlalchemy as sa
+        from app.migrations.baseline import metadata
+        result = expected_metadata('0005_ingestion')
+        additions = json.loads(Path(__file__).with_name('schema_v6_additions.json').read_text())
+        frozen = metadata({'tables': additions})
+        for table in frozen.tables.values():
+            table.to_metadata(result)
+        conversations = result.tables['conversations']
+        conversations.append_column(sa.Column('project_id', sa.String(32), nullable=True))
+        sa.Index('ix_conversations_project_id', conversations.c.project_id)
+        return result
+    if revision == '0005_ingestion':
+        import sqlalchemy as sa
+        result = expected_metadata('0004_sources')
+        result.tables['documents'].append_column(sa.Column('ingestion', sa.JSON, nullable=True))
+        result.tables['doc_chunks'].append_column(sa.Column('provenance', sa.JSON, nullable=True))
+        result.tables['doc_chunks'].append_column(sa.Column('embedding_identity', sa.JSON, nullable=True))
+        return result
     # Historical revisions must remain checkable/back-upable before upgrade.
     if revision in {None, '0001_wave3', '0002_ledger_width'}:
         from app.migrations.baseline import metadata

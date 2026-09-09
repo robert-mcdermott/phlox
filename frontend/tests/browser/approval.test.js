@@ -38,6 +38,12 @@ async function fixture(t, { approval = null, auth = false, durable = false } = {
   const page = await context.newPage()
   page.setDefaultTimeout(8000)
   const state = {
+    savedFileReads: [],
+    branchMode: false, branchViews: {}, selections: [], branchFailure: false, activeLeaf: null,
+    projects: [], projectSaves: [], conversationProjects: {}, contextReads: [],
+    settings: { active_profile: 'test', model: 'test-model', theme: 'phlox-dark', max_tokens: 1000, max_tool_rounds: 3 },
+    modelCatalog: { profile: 'test', models: ['test-model'] }, modelReads: 0,
+    discoveryRequests: [], profileSaves: [],
     searchSaves: [], searchTests: [], chatRequests: [], docs: [], retries: [], rebuilds: 0, index: { mode: 'keyword', rebuild_required: true, notice: 'Embedding model changed. Rebuild required.' },
     sources: {}, sourceReads: [], exportReads: 0, exportMarkdown: '',
     approval, decisions: [], reject: false, authenticated: false, setup: true,
@@ -57,6 +63,10 @@ async function fixture(t, { approval = null, auth = false, durable = false } = {
     const path = new URL(route.request().url()).pathname
     const method = route.request().method()
     const json = (body, status = 200) => route.fulfill({ status, json: body })
+    if (path === '/api/files/alpha/saved/answer-old/0') {
+      state.savedFileReads.push(path)
+      return route.fulfill({ contentType: 'text/plain', body: '# Original retained report\n\nSaved bytes from the original answer.' })
+    }
     if (path === '/api/auth/config') return json({ enabled: auth, runs_enabled: durable })
     const user = { id: 'local', username: 'tester', role: 'admin', must_change_password: state.setup }
     if (path === '/api/auth/me') return state.authenticated ? json(user) : json({ detail: 'Sign in' }, 401)
@@ -65,7 +75,14 @@ async function fixture(t, { approval = null, auth = false, durable = false } = {
       return json({ token: 'synthetic-test-token', user })
     }
     if (path === '/api/auth/change-password') { state.setup = false; return json({ ...user, must_change_password: false }) }
-    if (path === '/api/conversations') return json([{ id: 'alpha', title: 'Approval chat' }, { id: 'beta', title: 'Other chat' }])
+    if (path === '/api/conversations') return json([{ id: 'alpha', title: 'Approval chat', project_id: state.conversationProjects.alpha }, { id: 'beta', title: 'Other chat', project_id: state.conversationProjects.beta }])
+    if (path === '/api/conversations/alpha/context/turn-project') {
+      state.contextReads.push('turn-project')
+      return json({ project_name: 'Infrastructure', profile: 'test', model: 'test-model', history_messages: 0,
+        base_instructions: 'Be helpful.', instructions: 'Prefer repairable equipment.', memories: [],
+        calls: [{ profile: 'test', model: 'test-model', kind: 'chat', source_ids: ['source-project'], project_instructions_present: true }],
+        sources: [{ id: 'source-project', label: 'S1', title: 'Network notes', available: true, excerpt: 'Retain local backups for 30 days.' }] })
+    }
     if (path.startsWith('/api/conversations/alpha/sources/')) {
       const id = path.split('/').at(-1)
       state.sourceReads.push(id)
@@ -79,17 +96,65 @@ async function fixture(t, { approval = null, auth = false, durable = false } = {
       state.exportReads++
       return json({ markdown: state.exportMarkdown })
     }
-    if (path === '/api/conversations/alpha') return json({ id: 'alpha', title: 'Approval chat', messages: state.messages })
+    if (path.startsWith('/api/conversations/alpha/alternatives/')) {
+      const target = path.split('/').at(-1)
+      state.selections.push(route.request().postDataJSON())
+      state.messages = state.branchViews[target]
+      state.activeLeaf = state.messages.at(-1).id
+      return json({ id: 'alpha', title: 'Approval chat', messages: state.messages, active_leaf_id: state.activeLeaf, has_alternatives: true })
+    }
+    if (path === '/api/conversations/alpha') {
+      if (method === 'PATCH') state.conversationProjects.alpha = route.request().postDataJSON().project_id
+      return json({ id: 'alpha', title: 'Approval chat', messages: state.messages, active_leaf_id: state.activeLeaf, has_alternatives: state.branchMode, project_id: state.conversationProjects.alpha })
+    }
     if (path === '/api/conversations/beta') return json({ id: 'beta', title: 'Other chat', messages: [{ id: 'b', role: 'user', content: 'Only the other conversation' }] })
     if (path === '/api/chat/approvals/alpha') return json(state.approval ? [state.approval] : [])
     if (path === '/api/chat/approvals/beta') return json([])
     if (path === '/api/chat/approvals/approval-1' && method === 'DELETE') { state.approval = null; return json({ status: 'dismissed' }) }
-    if (path === '/api/settings') return json({ active_profile: 'test', model: 'test-model', theme: 'phlox-dark', max_tokens: 1000, max_tool_rounds: 3 })
+    if (path === '/api/settings') {
+      if (method === 'PATCH') Object.assign(state.settings, route.request().postDataJSON())
+      return json(state.settings)
+    }
+    if (path === '/api/projects') {
+      if (method === 'POST') {
+        const row = { ...route.request().postDataJSON(), id: 'project-1', revision: 1 }
+        state.projects.push(row); state.projectSaves.push(row)
+        return json(row)
+      }
+      return json(state.projects)
+    }
+    if (path.startsWith('/api/projects/')) {
+      const id = path.split('/').at(-1)
+      const index = state.projects.findIndex(p => p.id === id)
+      if (method === 'PUT') {
+        state.projects[index] = { ...route.request().postDataJSON(), id, revision: state.projects[index].revision + 1 }
+        state.projectSaves.push(state.projects[index])
+      }
+      return json({ ...state.projects[index], conversations: Object.keys(state.conversationProjects).filter(c => state.conversationProjects[c] === id).map(c => ({ id: c, title: 'Approval chat' })) })
+    }
+    if (path === '/api/context/preview') {
+      const body = route.request().postDataJSON()
+      const p = state.projects.find(p => p.id === (state.conversationProjects[body.conversation_id] || body.project_id))
+      return json({ project_id: p?.id, project_name: p?.name, profile: 'test', model: 'test-model', destination: 'localhost', base_instructions: 'Be helpful.',
+        instructions: body.context.project_instructions === false ? '' : p?.instructions, history_messages: 0,
+        memory_enabled: body.context.memory ?? !p,
+        memories: body.context.memory ? [{ id: 'memory-1', content: 'Personal preference', selected: true }] : [],
+        documents: state.docs.filter(d => p?.document_ids.includes(d.id)).map(d => ({ ...d, selected: !(body.context.excluded_document_ids || []).includes(d.id) })) })
+    }
     if (path === '/api/providers') return json({ profiles: [{ name: 'test', label: 'Test', model: 'test-model' }] })
-    if (path === '/api/providers/test/models') return json({ profile: 'test', models: ['test-model'] })
+    if (path === '/api/providers/test/models') { state.modelReads++; return json(state.modelCatalog) }
     if (path === '/api/settings/suggestions') return json({ suggestions: [] })
     if (path === '/api/usage/budget') return json({ budgets: [] })
     if (path === '/api/admin/config') return json(state.config)
+    if (path === '/api/admin/config/profiles/discover') {
+      state.discoveryRequests.push(route.request().postDataJSON())
+      return json(state.modelCatalog)
+    }
+    if (path === '/api/admin/config/profiles' && method === 'PUT') {
+      const body = route.request().postDataJSON(); state.profileSaves.push(body)
+      state.config.providers = body.profiles.map(({ api_key, ...p }) => ({ ...p, api_key_set: !!api_key }))
+      return json(state.config)
+    }
     if (path === '/api/admin/config/web-search' && method === 'PUT') {
       const body = route.request().postDataJSON(); state.searchSaves.push(body)
       state.config.web_search = { engine: body.engine, interval_seconds: body.interval_seconds, searxng_url: body.searxng_url, serper_api_key_set: !!body.serper_api_key }
@@ -163,6 +228,23 @@ async function fixture(t, { approval = null, auth = false, durable = false } = {
     }
     if (path === '/api/chat') {
       state.chatRequests.push(route.request().postDataJSON())
+      if (state.branchMode) {
+        const body = route.request().postDataJSON()
+        if (state.branchFailure) return route.fulfill({ contentType: 'text/event-stream', body: sse(
+          { type: 'conversation', id: 'alpha' }, { type: 'error', content: 'Synthetic retry failed' }, { type: 'done', message_id: '', outcome: 'failed' }) })
+        const old = state.messages
+        const question = body.edit_message_id ? { ...old[0], id: 'user-edited', content: body.message, alternatives: [old[0].id, 'user-edited'] } : old[0]
+        const answer = { id: 'answer-new', role: 'assistant', content: 'A different approach.', parent_id: question.id,
+          alternatives: body.edit_message_id ? ['answer-new'] : ['answer-old', 'answer-new'], model: 'test-model' }
+        if (!body.edit_message_id) old[1].alternatives = answer.alternatives
+        else old[0].alternatives = question.alternatives
+        state.branchViews[body.edit_message_id ? old[0].id : 'answer-old'] = old
+        state.messages = [question, answer]
+        state.branchViews[body.edit_message_id ? question.id : answer.id] = state.messages
+        state.activeLeaf = answer.id
+        return route.fulfill({ contentType: 'text/event-stream', body: sse(
+          { type: 'conversation', id: 'alpha' }, { type: 'token', content: answer.content }, { type: 'done', message_id: answer.id, outcome: 'completed' }) })
+      }
       state.approval = pending()
       return route.fulfill({ contentType: 'text/event-stream', body: sse(
         { type: 'conversation', id: 'alpha' },
@@ -214,6 +296,170 @@ test('partial call usage stays visibly unknown in message receipts and chargebac
   const csv = Buffer.concat(chunks).toString()
   assert.match(csv, /cost_usd,known_cost_usd,unknown_usage_calls,unknown_cost_calls,calls,turns/)
   assert.match(csv, /7,3,10,,0.5,1,1,2,1/)
+})
+
+test('model picker discovers additions, preserves selection on failure, and supports keyboard custom IDs', async (t) => {
+  const { page, state } = await fixture(t)
+  await page.getByTitle('Settings', { exact: true }).click()
+  await page.getByRole('button', { name: 'Model', exact: true }).click()
+  await page.getByRole('button', { name: 'Choose model', exact: true }).click()
+  await page.getByRole('option', { name: 'test-model', exact: true }).waitFor()
+  await page.getByRole('combobox', { name: 'Filter models' }).press('Escape')
+  state.modelCatalog = { items: [
+    { id: 'test-model', name: 'test-model' },
+    { id: 'new-local', name: 'New local model', loaded: false, supports_tools: true, supports_vision: false, context_window: 32000 },
+    { id: 'embedding-only', name: 'Embedding only', kind: 'embedding' },
+  ], source: 'lmstudio', mode: 'automatic' }
+  await page.getByRole('button', { name: 'Choose model', exact: true }).click()
+  await page.getByRole('option', { name: /New local model/ }).waitFor()
+  assert.equal(await page.getByRole('option', { name: /Embedding only/ }).count(), 0)
+  await page.getByRole('combobox', { name: 'Filter models' }).fill('new-local')
+  await page.getByRole('combobox', { name: 'Filter models' }).press('Enter')
+  await page.waitForFunction(() => document.querySelector('[aria-label="Choose model"]')?.textContent.includes('New local model'))
+  assert.equal(state.settings.model, 'new-local')
+  await page.getByText(/Enable Just-In-Time loading/).waitFor()
+  state.modelCatalog = { ...state.modelCatalog, status: 'error', stale: true, error: 'Could not connect to the model server.' }
+  await page.getByRole('button', { name: 'Refresh models', exact: true }).click()
+  await page.getByText(/Showing the last available list/).waitFor()
+  assert.equal(state.settings.model, 'new-local')
+  state.modelCatalog = { items: [], source: 'openai' }
+  await page.getByRole('button', { name: 'Choose model', exact: true }).click()
+  await page.getByRole('option', { name: /new-local.*Configured ID/ }).waitFor()
+  await page.getByRole('combobox', { name: 'Filter models' }).fill('private/custom:latest')
+  await page.getByRole('combobox', { name: 'Filter models' }).press('Enter')
+  await page.waitForFunction(() => document.querySelector('[aria-label="Choose model"]')?.textContent.includes('private/custom:latest'))
+  assert.equal(state.settings.model, 'private/custom:latest')
+  assert.ok(state.modelReads >= 4)
+})
+
+test('admin discovers unsaved provider models and saves the selected default with masked credentials', async (t) => {
+  const { page, state } = await fixture(t)
+  state.modelCatalog = { items: [{ id: 'downloaded-model', name: 'Downloaded model', kind: 'llm' }], source: 'ollama' }
+  await page.getByTitle('Settings', { exact: true }).click()
+  await page.getByRole('button', { name: 'Configuration', exact: true }).click()
+  await page.getByRole('button', { name: 'Add profile', exact: true }).click()
+  await page.getByPlaceholder('profile name (id)', { exact: true }).fill('local')
+  await page.getByPlaceholder('endpoint (e.g. http://localhost:11434/v1)', { exact: true }).fill('http://localhost:11434/v1')
+  await page.getByPlaceholder('api key', { exact: true }).fill('synthetic-key')
+  await page.getByRole('button', { name: 'Choose default model', exact: true }).click()
+  await page.getByRole('option', { name: /Downloaded model/ }).click()
+  assert.equal(state.profileSaves.length, 0)
+  assert.equal(state.discoveryRequests[0].api_key, 'synthetic-key')
+  assert.equal(state.discoveryRequests[0].model, null)
+  assert.equal(state.discoveryRequests[0].model_discovery, 'automatic')
+  await page.getByRole('button', { name: 'Save profiles', exact: true }).click()
+  await page.getByText('Saved — applied live.', { exact: true }).waitFor()
+  assert.equal(state.profileSaves[0].profiles[0].model, 'downloaded-model')
+  assert.equal(await page.getByPlaceholder('••• set — leave blank to keep', { exact: true }).inputValue(), '')
+  await page.getByLabel('Model discovery', { exact: true }).selectOption('manual')
+  await page.getByLabel('Configured model IDs', { exact: true }).fill('downloaded-model, private-id')
+  await Promise.all([
+    page.waitForResponse(r => r.url().endsWith('/api/admin/config/profiles') && r.request().method() === 'PUT'),
+    page.getByRole('button', { name: 'Save profiles', exact: true }).click(),
+  ])
+  assert.equal(state.profileSaves[1].profiles[0].model_discovery, 'manual')
+  assert.deepEqual(state.profileSaves[1].profiles[0].models, ['downloaded-model', 'private-id'])
+})
+
+test('phone settings give model selection and provider setup the full content width', async (t) => {
+  const { page } = await fixture(t)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.getByTitle('Settings', { exact: true }).click()
+  await page.getByLabel('Settings section', { exact: true }).selectOption('providers')
+  await page.getByRole('button', { name: 'Choose model', exact: true }).click()
+  const list = page.getByRole('listbox', { name: 'Available models' })
+  await list.waitFor()
+  const bounds = await list.boundingBox()
+  assert.ok(bounds.width > 300 && bounds.x >= 0 && bounds.x + bounds.width <= 390)
+  await page.getByRole('combobox', { name: 'Filter models' }).press('Escape')
+  await page.getByLabel('Settings section', { exact: true }).selectOption('config')
+  await page.getByRole('button', { name: 'Add profile', exact: true }).click()
+  await page.getByPlaceholder('profile name (id)', { exact: true }).fill('phone-profile')
+  const picker = await page.getByRole('button', { name: 'Choose default model', exact: true }).boundingBox()
+  assert.ok(picker.x >= 0 && picker.x + picker.width <= 390)
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true)
+})
+
+test('projects can be created, selected, excluded per turn, and archived without deleting chats', async (t) => {
+  const { page, state } = await fixture(t)
+  state.docs = [{ id: 'project-doc', filename: 'Network notes.txt', status: 'ready' }]
+  await page.getByRole('button', { name: 'Manage projects', exact: true }).click()
+  const panel = page.getByRole('region', { name: 'Projects', exact: true })
+  await panel.getByLabel('Name', { exact: true }).fill('Infrastructure')
+  await panel.getByLabel('Project instructions', { exact: true }).fill('Prefer repairable equipment.')
+  await panel.getByRole('checkbox', { name: /Network notes/ }).check()
+  await panel.getByRole('button', { name: 'Save project', exact: true }).click()
+  await panel.getByText('Project saved.', { exact: true }).waitFor()
+  assert.deepEqual(state.projectSaves[0].document_ids, ['project-doc'])
+  await page.keyboard.press('Escape')
+  await page.getByLabel('Project', { exact: true }).selectOption('project-1')
+  await page.getByRole('heading', { name: 'Infrastructure', exact: true }).waitFor()
+  await page.getByRole('button', { name: 'Context · Project', exact: true }).click()
+  const preview = page.getByRole('region', { name: 'Context preview', exact: true })
+  await preview.getByText(/localhost/).waitFor()
+  assert.equal(await preview.getByRole('checkbox', { name: 'Use personal memory', exact: true }).isChecked(), false)
+  await preview.getByRole('checkbox', { name: 'Use project instructions', exact: true }).uncheck()
+  await preview.getByRole('checkbox', { name: /Network notes/ }).uncheck()
+  await page.getByPlaceholder('Message Phlox…').fill('Review this plan without the project background.')
+  await page.getByRole('button', { name: 'Send', exact: true }).click()
+  await page.getByText('Approval needed', { exact: true }).waitFor()
+  assert.equal(state.chatRequests[0].project_id, 'project-1')
+  assert.deepEqual(state.chatRequests[0].context.excluded_document_ids, ['project-doc'])
+  assert.equal(state.chatRequests[0].context.project_instructions, false)
+  await page.getByRole('button', { name: 'Manage projects', exact: true }).click()
+  await panel.getByLabel('Edit project', { exact: true }).selectOption('project-1')
+  await panel.getByRole('checkbox', { name: /Archived/ }).check()
+  await panel.getByRole('button', { name: 'Save project', exact: true }).click()
+  await panel.getByText('Project saved.', { exact: true }).waitFor()
+  assert.equal(state.projectSaves.at(-1).archived, true)
+})
+
+test('existing chats move into projects and saved context records remain inspectable after reload', async (t) => {
+  const { page, state } = await fixture(t)
+  state.projects = [{ id: 'project-1', name: 'Infrastructure', description: '', instructions: 'Prefer repairable equipment.', document_ids: [], revision: 1, archived: false }]
+  state.messages.push({ id: 'answer-project', role: 'assistant', content: 'Keep local backups.', usage: { turn_id: 'turn-project', total: 25 } })
+  await page.reload()
+  await page.getByText('Approval chat', { exact: true }).click()
+  await page.getByRole('button', { name: 'Context record', exact: true }).click()
+  let record = page.getByRole('region', { name: 'Context record', exact: true })
+  await record.getByText('[S1] Network notes', { exact: true }).click()
+  await record.getByText('Retain local backups for 30 days.', { exact: true }).waitFor()
+  await page.getByRole('button', { name: 'Manage projects', exact: true }).click()
+  await page.getByLabel('Edit project', { exact: true }).selectOption('project-1')
+  await page.getByRole('button', { name: 'Move current chat here', exact: true }).click()
+  await page.getByText('Chat updated. Close Settings to continue.', { exact: true }).waitFor()
+  assert.equal(state.conversationProjects.alpha, 'project-1')
+  await page.reload()
+  await page.getByText('Approval chat', { exact: true }).click()
+  await page.getByRole('button', { name: 'Context record', exact: true }).click()
+  assert.equal(await page.getByLabel('Project', { exact: true }).inputValue(), 'project-1')
+  record = page.getByRole('region', { name: 'Context record', exact: true })
+  await record.getByText('[S1] Network notes', { exact: true }).waitFor()
+  assert.equal(state.contextReads.length, 2)
+})
+
+test('project knowledge is selected in Research and document exclusions update both controls', async (t) => {
+  const { page, state } = await fixture(t)
+  state.docs = [{ id: 'project-doc', filename: 'Network notes.txt', status: 'ready' }]
+  state.projects = [{ id: 'project-1', name: 'Infrastructure', description: '', instructions: '', document_ids: ['project-doc'], revision: 1, archived: false }]
+  await page.reload()
+  await page.getByLabel('Project', { exact: true }).selectOption('project-1')
+  await page.getByRole('heading', { name: 'Infrastructure', exact: true }).waitFor()
+  await page.getByRole('combobox', { name: 'Chat mode' }).selectOption('research')
+  await page.getByRole('combobox', { name: 'Research sources' }).selectOption('documents')
+  const documents = page.getByRole('group', { name: 'Choose documents' })
+  assert.equal(await documents.getByRole('checkbox', { name: 'Network notes.txt' }).isChecked(), true)
+  await page.getByPlaceholder('Message Phlox…').fill('Research the retention policy.')
+  assert.equal(await page.getByRole('button', { name: 'Send', exact: true }).isEnabled(), true)
+  await documents.getByRole('checkbox', { name: 'Network notes.txt' }).uncheck()
+  assert.equal(await page.getByRole('button', { name: 'Send', exact: true }).isEnabled(), false)
+  await documents.getByRole('checkbox', { name: 'Network notes.txt' }).check()
+  await page.getByRole('button', { name: 'Send', exact: true }).click()
+  await page.getByText('Approval needed', { exact: true }).waitFor()
+  assert.equal(state.chatRequests[0].project_id, 'project-1')
+  assert.equal(state.chatRequests[0].research.scope, 'documents')
+  assert.deepEqual(state.chatRequests[0].document_ids, [])
+  assert.deepEqual(state.chatRequests[0].context.excluded_document_ids, [])
 })
 
 test('pricing keeps blank rates unknown and saves explicit zero and cache rates', async (t) => {
@@ -649,4 +895,237 @@ test('streaming respects reading position and Jump to latest restores following'
   assert.equal(await scroll.evaluate(el => el.scrollTop), 0)
   await page.getByRole('button', { name: 'Jump to latest', exact: true }).click()
   assert.ok(await scroll.evaluate(el => el.scrollTop > 100))
+})
+
+
+test('regeneration keeps alternatives navigable after reload on a phone', async t => {
+  const { page, state } = await fixture(t)
+  state.branchMode = true
+  state.messages = [{ id: 'user-1', role: 'user', content: 'Explore the options' },
+    { id: 'answer-old', role: 'assistant', content: 'The original approach.', model: 'test-model' }]
+  state.activeLeaf = 'answer-old'
+  await page.getByText('Approval chat', { exact: true }).click()
+  await page.getByTitle('Regenerate', { exact: true }).click()
+  await page.getByRole('navigation', { name: 'answer alternatives' }).getByText('2 of 2').waitFor()
+  assert.equal(state.chatRequests[0].regenerate_message_id, 'answer-old')
+  assert.equal(state.chatRequests[0].expected_leaf_id, 'answer-old')
+  await page.getByRole('button', { name: 'Previous answer alternative' }).click()
+  await page.getByText('The original approach.', { exact: true }).waitFor()
+  assert.equal(state.selections[0].expected_leaf_id, 'answer-new')
+  await page.reload()
+  await page.getByText('Approval chat', { exact: true }).click()
+  await page.getByRole('navigation', { name: 'answer alternatives' }).getByText('1 of 2').waitFor()
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.getByRole('button', { name: 'Next answer alternative' }).click()
+  await page.getByText('A different approach.', { exact: true }).waitFor()
+})
+
+test('editing preserves prompt alternatives and a failed retry leaves the old answer usable', async t => {
+  const { page, state } = await fixture(t)
+  state.branchMode = true
+  state.messages = [{ id: 'user-1', role: 'user', content: 'Explore the options' },
+    { id: 'answer-old', role: 'assistant', content: 'The original approach.', model: 'test-model' }]
+  state.activeLeaf = 'answer-old'
+  await page.getByText('Approval chat', { exact: true }).click()
+  state.branchFailure = true
+  await page.getByTitle('Regenerate', { exact: true }).click()
+  await page.getByText('Synthetic retry failed', { exact: true }).waitFor()
+  await page.getByText('The original approach.', { exact: true }).waitFor()
+  state.branchFailure = false
+  await page.getByRole('button', { name: 'Edit', exact: true }).click()
+  await page.locator('textarea').first().fill('Explore a different direction')
+  await page.getByRole('button', { name: 'Save & resend', exact: true }).click()
+  await page.getByRole('navigation', { name: 'prompt alternatives' }).getByText('2 of 2').waitFor()
+  assert.equal(state.chatRequests.at(-1).edit_message_id, 'user-1')
+  assert.equal(state.chatRequests.at(-1).expected_leaf_id, 'answer-old')
+  await page.getByRole('button', { name: 'Previous prompt alternative' }).click()
+  await page.getByText('Explore the options', { exact: true }).waitFor()
+  await page.getByText('The original approach.', { exact: true }).waitFor()
+})
+
+
+test('saved artifact canvas and download use answer bytes', async t => {
+  const { page, state } = await fixture(t)
+  state.messages.push({ id: 'answer-old', role: 'assistant', content: 'Here is your report.', artifacts: [
+    { name: 'report.md', path: 'report.md', ext: '.md', snapshot_status: 'saved', url: '/api/files/alpha/saved/answer-old/0' },
+  ] })
+  await page.getByText('Approval chat', { exact: true }).click()
+  await page.getByTitle('Open in canvas', { exact: true }).click()
+  await page.getByRole('heading', { name: 'Original retained report', exact: true }).waitFor()
+  await page.getByRole('button', { name: 'Source', exact: true }).click()
+  await page.getByText('# Original retained report', { exact: false }).waitFor()
+  const previewReads = state.savedFileReads.length
+  assert.ok(previewReads >= 1)
+  const download = page.waitForEvent('download')
+  await page.getByTitle('Download', { exact: true }).click()
+  await download
+  assert.equal(state.savedFileReads.length, previewReads + 1)
+  await page.setViewportSize({ width: 390, height: 844 })
+  const panel = await page.getByRole('region', { name: 'Artifact canvas', exact: true }).boundingBox()
+  assert.ok(panel.x >= 0 && panel.x + panel.width <= 391, 'canvas fits phone width')
+  await page.getByTitle('Close', { exact: true }).click()
+  assert.equal(await page.getByRole('region', { name: 'Artifact canvas', exact: true }).count(), 0)
+})
+
+async function artifactFixture(t, content = '🌸 Original paragraph.\n\nKeep this section.') {
+  const fixtureState = await fixture(t)
+  const { page, state, context } = fixtureState
+  const first = { id: 'v1', number: 1, origin: 'agent', content, sha256: 'original', source_message_id: 'answer-old' }
+  const editor = { versions: [first], head: 'v1', workspace: { sha256: 'original', available: true, exists: true },
+    saves: [], publishes: [], revisions: [], stale: false, failProposal: false, holdProposal: false }
+  const detail = id => ({ id: 'artifact-1', path: 'report.md', head_version_id: editor.head,
+    version: editor.versions.find(v => v.id === id) || editor.versions.at(-1),
+    versions: [...editor.versions].reverse(), workspace: editor.workspace })
+  await context.route(`${baseURL}/api/artifacts/**`, async route => {
+    const url = new URL(route.request().url())
+    const path = url.pathname
+    const body = route.request().method() === 'POST' ? route.request().postDataJSON() : null
+    if (path.endsWith('/versions') || path.endsWith('/restore')) {
+      if (editor.stale) return route.fulfill({ status: 409, json: { detail: 'A newer version was saved. Reload versions before saving; your draft is unchanged.' } })
+      const source = editor.versions.find(v => v.id === (body.base_version_id || body.version_id))
+      const number = editor.versions.length + 1
+      const version = { ...source, id: `v${number}`, number, content: body.content ?? source.content,
+        sha256: `hash-${number}`, origin: body.content !== undefined ? 'edit' : 'restore', parent_version_id: editor.head }
+      editor.versions.push(version)
+      editor.head = version.id
+      editor.saves.push(body)
+      return route.fulfill({ json: detail(version.id) })
+    }
+    if (path.endsWith('/publish')) {
+      editor.publishes.push(body)
+      editor.workspace = { ...editor.workspace, sha256: editor.versions.find(v => v.id === body.version_id).sha256 }
+      return route.fulfill({ json: editor.workspace })
+    }
+    if (path.endsWith('/diff')) return route.fulfill({ json: { diff: '--- v1\n+++ v2\n-Original paragraph.\n+Revised paragraph.', truncated: false } })
+    if (path.endsWith('/revise')) {
+      editor.revisions.push(body)
+      if (editor.holdProposal) await new Promise(resolve => { editor.release = resolve })
+      return route.fulfill({ contentType: 'text/event-stream', body: editor.failProposal
+        ? sse({ type: 'error', content: 'The model could not complete this revision. Your document is unchanged.' })
+        : sse({ type: 'artifact_proposal', replacement: 'A concise paragraph.', model: 'test-model', usage: { total: 42 } }) }).catch(() => {})
+    }
+    if (path.includes('/download/')) return route.fulfill({ contentType: 'application/octet-stream', body: editor.versions.find(v => v.id === path.split('/').at(-1)).content })
+    return route.fulfill({ json: detail(url.searchParams.get('version_id') || editor.head) })
+  })
+  state.messages.push({ id: 'answer-old', role: 'assistant', content: 'Here is your report.', artifacts: [
+    { name: 'report.md', path: 'report.md', ext: '.md', snapshot_status: 'saved', url: '/api/files/alpha/saved/answer-old/0', artifact_id: 'artifact-1', version_id: 'v1' },
+  ] })
+  await page.getByText('Approval chat', { exact: true }).click()
+  await page.getByTitle('Open in canvas', { exact: true }).click()
+  await page.getByRole('button', { name: 'Edit & versions', exact: true }).click()
+  await page.getByLabel('Artifact text', { exact: true }).waitFor()
+  return { ...fixtureState, editor }
+}
+
+test('artifact editing compares, restores, downloads and explicitly updates workspace on desktop and phone', async t => {
+  const { page, editor } = await artifactFixture(t)
+  await page.getByLabel('Artifact text', { exact: true }).fill('Revised paragraph.\n\nKeep this section.')
+  await page.getByRole('button', { name: 'Save version', exact: true }).click()
+  await page.getByText('Saved version 2.', { exact: false }).waitFor()
+  assert.equal(editor.publishes.length, 0)
+  await page.getByRole('button', { name: 'Compare', exact: true }).click()
+  await page.getByLabel('Version difference').getByText('+Revised paragraph.', { exact: false }).waitFor()
+  await page.getByLabel('Artifact version', { exact: true }).selectOption('v1')
+  await page.getByRole('button', { name: 'Restore as new version', exact: true }).click()
+  await page.getByText('Restored as version 3.', { exact: false }).waitFor()
+  assert.equal(editor.versions[2].content, editor.versions[0].content)
+  const downloaded = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'Download version', exact: true }).click()
+  assert.equal((await downloaded).suggestedFilename(), 'report-v3.md')
+  await page.getByRole('button', { name: 'Use in workspace', exact: true }).click()
+  await page.getByText('Workspace updated.', { exact: false }).waitFor()
+  assert.equal(editor.publishes.length, 1)
+  assert.equal(editor.publishes[0].expected_workspace_sha256, 'original')
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.getByRole('region', { name: 'Artifact canvas', exact: true }).getByRole('button', { name: 'Edit', exact: true }).click()
+  const panel = await page.getByRole('region', { name: 'Artifact canvas', exact: true }).boundingBox()
+  assert.ok(panel.x >= 0 && panel.x + panel.width <= 391)
+  for (const label of ['Save version', 'Use in workspace', 'Download version']) {
+    const bounds = await page.getByRole('button', { name: label, exact: true }).boundingBox()
+    assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= 391, `${label} fits phone width`)
+  }
+  await page.getByRole('button', { name: 'Preview original', exact: true }).click()
+  await page.getByRole('heading', { name: 'Original retained report', exact: true }).waitFor()
+})
+
+test('artifact draft survives stale save, canvas close and chat navigation; logout clears it', async t => {
+  const { page, editor } = await artifactFixture(t)
+  const text = 'Keep this unsaved draft.'
+  await page.getByLabel('Artifact text', { exact: true }).fill(text)
+  editor.stale = true
+  await page.getByRole('button', { name: 'Save version', exact: true }).click()
+  await page.getByRole('alert').getByText('A newer version was saved.', { exact: false }).waitFor()
+  assert.equal(await page.getByLabel('Artifact text', { exact: true }).inputValue(), text)
+  await page.getByTitle('Close', { exact: true }).click()
+  await page.getByText('Other chat', { exact: true }).click()
+  await page.getByText('Approval chat', { exact: true }).click()
+  await page.getByTitle('Open in canvas', { exact: true }).click()
+  await page.getByText('Your unsaved draft has been restored.', { exact: false }).waitFor()
+  assert.equal(await page.getByLabel('Artifact text', { exact: true }).inputValue(), text)
+  editor.stale = false
+  await page.getByRole('button', { name: 'Reload versions', exact: true }).click()
+  await page.getByRole('button', { name: 'Save version', exact: true }).click()
+  await page.getByText('Saved version 2.', { exact: false }).waitFor()
+  await page.getByLabel('Artifact text', { exact: true }).fill('Another private draft')
+  assert.equal(await page.evaluate(async () => {
+    const { useStore } = await import('/src/store/useStore.js')
+    useStore.getState().logout()
+    return Object.keys(useStore.getState().artifactDrafts).length
+  }), 0)
+})
+
+test('selected text revision handles Unicode offsets, requires review and preserves surrounding text', async t => {
+  const { page, editor } = await artifactFixture(t)
+  const input = page.getByLabel('Artifact text', { exact: true })
+  await input.evaluate(el => { el.focus(); el.setSelectionRange(3, 22); el.dispatchEvent(new Event('select', { bubbles: true })) })
+  await page.getByLabel('Revision instruction', { exact: true }).fill('Make it concise')
+  await page.getByRole('button', { name: 'Revise selection', exact: true }).click()
+  await page.getByRole('button', { name: 'Apply to draft', exact: true }).waitFor()
+  assert.equal(editor.revisions[0].start, 2) // 🌸 is one Unicode code point, two JS code units.
+  assert.equal(editor.revisions[0].end, 21)
+  assert.equal(await input.inputValue(), editor.versions[0].content)
+  assert.equal(editor.saves.length, 0)
+  await page.getByRole('button', { name: 'Apply to draft', exact: true }).click()
+  assert.equal(await input.inputValue(), '🌸 A concise paragraph.\n\nKeep this section.')
+  assert.equal(await page.getByRole('button', { name: 'Revise selection', exact: true }).isDisabled(), true)
+  await page.getByRole('button', { name: 'Save version', exact: true }).click()
+  await page.getByText('Saved version 2.', { exact: false }).waitFor()
+  assert.equal(editor.saves[0].content, '🌸 A concise paragraph.\n\nKeep this section.')
+})
+
+test('failed or stopped artifact revisions leave saved text unchanged', async t => {
+  const { page, editor } = await artifactFixture(t)
+  const input = page.getByLabel('Artifact text', { exact: true })
+  await input.evaluate(el => { el.focus(); el.setSelectionRange(3, 22); el.dispatchEvent(new Event('select', { bubbles: true })) })
+  await page.getByLabel('Revision instruction', { exact: true }).fill('Try this revision')
+  editor.failProposal = true
+  await page.getByRole('button', { name: 'Revise selection', exact: true }).click()
+  await page.getByRole('alert').getByText('The model could not complete this revision.', { exact: false }).waitFor()
+  assert.equal(await input.inputValue(), editor.versions[0].content)
+  editor.failProposal = false
+  editor.holdProposal = true
+  await page.getByRole('button', { name: 'Revise selection', exact: true }).click()
+  await page.getByRole('button', { name: 'Stop revision', exact: true }).click()
+  await page.getByText('Revision stopped.', { exact: false }).waitFor()
+  editor.release?.()
+  assert.equal(await input.inputValue(), editor.versions[0].content)
+  assert.equal(editor.saves.length, 0)
+})
+
+test('selected revision preserves CRLF outside the passage and keyboard selection works', async t => {
+  const { page, editor } = await artifactFixture(t, '🌸 First line.\r\nOriginal paragraph.\r\nKeep this section.')
+  const input = page.getByLabel('Artifact text', { exact: true })
+  await input.focus()
+  await input.press('ControlOrMeta+A')
+  await input.press('ArrowLeft')
+  await input.press('ArrowDown')
+  await input.press('Home')
+  for (let i = 0; i < 19; i++) await input.press('Shift+ArrowRight')
+  await page.getByLabel('Revision instruction', { exact: true }).fill('Shorten the paragraph')
+  await page.getByRole('button', { name: 'Revise selection', exact: true }).click()
+  await page.getByRole('button', { name: 'Apply to draft', exact: true }).click()
+  await page.getByRole('button', { name: 'Save version', exact: true }).click()
+  await page.getByText('Saved version 2.', { exact: false }).waitFor()
+  assert.equal(editor.revisions[0].start, 15)
+  assert.equal(editor.saves[0].content, '🌸 First line.\r\nA concise paragraph.\r\nKeep this section.')
 })

@@ -39,6 +39,11 @@ class SearchDocuments(Tool):
         **_: Any,
     ) -> ToolResult:
         top_k = max(1, min(int(top_k or 5), 20))
+        if ctx.document_scope is not None:
+            allowed = set(ctx.document_scope)
+            document_ids = sorted(allowed if document_ids is None else allowed.intersection(document_ids))
+            if not document_ids:
+                return ToolResult(content='No documents are included in this turn’s context.', is_error=True)
         if ctx.research:
             selected = set(ctx.research.state['document_ids'])
             document_ids = sorted(selected if document_ids is None else selected.intersection(document_ids))

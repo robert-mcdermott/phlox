@@ -3,12 +3,13 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from app.auth.deps import get_current_user, require_admin
 from app.models import User
 from app.providers.base import ToolSpec
-from app.providers.registry import build_provider, list_models, list_profiles
+from app.providers.registry import build_provider, list_profiles
+from app.providers.discovery import catalog
 from app.rate_limit import check_rate_limit
 
 router = APIRouter(prefix="/api/providers", tags=["providers"])
@@ -21,8 +22,11 @@ def get_providers(_: User = Depends(get_current_user)):
 
 
 @router.get("/{profile}/models")
-def get_models(profile: str, _: User = Depends(get_current_user)):
-    return {"profile": profile, "models": list_models(profile)}
+def get_models(profile: str, refresh: bool = False, _: User = Depends(get_current_user)):
+    try:
+        return {"profile": profile, **catalog(profile, refresh=refresh)}
+    except KeyError:
+        raise HTTPException(404, 'Provider profile not found') from None
 
 
 @router.post("/{profile}/test")

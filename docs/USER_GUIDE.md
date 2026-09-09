@@ -16,6 +16,8 @@ specialized deployment guides when making it available to others.
 - [Appearance](#appearance)
 - [Reconnectable runs and Stop](#reconnectable-runs-and-stop)
 - [Chat and everyday use](#chat-and-everyday-use)
+- [Projects and context](PROJECTS.md)
+- [Conversation alternatives](CONVERSATION_ALTERNATIVES.md)
 - [Documents, search, and citations](#documents-search-and-citations)
 - [Assistants, skills, memory, and MCP](#assistants-skills-memory-and-mcp)
 - [Accounts, execution, and costs](#accounts-execution-and-costs)
@@ -196,9 +198,12 @@ by the client. For an authenticated endpoint, supply its real credential.
   Configure tool calling in the model server as required by that server/model.
 - Set `supports_tools: false` for models that cannot handle tool calls. This does not add
   tool capability to an unsupported model. Images likewise require a vision-capable model.
-- An optional `models: [MODEL_A, MODEL_B]` seeds the dropdown. Without it Phlox tries model
-  discovery and falls back to the configured `model`. `context_window` optionally sets a
-  provider ceiling; see [model-call limits](MODEL_CALLS.md).
+- Enable **Automatic** model discovery in **Settings → Configuration → Provider profiles**
+  to find newly installed models when the searchable Model picker opens. Existing explicit
+  `models` lists remain curated until you enable Automatic. Refresh and custom model IDs
+  remain available; failed discovery preserves the previous list and your selection.
+  See [model discovery](MODEL_DISCOVERY.md) for provider support and setup.
+- `context_window` optionally sets a provider ceiling; see [model-call limits](MODEL_CALLS.md).
 
 When Phlox runs in a container, `localhost` refers to that container. Use the host alias
 and networking instructions in [DOCKER.md](DOCKER.md). Provider endpoints saved in the
@@ -332,13 +337,20 @@ runs enabled again to resume. This is not scheduled execution or distributed wor
 Start a new conversation from the sidebar, optionally choose an assistant, and send a
 message. Use Settings → Model to select a provider and model. Conversation controls can
 retain model/generation choices for that chat. The sidebar supports history, search,
-rename, delete, and Markdown export. Editing a message or regenerating an answer can cause
-new model calls; unresolved approvals/runs must be handled first.
+rename, delete, and Markdown export. Edits and regenerated answers preserve their originals;
+use the previous/next controls beneath a message to select an alternative and continue it.
+Only the selected path is used for replies and exports. Editing and retrying make new model
+calls; unresolved approvals/runs must be handled first. See [Conversation alternatives](CONVERSATION_ALTERNATIVES.md).
 
 Attach images for a vision model. Answers support Markdown, highlighted/copyable code,
 LaTeX math, and Mermaid diagrams. If a model writes files, open **Workspace Files** to browse
 and download them. HTML/Markdown artifacts can open in the resizable canvas with preview
-and source views. Workspace checkpoints let you restore file snapshots; they do not undo
+and source views. Select **Edit & versions** to edit text, request a selected-passage AI
+revision, compare saved versions, or restore earlier text. **Save version** preserves an
+independent copy; **Use in workspace** explicitly updates the agent's file after checking
+for intervening changes. Unsaved artifact drafts survive chat switches in memory but must
+be saved before browser refresh or logout. See [Editable artifacts](ARTIFACTS.md) for limits,
+provenance, and a manual test procedure. Workspace checkpoints let you restore file snapshots; they do not undo
 external tool actions or replace an application backup.
 
 The compact toolbar below the message field contains the **Chat / Research** selector
@@ -545,7 +557,7 @@ secret environment**. Enabling runs or citations does not require a fresh databa
    frontend (`npm ci` then `npm run build`) for production. The development launcher does
    not refresh existing frontend dependencies automatically after every lockfile change.
 4. Start normally. Checked Alembic migrations run before application bootstrap. Current
-   head is `0005_ingestion`; this includes the earlier run/source migrations even with runs
+   head is `0008_artifacts`; this includes artifact versions, conversation alternatives, projects and the earlier run/source migrations even with runs
    disabled. Do not stamp a database manually or overwrite it with an empty one.
 5. Check `/api/readiness`, sign in, and verify an existing conversation and document.
 
@@ -592,6 +604,9 @@ and a representative document question after setup.
 | Topic | Guide |
 |---|---|
 | Server installation and containers | [DEPLOYMENT.md](DEPLOYMENT.md), [DOCKER.md](DOCKER.md) |
+| Model catalogs and provider setup | [MODEL_DISCOVERY.md](MODEL_DISCOVERY.md) |
+| Private projects and context inspection | [PROJECTS.md](PROJECTS.md) |
+| Conversation alternatives and editable output | [CONVERSATION_ALTERNATIVES.md](CONVERSATION_ALTERNATIVES.md), [ARTIFACTS.md](ARTIFACTS.md) |
 | Runs, approvals, document evidence | [RUNS.md](RUNS.md), [APPROVALS.md](APPROVALS.md), [SOURCES.md](SOURCES.md), [INGESTION.md](INGESTION.md) |
 | Accounts and Entra ID | [AUTH.md](AUTH.md) |
 | Execution environments | [SANDBOX.md](SANDBOX.md) |

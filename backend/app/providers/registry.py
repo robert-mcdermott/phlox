@@ -56,28 +56,12 @@ def list_profiles() -> list[dict[str, Any]]:
 
 
 def list_models(profile_name: str) -> list[str]:
-    """List models for a profile.
-
-    Prefers the explicit ``models`` list in config; for OpenAI-type profiles with no
-    list, attempts a live ``/models`` query; falls back to the single configured model.
-    """
-    cfg = get_profile(profile_name)
-    if not cfg:
+    """Compatibility wrapper for the shared model catalog."""
+    from app.providers.discovery import catalog
+    try:
+        return catalog(profile_name)['models']
+    except KeyError:
         return []
-    if cfg.get("models"):
-        return list(cfg["models"])
-    if cfg.get("type", "openai") == "openai":
-        try:
-            from openai import OpenAI
-
-            client = OpenAI(
-                base_url=cfg.get("endpoint", "https://api.openai.com/v1"),
-                api_key=cfg.get("api_key") or "not-needed",
-            )
-            return sorted(m.id for m in client.models.list().data)
-        except Exception as e:  # noqa: BLE001
-            logger.warning("Could not list models for %s: %s", profile_name, e)
-    return [cfg["model"]] if cfg.get("model") else []
 
 
 def gateway_models() -> list[dict[str, Any]]:

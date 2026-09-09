@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { CheckCircle, XCircle, Loader2 } from 'lucide-react'
 import { useStore } from '../../store/useStore'
 import { api } from '../../api/client'
+import ModelPicker from '../models/ModelPicker'
 
 export default function ProviderSettings() {
   const providers = useStore((s) => s.providers)
@@ -12,7 +13,8 @@ export default function ProviderSettings() {
 
   const [profile, setProfile] = useState(settings?.active_profile || '')
   const [model, setModel] = useState(settings?.model || '')
-  const [models, setModels] = useState([])
+  const [selectionError, setSelectionError] = useState('')
+  const [savingSelection, setSavingSelection] = useState(false)
   const [test, setTest] = useState(null)
   const [testing, setTesting] = useState(false)
   const [form, setForm] = useState({
@@ -24,21 +26,27 @@ export default function ProviderSettings() {
   })
 
   useEffect(() => {
-    if (!profile) return
-    api.getModels(profile).then((r) => setModels(r.models || [])).catch(() => setModels([]))
-  }, [profile])
+    setProfile(settings?.active_profile || '')
+    setModel(settings?.model || '')
+  }, [settings?.active_profile, settings?.model])
 
   const saveProfile = async (p) => {
-    setProfile(p)
-    const prov = providers.find((x) => x.name === p)
-    const m = prov?.model || ''
-    setModel(m)
-    await updateSettings({ active_profile: p, model: m })
+    setSavingSelection(true)
+    setSelectionError('')
+    try {
+      const prov = providers.find(x => x.name === p)
+      await updateSettings({ active_profile: p, model: prov?.model || '' })
+    } catch {
+      setSelectionError('Could not save the provider selection. Your previous selection is unchanged.')
+    } finally { setSavingSelection(false) }
   }
 
   const saveModel = async (m) => {
-    setModel(m)
-    await updateSettings({ model: m })
+    setSavingSelection(true)
+    setSelectionError('')
+    try { await updateSettings({ model: m }) }
+    catch { setSelectionError('Could not save the model selection. Try again.') }
+    finally { setSavingSelection(false) }
   }
 
   const saveForm = async (patch) => {
@@ -80,6 +88,7 @@ export default function ProviderSettings() {
       <Section title="Provider profile" hint="Switch between Bedrock, OpenAI, or any local/compatible endpoint.">
         <select
           value={profile}
+          disabled={savingSelection}
           onChange={(e) => saveProfile(e.target.value)}
           className="w-full rounded-lg border-border bg-surface text-content focus:border-accent focus:ring-accent"
         >
@@ -106,18 +115,9 @@ export default function ProviderSettings() {
         </div>
       </Section>
 
-      <Section title="Model">
-        <select
-          value={model}
-          onChange={(e) => saveModel(e.target.value)}
-          className="w-full rounded-lg border-border bg-surface text-content focus:border-accent focus:ring-accent"
-        >
-          {(models.length ? models : [model].filter(Boolean)).map((m) => (
-            <option key={m} value={m}>
-              {m}
-            </option>
-          ))}
-        </select>
+      <Section title="Model" hint="The catalog refreshes when opened. Discovery does not generate a response or download models.">
+        <ModelPicker profile={profile} value={model} onChange={saveModel} disabled={savingSelection} />
+        {selectionError && <p role="alert" className="mt-2 text-sm text-content">{selectionError}</p>}
       </Section>
 
       <Section title="System prompt">

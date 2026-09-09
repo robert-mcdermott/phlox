@@ -97,6 +97,8 @@ class AgentSession:
         accounting=None,
         tool_observer=None,
         research=None,
+        document_scope=None,
+        branch_parent_id=None,
     ):
         from app.model_calls import CallScope
 
@@ -106,6 +108,9 @@ class AgentSession:
         self.journal_prefix = uuid.uuid4().hex
         self.db = db
         self.conversation = conversation
+        from app.branches import active
+        selected = active(conversation)
+        self.branch_parent_id = branch_parent_id or (selected[-1].id if selected else None)
         self.provider = provider
         self.fallback_provider = fallback_provider
         self.registry = registry
@@ -147,6 +152,7 @@ class AgentSession:
             accounting=self.accounting,
             tool_observer=tool_observer,
             research=research,
+            document_scope=deepcopy(document_scope),
         )
 
     def _observe_child_tool(self, kind, call, **data):
@@ -186,6 +192,8 @@ class AgentSession:
     def resume(self, state: dict, decisions: dict[str, str]) -> Iterator[str]:
         """Continue a paused turn with the user's approval decisions (call_id -> allow|deny)."""
         state = deepcopy(state)
+        self.ctx.document_scope = state.get('document_scope')
+        self.branch_parent_id = state.get('branch_parent_id', self.branch_parent_id)
         if state.get('research'):
             from app.research import Research
             self.research = self.ctx.research = Research(state=state['research'])
@@ -657,6 +665,8 @@ class AgentSession:
         totals = turn_usage(self.accounting)
         self.turn_usage = {k: totals[k] for k in ("input", "output", "total")}
         state = {
+            "branch_parent_id": self.branch_parent_id,
+            "document_scope": self.ctx.document_scope,
             "research": deepcopy(self.research.state) if self.research else None,
             "sources": self._source_refs(),
             "version": 3,
@@ -805,6 +815,11 @@ class AgentSession:
         from app.model_calls import turn_usage
 
         usage = turn_usage(self.accounting)
+        from app.models import ContextRecord
+        record = self.db.get(ContextRecord, self.accounting.turn_id)
+        if record:
+            usage.update(context_key=record.data.get('key'),
+                         context_attachments=record.data.get('user_attachments', []))
         if self.research:
             import time
             if self.outcome in {'cancelled', 'failed', 'limit_reached'} and self.research.phase != 'synthesize':
@@ -828,7 +843,10 @@ class AgentSession:
             model=self.provider.model,
             citations=sources.bind(final_text, self._source_refs()),
         )
-        self.db.add(msg)
+        from app import branches
+        branches.append(self.db, self.conversation, msg, self.branch_parent_id)
+        from app.artifact_snapshots import capture
+        capture(msg)
         self.db.commit()
         self.db.refresh(msg)
 

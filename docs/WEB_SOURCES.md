@@ -5,7 +5,7 @@
 Phlox can retain the passages it reads from web pages and attach clickable citations to
 answers. This works in both chat modes, including opt-in reconnectable runs. Wave 8 uses
 the existing source tables: no new migration, database, service, or feature flag is needed.
-The current schema remains `0005_ingestion`. Restart the backend and rebuild the frontend
+The current schema is `0008_artifacts` (see [Editable artifacts](ARTIFACTS.md)). Restart the backend and rebuild the frontend
 for production; document reprocessing or embedding rebuilds are not required for this wave.
 
 ## Use it
@@ -77,6 +77,15 @@ backups accordingly. Access changes at the original website are not automaticall
 and do not revoke an already retained snapshot.
 
 ## Fetch configuration and limits
+
+Page fetching and the Serper/SearXNG search clients use a fixed desktop Chrome User-Agent,
+matching Collomia. Its shared value is maintained in `backend/app/web_fetch.py`.
+Page requests also match Collomia's weighted `Accept` header and `Accept-Language:
+en-US,en;q=0.9` for compatibility with sites that reject minimal request headers. The
+fetcher still validates the returned content type and only extracts supported HTML/text.
+DuckDuckGo requests use the `ddgs` library's own browser identity handling. A browser
+User-Agent can improve compatibility, but does not execute JavaScript or provide a logged-in
+browser session; sites may still return HTTP 403.
 
 Existing file-only `web_fetch.allow_private_networks` and `web_fetch.allowlist_hosts`
 settings remain in effect. By default, every resolved address must be public. Each redirect

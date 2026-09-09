@@ -158,6 +158,8 @@ def stream_model(provider, messages, tools, params, scope, *, cancel_event=None,
             enforce_budget(db, user or User(id=scope.user_id), provider.model)
 
     check_budget()
+    from app.projects import record_call
+    record_call(scope, provider, fitted)
     current = _Call(scope, provider, call_id)
     status = "interrupted"
 

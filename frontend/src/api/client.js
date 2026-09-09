@@ -46,6 +46,19 @@ async function openBlob(path, filename, newTab = false) {
 }
 
 export const api = {
+  openArtifact: (cid, body) => req('POST', `/api/artifacts/${cid}/open`, body),
+  getArtifact: (cid, id, version) => req('GET', `/api/artifacts/${cid}/${id}${version ? `?version_id=${version}` : ''}`),
+  saveArtifact: (cid, id, body) => req('POST', `/api/artifacts/${cid}/${id}/versions`, body),
+  restoreArtifact: (cid, id, body) => req('POST', `/api/artifacts/${cid}/${id}/restore`, body),
+  publishArtifact: (cid, id, body) => req('POST', `/api/artifacts/${cid}/${id}/publish`, body),
+  diffArtifact: (cid, id, before, after) => req('GET', `/api/artifacts/${cid}/${id}/diff?before=${before}&after=${after}`),
+  selectAlternative: (id, messageId, leaf) => req('POST', `/api/conversations/${id}/alternatives/${messageId}`, { expected_leaf_id: leaf }),
+  listProjects: () => req('GET', '/api/projects'),
+  getProject: id => req('GET', `/api/projects/${id}`),
+  createProject: body => req('POST', '/api/projects', body),
+  updateProject: (id, body) => req('PUT', `/api/projects/${id}`, body),
+  previewContext: body => req('POST', '/api/context/preview', body),
+  getContext: (conversation, turn) => req('GET', `/api/conversations/${conversation}/context/${turn}`),
   exportConversation: (id) => req('GET', `/api/conversations/${id}/export`),
   getBlob,
   downloadFile: (path, filename) => openBlob(path, filename, false),
@@ -81,7 +94,8 @@ export const api = {
 
   // providers + settings
   getProviders: () => req('GET', '/api/providers'),
-  getModels: (profile) => req('GET', `/api/providers/${profile}/models`),
+  getModels: (profile, refresh = false) => req('GET', `/api/providers/${encodeURIComponent(profile)}/models?refresh=${refresh}`),
+  discoverProfile: (profile) => req('POST', '/api/admin/config/profiles/discover', profile),
   testProfile: (profile) => req('POST', `/api/providers/${profile}/test`),
   getSettings: () => req('GET', '/api/settings'),
   updateSettings: (body) => req('PATCH', '/api/settings', body),

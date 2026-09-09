@@ -9,6 +9,8 @@ from pydantic import BaseModel, Field, field_validator
 
 # -- conversations / messages ---------------------------------------------
 class MessageOut(BaseModel):
+    parent_id: str | None = None
+    alternatives: list[str] = []
     id: str
     role: str
     content: str
@@ -25,6 +27,7 @@ class MessageOut(BaseModel):
 
 
 class ConversationOut(BaseModel):
+    project_id: str | None = None
     run_status: str | None = None
     id: str
     title: str
@@ -39,18 +42,22 @@ class ConversationOut(BaseModel):
 
 
 class ConversationDetail(ConversationOut):
+    active_leaf_id: str | None = None
+    has_alternatives: bool = False
     system_prompt: str | None = None
     params: dict | None = None
     messages: list[MessageOut] = []
 
 
 class ConversationCreate(BaseModel):
+    project_id: str | None = None
     title: str | None = None
     profile: str | None = None
     model: str | None = None
 
 
 class ConversationUpdate(BaseModel):
+    project_id: str | None = None
     title: str | None = None
     profile: str | None = None
     model: str | None = None
@@ -233,7 +240,20 @@ class ResearchOptions(BaseModel):
         return normalize_domains(domains)
 
 
+class ContextOptions(BaseModel):
+    project_instructions: bool = True
+    memory: bool | None = None  # personal memory defaults off in a project
+    history: bool = True
+    excluded_document_ids: list[str] = Field(default_factory=list, max_length=100)
+    excluded_memory_ids: list[str] = Field(default_factory=list, max_length=100)
+
+
 class ChatRequest(BaseModel):
+    edit_message_id: str | None = None
+    regenerate_message_id: str | None = None
+    expected_leaf_id: str | None = None
+    project_id: str | None = None
+    context: ContextOptions = Field(default_factory=ContextOptions)
     # Null remains ordinary chat; skills never opt a user into Research mode.
     research: ResearchOptions | None = None
     conversation_id: str | None = None
@@ -252,7 +272,7 @@ class ChatRequest(BaseModel):
     # Uploaded/library documents directly referenced by this user message.
     document_ids: list[str] = []
     # When true, re-run the existing history without appending a new user message
-    # (used by "regenerate" after the last assistant turn was deleted).
+    # (the previous answer is preserved as an alternative).
     regenerate: bool = False
     # Base64 data URLs of attached images (data:image/...;base64,...).
     images: list[str] = []
@@ -353,6 +373,8 @@ class ProfileIn(BaseModel):
     label: str | None = None
     model: str | None = None
     models: list[str] | None = None
+    model_discovery: Literal['automatic', 'manual'] | None = None
+    discovery_api: Literal['auto', 'openai', 'ollama', 'lmstudio'] = 'auto'
     supports_tools: bool = True
     context_window: int | None = Field(default=None, gt=0)
     # openai

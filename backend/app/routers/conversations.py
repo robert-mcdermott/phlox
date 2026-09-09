@@ -10,7 +10,7 @@ from app.auth.deps import get_current_user, require_owned_conversation
 from app.config import WORKSPACES_DIR
 from app.database import get_db
 from app.models import Conversation, User
-from app import runs
+from app import runs, branches
 from app.schemas import (
     ConversationCreate,
     ConversationDetail,
@@ -45,20 +45,24 @@ def list_conversations(db: Session = Depends(get_db), user: User = Depends(get_c
 def create_conversation(
     body: ConversationCreate, db: Session = Depends(get_db), user: User = Depends(get_current_user)
 ):
+    from app import projects
+    if body.project_id:
+        projects.owned(db, body.project_id, user.id, active=True)
     conv = Conversation(
-        title=body.title or "New chat", profile=body.profile, model=body.model, user_id=user.id
+        title=body.title or "New chat", profile=body.profile, model=body.model, user_id=user.id,
+        project_id=body.project_id,
     )
     db.add(conv)
     db.commit()
     db.refresh(conv)
-    return conv
+    return branches.detail(conv)
 
 
 @router.get("/{conversation_id}", response_model=ConversationDetail)
 def get_conversation(
     conversation_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)
 ):
-    return _owned(db, conversation_id, user)
+    return branches.detail(_owned(db, conversation_id, user))
 
 
 @router.patch("/{conversation_id}", response_model=ConversationOut)
@@ -69,8 +73,19 @@ def update_conversation(
     with runs.LOCK:
         conv = _owned(db, conversation_id, user)
         runs.require_idle(db, conversation_id)
+        from app import projects, approvals
+        approvals.require_no_approval(db, conversation_id)
+        if body.project_id:
+            projects.owned(db, body.project_id, user.id, active=True)
+        old_project = conv.project_id
+        old_membership = (conv.params or {}).get('project_membership')
         for field, value in body.model_dump(exclude_unset=True).items():
             setattr(conv, field, value)
+        if conv.project_id != old_project:
+            import uuid
+            old_membership = uuid.uuid4().hex
+        if old_membership:
+            conv.params = {**(conv.params or {}), 'project_membership': old_membership}
         db.commit()
         db.refresh(conv)
         return conv
@@ -89,16 +104,45 @@ def truncate_from_message(
         from app.approvals import require_no_approval
 
         require_no_approval(db, conv.id)
+        branches.initialize(conv)
         target = db.get(Message, message_id)
         if not target or target.conversation_id != conv.id:
             raise HTTPException(404, "Message not found")
-        deleted = 0
+        ids = {target.id}
+        for _ in range(len(conv.messages)):
+            expanded = ids | {m.id for m in conv.messages if m.parent_id in ids}
+            if expanded == ids:
+                break
+            ids = expanded
+        selected = conv.active_leaf_id in ids
+        parent = target.parent_id
         for m in list(conv.messages):
-            if m.created_at >= target.created_at:
+            if m.id in ids:
                 db.delete(m)
-                deleted += 1
+        conv.branch_choices = {k: v for k, v in (conv.branch_choices or {}).items() if k not in ids and v not in ids}
+        if selected:
+            conv.active_leaf_id = parent
+            if parent is None:
+                remaining = [m for m in conv.messages if m.id not in ids]
+                conv.active_leaf_id = remaining[-1].id if remaining else None
         db.commit()
-        return {"deleted": deleted}
+        return {"deleted": len(ids)}
+
+
+@router.post("/{conversation_id}/alternatives/{message_id}", response_model=ConversationDetail)
+def select_alternative(conversation_id: str, message_id: str, body: dict,
+                       db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    with runs.LOCK:
+        conv = _owned(db, conversation_id, user)
+        runs.require_idle(db, conv.id)
+        from app.approvals import require_no_approval
+        require_no_approval(db, conv.id)
+        if body.get('expected_leaf_id') != conv.active_leaf_id:
+            raise HTTPException(409, 'The selected conversation changed. Reload before switching alternatives.')
+        branches.choose(conv, message_id)
+        db.commit()
+        return branches.detail(conv)
+
 
 
 @router.delete("/{conversation_id}")

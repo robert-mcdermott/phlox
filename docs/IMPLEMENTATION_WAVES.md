@@ -333,9 +333,130 @@ workflow is sequential, uses selected personal documents and fetched HTML/text, 
 not add OCR, date-range filtering, parallel researchers, project context, artifact editing,
 or scheduling. Ordinary chat and existing editable skill records remain available.
 
-## Following wave — Projects and inspectable context
+## Wave 10 — Automatic model discovery
 
-Introduce private projects with linked chats, selected knowledge and instructions, then
-show users which context is used. Build versioned artifacts and preserved conversation
-alternatives as the next deliverable wave. Continue measuring Research quality with real
-configured models before increasing autonomy or making competitive quality claims.
+**Status:** implemented and verified, 2026-09-08.
+
+**Scope:** model discovery and provider setup UX. Projects are deferred by user choice.
+No schema migration, new dependencies, model downloads or inference calls are needed for
+discovery. See [setup and manual verification](MODEL_DISCOVERY.md).
+
+| Task | Delivered behavior | Acceptance |
+|---|---|---|
+| W10.1 — Live catalogs | Native Ollama/LM Studio, generic OpenAI-compatible and Bedrock listing adapters | Models added outside Phlox appear on picker open or Refresh; listing never invokes generation |
+| W10.2 — Shared picker | Search, keyboard selection, custom IDs, and provider-reported details in Model settings, assistants and admin defaults | Current selections survive missing models and failed refreshes; known embeddings are excluded |
+| W10.3 — Admin setup | Unsaved discovery with secret preservation; Automatic/Curated and API selection | Preview does not save; existing explicit model lists remain curated; saved secrets never return |
+| W10.4 — Reliability | Configuration/credential-isolated bounded cache, refresh coalescing, safe errors and last-success retention | Failed or malformed catalogs cannot replace the last successful list or disclose provider errors/secrets |
+| W10.5 — Phone settings | Compact section selector replaces the sidebar on small screens | Model choices and provider setup fit the phone content width |
+
+**Verification:** 478 backend tests passed, 21 optional cases skipped; all 23 Chromium
+scenarios, Ruff, frontend production build, documentation links and `git diff --check`
+passed. Desktop model selection and phone selection/provider setup were visually reviewed
+using synthetic catalogs. Existing deprecation and bundle-size warnings remain. No live
+provider credentials, model generation, downloads or user data were used in these checks;
+the discovery guide includes live-provider verification steps.
+
+Boundaries: metadata does not prove tool/vision support, generation access, or effective
+context length. Generic/Ollama catalogs leave unsupported metadata unknown. LM Studio may
+require model loading/JIT; Bedrock listing requires AWS metadata permissions and compatible
+invocation access. Bedrock bearer-key profiles use curated IDs. The gateway's `/v1/models`
+continues to expose its configured catalog. Curated choices are not an authorization boundary.
+
+## Wave 11 — Private projects and visible context
+
+**Status:** implemented and verified, 2026-09-09.
+
+**Scope:** the initial M3.1 delivery. Private project creation/edit/archive, existing/new
+chat membership, selected personal library documents, bounded instructions, a context
+preview with per-turn exclusions, and per-response context records. See [Projects](PROJECTS.md)
+for usage, limits, upgrades and manual verification.
+
+| Task | Delivered behavior | Acceptance |
+|---|---|---|
+| W11.1 — Project organization | Sidebar selection, welcome overview and editor with recent chats, document selection, archive/restore and moving existing chats | Ordinary chats remain supported; creator-only access, revision conflicts, run/approval checks |
+| W11.2 — Selected knowledge | Ready linked documents provide bounded excerpts; project searches, children and approval resumes inherit an exact document ceiling | Another project cannot be searched implicitly; explicit owned attachments and authorized assistant knowledge remain available |
+| W11.3 — Visible context | Primary provider/model, base/project instructions, document selection, history and personal-memory controls | Preview performs no generation; exclusions create a compatible history segment instead of replaying old context |
+| W11.4 — Context records | Prepared context plus attempted calls and complete retained excerpts found in fitted inputs | Sources reauthorize/expire; removed memories are redacted on reads; normal and durable turns remain inspectable after reload |
+| W11.5 — Upgrade/retention | Additive `0006_projects`, frozen historical schema checks, conversation/account cleanup | Populated SQLite/Postgres upgrades and backup/restore retain existing chats and new project/context metadata |
+
+**Verification:** 515 backend tests passed with disposable Postgres coverage enabled; one
+inapplicable SQLite case skipped. All 26 Chromium scenarios, Ruff, frontend production
+build, local documentation links and `git diff --check` passed. Desktop and phone project
+context controls were visually reviewed using synthetic data. No live model calls or
+user database mutations were used for verification. Existing deprecation and bundle-size
+warnings remain. The guide includes configured-provider manual checks.
+
+Boundaries: personal memory defaults off in projects; project turns cannot save global
+memory automatically. This wave does not add dedicated project memory, sharing, generated
+decisions/tasks, artifact versions, default data policies or message branching. Context
+records identify dispatch attempts, not proof of remote processing; they do not log all
+embedding/tool traffic or claim shortened excerpts were supplied in full. Exclusions do
+not erase old transcripts or isolate workspace files. Project context changes affect
+subsequent model calls, not an already in-flight provider request.
+
+## Wave 12 — Conversation alternatives and preserved output
+
+**Status:** implemented and verified, 2026-09-09.
+
+| Task | Delivered behavior | Acceptance |
+|---|---|---|
+| W12.1 — Saved ancestry | Edits append prompt alternatives; retries append answer alternatives | Original transcripts, citations, usage and context records remain accessible |
+| W12.2 — Navigation | Compact previous/next controls with remembered nested continuations | Reload preserves selection; selected history alone supplies chat context and exports |
+| W12.3 — Execution binding | Pinned answer parent, stale-selection checks, busy guards | Approval resumes and durable replay cannot drift onto another path |
+| W12.4 — Saved output | Bounded private answer-file copies, canvas/download access, cleanup | Later workspace writes do not overwrite saved answer bytes; shared workspace is explicit |
+| W12.5 — Upgrade and docs | Additive `0007_branches`, frozen Wave 11 schema, user guide | Populated SQLite/Postgres upgrade and restore retain ancestry, content and files |
+
+See [Conversation alternatives](CONVERSATION_ALTERNATIVES.md) for usage and manual checks.
+**Verification:** 529 backend tests passed with disposable Postgres coverage enabled;
+one inapplicable SQLite case skipped. All 29 Chromium scenarios were verified, including
+edits/retries, reload/navigation, failed attempts, saved-file preview/download and phone
+canvas sizing. Ruff, the frontend production build, local documentation links and
+`git diff --check` passed. Desktop and phone layouts were visually reviewed with synthetic
+data. Tests did not use live model credentials or the user's database. Existing deprecation
+and bundle-size warnings remain. An artifact path normalization fix also preserves file
+results when the workspace root uses a filesystem alias, as on macOS.
+
+Boundaries: one active path per conversation, shared execution workspace, no branch merge,
+no simultaneous model comparison, no artifact editor or version diff UI. Saved files are
+limited to 32 MiB per file and 64 MiB per answer; older/missing/oversized files are explicitly
+current-workspace links. Retries incur normal usage and repeat tools only after current
+permission checks. Source snapshots retain their existing access and expiry rules.
+
+## Wave 13 — Editable, versioned artifacts
+
+**Status:** implemented and verified, 2026-09-09.
+
+| Task | Delivered behavior | Acceptance |
+|---|---|---|
+| W13.1 — Retained versions | Private text artifacts with immutable SQL content, hashes, origins, source linkage and ancestry | New agent outputs are versioned; old answer snapshots import explicitly without replacing original bytes |
+| W13.2 — Canvas editing | Text editor, draft preview, version selector, bounded diffs, restore as a new version, version download | Earlier text survives edits/restores; drafts survive canvas/chat navigation in memory |
+| W13.3 — Selected-passage revision | One tool-free model call; proposal review, Apply/Discard and Stop | Only selection/instruction is supplied; budget/context/accounting and both guardrail directions apply; partial results never write |
+| W13.4 — Workspace publication | Separate Use in workspace action with expected-head/hash checks and busy guards | Stale edits and concurrent Phlox activity cannot silently replace current files; failed publication retains the saved version |
+| W13.5 — Upgrade and documentation | Additive `0008_artifacts`, frozen Wave 12 schema, operator/user guidance | Populated SQLite/Postgres upgrades and backup/restore preserve old data and new artifact content |
+
+See [Editable artifacts](ARTIFACTS.md) for usage, limits, upgrade notes and manual checks.
+
+**Verification:** 550 backend tests passed with disposable Postgres coverage enabled;
+one inapplicable SQLite case skipped. All 34 Chromium scenarios passed, including editor
+save/restore/download, explicit workspace updates, stale drafts, chat navigation/logout,
+proposal review/failure/Stop, Unicode and CRLF selection, and phone controls. Ruff, the
+frontend production build, local documentation links and `git diff --check` passed.
+Desktop and phone layouts were visually reviewed with synthetic artifacts. No live model
+credentials or user database were used for verification. Existing deprecation and
+bundle-size warnings remain; the guide includes configured-model manual checks.
+
+Boundaries: UTF-8 text up to 1 MiB per version; comparisons up to 2,000 lines per version
+and 128,000 displayed characters. Drafts are browser-memory-only; saving versions is explicit.
+AI revision is request-bound, tool-free and user-selected, with no automatic source checking
+or durable resume. Versions share a conversation/path across alternatives. External host
+writers do not participate in Phlox's process lock. Existing HTML preview network behavior
+is unchanged; rich binary previews, React builds, evidence bundles, sharing and automatic
+version expiry remain outside this wave.
+
+## Next wave — Output inspection and portable exports
+
+Continue the remaining bounded M3.3 work: CSV/table and PDF inspection, a deliberate preview
+network policy, and portable output bundles with clear source/provenance and access rules.
+Keep React/JSX builds separate until a pinned isolated build/runtime design is ready.
+Continue evaluating Research quality with configured models before increasing autonomy or
+making competitive quality claims.

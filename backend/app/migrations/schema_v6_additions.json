@@ -1,0 +1,126 @@
+{
+  "projects": {
+    "columns": [
+      {
+        "name": "id",
+        "type": "VARCHAR(32)",
+        "nullable": false,
+        "primary_key": true
+      },
+      {
+        "name": "user_id",
+        "type": "VARCHAR(32)",
+        "nullable": false,
+        "primary_key": false
+      },
+      {
+        "name": "name",
+        "type": "VARCHAR(120)",
+        "nullable": false,
+        "primary_key": false
+      },
+      {
+        "name": "description",
+        "type": "TEXT",
+        "nullable": false,
+        "primary_key": false
+      },
+      {
+        "name": "instructions",
+        "type": "TEXT",
+        "nullable": false,
+        "primary_key": false
+      },
+      {
+        "name": "document_ids",
+        "type": "JSON",
+        "nullable": false,
+        "primary_key": false
+      },
+      {
+        "name": "archived",
+        "type": "BOOLEAN",
+        "nullable": false,
+        "primary_key": false
+      },
+      {
+        "name": "revision",
+        "type": "INTEGER",
+        "nullable": false,
+        "primary_key": false
+      },
+      {
+        "name": "created_at",
+        "type": "DATETIME",
+        "nullable": false,
+        "primary_key": false
+      },
+      {
+        "name": "updated_at",
+        "type": "DATETIME",
+        "nullable": false,
+        "primary_key": false
+      }
+    ],
+    "unique": [],
+    "foreign_keys": [],
+    "indexes": [
+      {
+        "name": "ix_projects_user_id",
+        "columns": [
+          "user_id"
+        ],
+        "unique": false
+      }
+    ]
+  },
+  "context_records": {
+    "columns": [
+      {
+        "name": "turn_id",
+        "type": "VARCHAR(32)",
+        "nullable": false,
+        "primary_key": true
+      },
+      {
+        "name": "conversation_id",
+        "type": "VARCHAR(32)",
+        "nullable": false,
+        "primary_key": false
+      },
+      {
+        "name": "data",
+        "type": "JSON",
+        "nullable": false,
+        "primary_key": false
+      },
+      {
+        "name": "created_at",
+        "type": "DATETIME",
+        "nullable": false,
+        "primary_key": false
+      }
+    ],
+    "unique": [],
+    "foreign_keys": [
+      {
+        "columns": [
+          "conversation_id"
+        ],
+        "target": [
+          "conversations.id"
+        ],
+        "ondelete": "CASCADE"
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_context_records_conversation_id",
+        "columns": [
+          "conversation_id"
+        ],
+        "unique": false
+      }
+    ]
+  }
+}

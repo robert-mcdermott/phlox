@@ -52,6 +52,9 @@ def public(row):
 
 
 def require_idle(db, conversation_id, except_run=None):
+    from app.branches import ACTIVE
+    if conversation_id in ACTIVE:
+        raise HTTPException(409, 'This conversation is still responding. Stop it and wait before making changes.')
     query = db.query(Run).filter(Run.active_conversation_id == conversation_id)
     if except_run:
         query = query.filter(Run.id != except_run)
@@ -60,6 +63,9 @@ def require_idle(db, conversation_id, except_run=None):
 
 
 def require_deletable(db, conversation_id):
+    from app.branches import ACTIVE
+    if conversation_id in ACTIVE:
+        raise HTTPException(409, 'Stop active work before deleting this conversation.')
     if db.query(Run.id).filter(Run.conversation_id == conversation_id, Run.status.in_(BUSY)).first():
         raise HTTPException(409, 'Stop active work and wait for confirmation before deleting this conversation.')
 
@@ -74,6 +80,8 @@ def current_user(db, user_id):
 
 
 def create(db, user, req, key=None):
+    if not req.conversation_id and (req.edit_message_id or req.regenerate_message_id or req.regenerate):
+        raise HTTPException(400, 'Select an existing conversation before editing or regenerating.')
     if not runs_enabled() or not worker.available:
         raise HTTPException(503, 'Reconnectable runs are not enabled or the worker is unavailable.')
     key = key or uuid.uuid4().hex
@@ -92,9 +100,14 @@ def create(db, user, req, key=None):
                 raise HTTPException(409, 'Idempotency-Key was already used for a different request.')
             return previous
         conv = require_owned_conversation(db, req.conversation_id, user) if req.conversation_id else None
+        from app.projects import resolve
+        project = resolve(db, req, conv, user.id)
         if conv:
             require_idle(db, conv.id)
             approvals.require_no_approval(db, conv.id)
+            from app.branches import check_request
+            check_request(conv, req)
+            payload['expected_leaf_id'] = conv.active_leaf_id
         active = db.query(Run).filter(Run.active_conversation_id.is_not(None))
         if active.count() >= MAX_ACTIVE or active.filter(Run.user_id == user.id).count() >= MAX_USER_ACTIVE:
             raise HTTPException(429, 'Run queue is full. Finish or dismiss unresolved work before retrying.')
@@ -112,6 +125,7 @@ def create(db, user, req, key=None):
             raise HTTPException(400, 'Message blocked by current guardrails policy.')
         if not conv:
             conv = Conversation(id=uuid.uuid4().hex, user_id=user.id, title=req.message[:60] or 'New chat',
+                                project_id=project.id if project else None,
                                 profile=profile, model=model, assistant_id=assistant.id if assistant else None,
                                 system_prompt=(assistant.system_prompt if assistant else None) or settings['system_prompt'],
                                 params={**generation_params(settings), **((assistant.params if assistant else None) or {})})

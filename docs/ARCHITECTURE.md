@@ -8,7 +8,9 @@
 > [codebase review](CODEBASE_REVIEW.md) records its recovery, accounting, retrieval, and
 > operational limitations. The [active roadmap](ROADMAP.md) describes proposed changes;
 > opt-in [reconnectable runs](RUNS.md), [document citations](SOURCES.md), and
-> [captured web sources](WEB_SOURCES.md) now ship. Projects and artifact versioning remain proposed.
+> [captured web sources](WEB_SOURCES.md) and private [projects/context records](PROJECTS.md) now ship.
+> [Conversation alternatives](CONVERSATION_ALTERNATIVES.md) and bounded saved answer files now ship.
+> Artifact editing and version diffs remain proposed.
 
 Phlox is a feature-rich, ChatGPT-style web app. It does
 chat, an agentic tool-using harness (code execution, filesystem, shell, web), document
@@ -83,7 +85,68 @@ The **canonical message format** (provider-neutral) is documented at the top of
 `providers/base.py`. Providers translate it to/from their wire formats; the harness never
 deals with provider-specific shapes.
 
+### Conversation alternatives
+
+`branches.py` reconstructs the selected path through `Message.parent_id` and
+`Conversation.active_leaf_id`; `branch_choices` remembers nested selections. Every
+message stays in the conversation for ownership and deletion, but chat preparation,
+project context preview, and exports use only the selected ancestry. Edit appends a user
+sibling; regenerate prepares history through the original user and appends an assistant
+sibling. Preparation is serialized with run admission; request-bound execution also holds
+an in-process busy marker until its stream exits. Clients send their expected leaf to
+reject stale edits/sends/selections. Approval state pins `branch_parent_id`.
+
+Assistant usage retains prepared context markers so regenerating with updated project
+knowledge does not rewrite another alternative's user attachments. `ContextRecord` binds
+the attempt to its parent and selection. `artifact_snapshots.py` copies bounded finalized
+answer files into attachment storage; owner-checked saved-file endpoints and canvas use
+these bytes. Current workspace file APIs remain separate. Committed message deletion
+removes its attachment directory; rollback preserves it. See the alternatives guide for
+limits, shared workspace semantics, and migration `0007_branches`.
+
+### Editable artifacts
+
+`artifacts.py` stores bounded UTF-8 `ArtifactVersion.content` in SQL under a private
+conversation/path `Artifact`. Versions carry hashes, ancestry, origin and source-message
+provenance; finalized answer capture registers supported text without rewriting snapshots.
+Older snapshots and workspace text are imported on explicit editor open. Schema
+`0008_artifacts` is additive, and Wave 12's schema metadata remains frozen for check/backup.
+
+`routers/artifacts.py` checks conversation ownership on every route. Saves and restores
+append immutable versions, with expected-head checks and shared run/approval admission
+guards. Publishing is a separate hash-checked atomic workspace replacement; DB saving
+does not depend on filesystem publication. Conversation/account deletion cascades versions.
+Checkpoint restore also observes the run/approval guard. External filesystem writers are
+outside the process lock.
+
+`artifact_revisions.py` makes one tool-free selected-passage call through `stream_model`,
+including budget, context and usage handling plus input/output guardrails. Proposals are
+buffered until complete and returned for user review; they never write files or versions.
+Request-bound revision leases prevent conflicting Phlox mutations and release on completion
+or cooperative cancellation. `ArtifactEditor.jsx` retains unsaved drafts only in memory,
+supports version comparison/restore, and rejects late proposal events after cancellation.
+See [ARTIFACTS.md](ARTIFACTS.md) for data flow, storage and preview boundaries.
+
 ### Evidence seam
+
+`projects.py` resolves the conversation's pinned project, selected library documents,
+per-turn context options and history compatibility key. `routers/projects.py` exposes
+creator-only CRUD, a read-only preview and reauthorized context-record reads. Project
+membership never replays other chats. Changed selections exclude earlier incompatible
+segments while preserving the transcript; project instructions are capped at 8,000 chars.
+Personal memory defaults off and global memory writes are disabled for project turns.
+
+`Conversation.project_id` is nullable; moving a chat validates ownership and idle/approval
+state. `Project.revision` provides optimistic editor conflict detection. Exact document
+ceilings travel through `ToolContext.document_scope`, sub-agents and approval snapshots;
+empty means no documents. SQL retrieval still rechecks ownership and assistant visibility.
+Both request-bound chat and the run worker use this same preparation path.
+
+`ContextRecord` is conversation-cascaded, keyed by accounting turn. `model_calls.stream_model`
+records which complete retained source excerpts occur in fitted outbound inputs (including
+guardrail redaction) before provider dispatch. It records attempted calls, not receipt by
+the provider, and caps the call list at 128. Source snapshots remain in the existing source
+tables; record reads reauthorize them and suppress deleted memory content. See [Projects](PROJECTS.md).
 
 `app/sources.py` captures authorized SQL passages for direct document references and
 `search_documents`, using conversation-stable `Source` records and accounting-turn
@@ -110,8 +173,9 @@ source router. Wave 8 reuses existing schema fields. See [WEB_SOURCES.md](WEB_SO
 | **Config** | `config.py`, `runtime_settings.py`, `app_config.py` | `config.yml` seed (profiles/defaults) + DB-backed per-user settings + admin deployment overrides (live overlay) |
 | **Runs** | `runs.py`, `routers/runs.py` | Opt-in queue/worker, event replay, explicit cancellation, approval links and interruption review |
 | **Persistence** | `database.py`, `models.py`, `schemas.py`, `migrations/` | SQLite / Postgres, checked Alembic migrations, ORM tables, Pydantic I/O |
+| **Projects/context** | `projects.py`, `routers/projects.py` | Private project CRUD, bounded context selection, compatible history segments, fitted outbound evidence records |
 | **Operations** | `ops.py`, `backup.py`, `maintenance.py` | Offline verified bundles, restore into new destinations, server/maintenance exclusion. See [BACKUP_RESTORE.md](BACKUP_RESTORE.md) |
-| **Providers** | `providers/base.py`, `openai_provider.py`, `bedrock_provider.py`, `registry.py` | Provider abstraction + streaming + embeddings |
+| **Providers** | `providers/base.py`, `openai_provider.py`, `bedrock_provider.py`, `registry.py`, `discovery.py` | Provider abstraction, streaming, embeddings, and read-only model catalogs ([discovery](MODEL_DISCOVERY.md)) |
 | **Agent** | `agent/harness.py`, `registry.py`, `permissions.py`, `events.py`, `context.py` | The resumable loop, tool registry, permission gate, SSE events, context compaction |
 | **Tools** | `agent/tools/{base,fs,shell,code,docs,web,memory,planning,subagent,checkpoint}.py` | Built-in tools (file/exec/web/RAG + memory, todo planning, sub-agents, checkpoints) |
 | **Web evidence** | `web_fetch.py`, `sources.py`, `routers/sources.py` | DNS-pinned bounded fetch/extraction; private snapshots, failures, inspection, deletion and exports |

@@ -333,7 +333,36 @@ workflow is sequential, uses selected personal documents and fetched HTML/text, 
 not add OCR, date-range filtering, parallel researchers, project context, artifact editing,
 or scheduling. Ordinary chat and existing editable skill records remain available.
 
-## Following wave — Projects and inspectable context
+## Wave 10 — Automatic model discovery
+
+**Status:** implemented and verified, 2026-09-08.
+
+**Scope:** model discovery and provider setup UX. Projects are deferred by user choice.
+No schema migration, new dependencies, model downloads or inference calls are needed for
+discovery. See [setup and manual verification](MODEL_DISCOVERY.md).
+
+| Task | Delivered behavior | Acceptance |
+|---|---|---|
+| W10.1 — Live catalogs | Native Ollama/LM Studio, generic OpenAI-compatible and Bedrock listing adapters | Models added outside Phlox appear on picker open or Refresh; listing never invokes generation |
+| W10.2 — Shared picker | Search, keyboard selection, custom IDs, and provider-reported details in Model settings, assistants and admin defaults | Current selections survive missing models and failed refreshes; known embeddings are excluded |
+| W10.3 — Admin setup | Unsaved discovery with secret preservation; Automatic/Curated and API selection | Preview does not save; existing explicit model lists remain curated; saved secrets never return |
+| W10.4 — Reliability | Configuration/credential-isolated bounded cache, refresh coalescing, safe errors and last-success retention | Failed or malformed catalogs cannot replace the last successful list or disclose provider errors/secrets |
+| W10.5 — Phone settings | Compact section selector replaces the sidebar on small screens | Model choices and provider setup fit the phone content width |
+
+**Verification:** 478 backend tests passed, 21 optional cases skipped; all 23 Chromium
+scenarios, Ruff, frontend production build, documentation links and `git diff --check`
+passed. Desktop model selection and phone selection/provider setup were visually reviewed
+using synthetic catalogs. Existing deprecation and bundle-size warnings remain. No live
+provider credentials, model generation, downloads or user data were used in these checks;
+the discovery guide includes live-provider verification steps.
+
+Boundaries: metadata does not prove tool/vision support, generation access, or effective
+context length. Generic/Ollama catalogs leave unsupported metadata unknown. LM Studio may
+require model loading/JIT; Bedrock listing requires AWS metadata permissions and compatible
+invocation access. Bedrock bearer-key profiles use curated IDs. The gateway's `/v1/models`
+continues to expose its configured catalog. Curated choices are not an authorization boundary.
+
+## Later wave — Projects and inspectable context
 
 Introduce private projects with linked chats, selected knowledge and instructions, then
 show users which context is used. Build versioned artifacts and preserved conversation

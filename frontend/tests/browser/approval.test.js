@@ -38,6 +38,9 @@ async function fixture(t, { approval = null, auth = false, durable = false } = {
   const page = await context.newPage()
   page.setDefaultTimeout(8000)
   const state = {
+    settings: { active_profile: 'test', model: 'test-model', theme: 'phlox-dark', max_tokens: 1000, max_tool_rounds: 3 },
+    modelCatalog: { profile: 'test', models: ['test-model'] }, modelReads: 0,
+    discoveryRequests: [], profileSaves: [],
     searchSaves: [], searchTests: [], chatRequests: [], docs: [], retries: [], rebuilds: 0, index: { mode: 'keyword', rebuild_required: true, notice: 'Embedding model changed. Rebuild required.' },
     sources: {}, sourceReads: [], exportReads: 0, exportMarkdown: '',
     approval, decisions: [], reject: false, authenticated: false, setup: true,
@@ -84,12 +87,24 @@ async function fixture(t, { approval = null, auth = false, durable = false } = {
     if (path === '/api/chat/approvals/alpha') return json(state.approval ? [state.approval] : [])
     if (path === '/api/chat/approvals/beta') return json([])
     if (path === '/api/chat/approvals/approval-1' && method === 'DELETE') { state.approval = null; return json({ status: 'dismissed' }) }
-    if (path === '/api/settings') return json({ active_profile: 'test', model: 'test-model', theme: 'phlox-dark', max_tokens: 1000, max_tool_rounds: 3 })
+    if (path === '/api/settings') {
+      if (method === 'PATCH') Object.assign(state.settings, route.request().postDataJSON())
+      return json(state.settings)
+    }
     if (path === '/api/providers') return json({ profiles: [{ name: 'test', label: 'Test', model: 'test-model' }] })
-    if (path === '/api/providers/test/models') return json({ profile: 'test', models: ['test-model'] })
+    if (path === '/api/providers/test/models') { state.modelReads++; return json(state.modelCatalog) }
     if (path === '/api/settings/suggestions') return json({ suggestions: [] })
     if (path === '/api/usage/budget') return json({ budgets: [] })
     if (path === '/api/admin/config') return json(state.config)
+    if (path === '/api/admin/config/profiles/discover') {
+      state.discoveryRequests.push(route.request().postDataJSON())
+      return json(state.modelCatalog)
+    }
+    if (path === '/api/admin/config/profiles' && method === 'PUT') {
+      const body = route.request().postDataJSON(); state.profileSaves.push(body)
+      state.config.providers = body.profiles.map(({ api_key, ...p }) => ({ ...p, api_key_set: !!api_key }))
+      return json(state.config)
+    }
     if (path === '/api/admin/config/web-search' && method === 'PUT') {
       const body = route.request().postDataJSON(); state.searchSaves.push(body)
       state.config.web_search = { engine: body.engine, interval_seconds: body.interval_seconds, searxng_url: body.searxng_url, serper_api_key_set: !!body.serper_api_key }
@@ -214,6 +229,88 @@ test('partial call usage stays visibly unknown in message receipts and chargebac
   const csv = Buffer.concat(chunks).toString()
   assert.match(csv, /cost_usd,known_cost_usd,unknown_usage_calls,unknown_cost_calls,calls,turns/)
   assert.match(csv, /7,3,10,,0.5,1,1,2,1/)
+})
+
+test('model picker discovers additions, preserves selection on failure, and supports keyboard custom IDs', async (t) => {
+  const { page, state } = await fixture(t)
+  await page.getByTitle('Settings', { exact: true }).click()
+  await page.getByRole('button', { name: 'Model', exact: true }).click()
+  await page.getByRole('button', { name: 'Choose model', exact: true }).click()
+  await page.getByRole('option', { name: 'test-model', exact: true }).waitFor()
+  await page.getByRole('combobox', { name: 'Filter models' }).press('Escape')
+  state.modelCatalog = { items: [
+    { id: 'test-model', name: 'test-model' },
+    { id: 'new-local', name: 'New local model', loaded: false, supports_tools: true, supports_vision: false, context_window: 32000 },
+    { id: 'embedding-only', name: 'Embedding only', kind: 'embedding' },
+  ], source: 'lmstudio', mode: 'automatic' }
+  await page.getByRole('button', { name: 'Choose model', exact: true }).click()
+  await page.getByRole('option', { name: /New local model/ }).waitFor()
+  assert.equal(await page.getByRole('option', { name: /Embedding only/ }).count(), 0)
+  await page.getByRole('combobox', { name: 'Filter models' }).fill('new-local')
+  await page.getByRole('combobox', { name: 'Filter models' }).press('Enter')
+  await page.waitForFunction(() => document.querySelector('[aria-label="Choose model"]')?.textContent.includes('New local model'))
+  assert.equal(state.settings.model, 'new-local')
+  await page.getByText(/Enable Just-In-Time loading/).waitFor()
+  state.modelCatalog = { ...state.modelCatalog, status: 'error', stale: true, error: 'Could not connect to the model server.' }
+  await page.getByRole('button', { name: 'Refresh models', exact: true }).click()
+  await page.getByText(/Showing the last available list/).waitFor()
+  assert.equal(state.settings.model, 'new-local')
+  state.modelCatalog = { items: [], source: 'openai' }
+  await page.getByRole('button', { name: 'Choose model', exact: true }).click()
+  await page.getByRole('option', { name: /new-local.*Configured ID/ }).waitFor()
+  await page.getByRole('combobox', { name: 'Filter models' }).fill('private/custom:latest')
+  await page.getByRole('combobox', { name: 'Filter models' }).press('Enter')
+  await page.waitForFunction(() => document.querySelector('[aria-label="Choose model"]')?.textContent.includes('private/custom:latest'))
+  assert.equal(state.settings.model, 'private/custom:latest')
+  assert.ok(state.modelReads >= 4)
+})
+
+test('admin discovers unsaved provider models and saves the selected default with masked credentials', async (t) => {
+  const { page, state } = await fixture(t)
+  state.modelCatalog = { items: [{ id: 'downloaded-model', name: 'Downloaded model', kind: 'llm' }], source: 'ollama' }
+  await page.getByTitle('Settings', { exact: true }).click()
+  await page.getByRole('button', { name: 'Configuration', exact: true }).click()
+  await page.getByRole('button', { name: 'Add profile', exact: true }).click()
+  await page.getByPlaceholder('profile name (id)', { exact: true }).fill('local')
+  await page.getByPlaceholder('endpoint (e.g. http://localhost:11434/v1)', { exact: true }).fill('http://localhost:11434/v1')
+  await page.getByPlaceholder('api key', { exact: true }).fill('synthetic-key')
+  await page.getByRole('button', { name: 'Choose default model', exact: true }).click()
+  await page.getByRole('option', { name: /Downloaded model/ }).click()
+  assert.equal(state.profileSaves.length, 0)
+  assert.equal(state.discoveryRequests[0].api_key, 'synthetic-key')
+  assert.equal(state.discoveryRequests[0].model, null)
+  assert.equal(state.discoveryRequests[0].model_discovery, 'automatic')
+  await page.getByRole('button', { name: 'Save profiles', exact: true }).click()
+  await page.getByText('Saved — applied live.', { exact: true }).waitFor()
+  assert.equal(state.profileSaves[0].profiles[0].model, 'downloaded-model')
+  assert.equal(await page.getByPlaceholder('••• set — leave blank to keep', { exact: true }).inputValue(), '')
+  await page.getByLabel('Model discovery', { exact: true }).selectOption('manual')
+  await page.getByLabel('Configured model IDs', { exact: true }).fill('downloaded-model, private-id')
+  await Promise.all([
+    page.waitForResponse(r => r.url().endsWith('/api/admin/config/profiles') && r.request().method() === 'PUT'),
+    page.getByRole('button', { name: 'Save profiles', exact: true }).click(),
+  ])
+  assert.equal(state.profileSaves[1].profiles[0].model_discovery, 'manual')
+  assert.deepEqual(state.profileSaves[1].profiles[0].models, ['downloaded-model', 'private-id'])
+})
+
+test('phone settings give model selection and provider setup the full content width', async (t) => {
+  const { page } = await fixture(t)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.getByTitle('Settings', { exact: true }).click()
+  await page.getByLabel('Settings section', { exact: true }).selectOption('providers')
+  await page.getByRole('button', { name: 'Choose model', exact: true }).click()
+  const list = page.getByRole('listbox', { name: 'Available models' })
+  await list.waitFor()
+  const bounds = await list.boundingBox()
+  assert.ok(bounds.width > 300 && bounds.x >= 0 && bounds.x + bounds.width <= 390)
+  await page.getByRole('combobox', { name: 'Filter models' }).press('Escape')
+  await page.getByLabel('Settings section', { exact: true }).selectOption('config')
+  await page.getByRole('button', { name: 'Add profile', exact: true }).click()
+  await page.getByPlaceholder('profile name (id)', { exact: true }).fill('phone-profile')
+  const picker = await page.getByRole('button', { name: 'Choose default model', exact: true }).boundingBox()
+  assert.ok(picker.x >= 0 && picker.x + picker.width <= 390)
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true)
 })
 
 test('pricing keeps blank rates unknown and saves explicit zero and cache rates', async (t) => {

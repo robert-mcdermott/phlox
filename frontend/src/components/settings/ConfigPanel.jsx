@@ -6,6 +6,7 @@ import {
 import { api } from '../../api/client'
 import { useStore } from '../../store/useStore'
 import SearchSettings from './SearchSettings'
+import ModelPicker from '../models/ModelPicker'
 
 // Admin-only deployment configuration: a live overlay on backend/config.yml. Each section
 // (providers, pricing, runtime, sandbox) saves independently and applies without a restart.
@@ -112,8 +113,8 @@ function Feedback({ err, ok }) {
 
 // ---- Providers -----------------------------------------------------------
 const BLANK_PROFILE = {
-  name: '', type: 'openai', label: '', model: '', models: [], supports_tools: true,
-  endpoint: '', api_key: '', aws_region: '',
+  name: '', type: 'openai', label: '', model: '', models: [], modelsText: '', supports_tools: true,
+  endpoint: '', api_key: '', aws_region: '', model_discovery: 'automatic', discovery_api: 'auto',
 }
 
 function ProvidersCard({ cfg, onSaved }) {
@@ -128,30 +129,7 @@ function ProvidersCard({ cfg, onSaved }) {
   const remove = (i) => setRows((rs) => rs.filter((_, j) => j !== i))
   const add = () => setRows((rs) => [...rs, { ...BLANK_PROFILE }])
 
-  const submit = () => {
-    const profiles = rows.map((r) => {
-      const p = {
-        name: r.name.trim(), type: r.type, label: r.label || null, model: r.model || null,
-        models: (r.modelsText || '').split(',').map((s) => s.trim()).filter(Boolean),
-        supports_tools: !!r.supports_tools,
-        context_window: r.context_window || null,
-      }
-      if (r.type === 'openai') {
-        p.endpoint = r.endpoint || null
-        if (r.api_key) p.api_key = r.api_key            // only send when set/changed
-      } else {
-        p.aws_region = r.aws_region || null
-        p.aws_profile = r.aws_profile || null
-        // Secrets: only send when non-blank, so a blank field preserves the stored value.
-        if (r.aws_access_key_id) p.aws_access_key_id = r.aws_access_key_id
-        if (r.aws_secret_access_key) p.aws_secret_access_key = r.aws_secret_access_key
-        if (r.aws_session_token) p.aws_session_token = r.aws_session_token
-        if (r.aws_bedrock_api_key) p.aws_bedrock_api_key = r.aws_bedrock_api_key
-      }
-      return p
-    })
-    save('profiles', { profiles })
-  }
+  const submit = () => save('profiles', { profiles: rows.map(profilePayload) })
 
   const test = async (name) => {
     setTesting({ name, pending: true })
@@ -165,14 +143,14 @@ function ProvidersCard({ cfg, onSaved }) {
 
   return (
     <Card icon={Cpu} title="Provider profiles"
-      desc="Add, edit, or remove model providers. API keys are write-only — leave the key field blank to keep the existing one. Save first, then Test.">
+      desc="Add, edit, or remove model providers. Leave a key blank to keep the saved secret. Discover models from this form before saving. Test generation uses the saved profile and may incur model costs.">
       <div className="space-y-3">
         {rows.map((r, i) => (
           <div key={i} className="rounded-lg border border-border bg-surface-2 p-3">
             <div className="mb-2 flex items-center gap-2">
               <input placeholder="profile name (id)" value={r.name}
                 onChange={(e) => update(i, { name: e.target.value })}
-                className={`${inputCls} font-mono`} />
+                className={`${inputCls} min-w-0 font-mono`} />
               <select value={r.type} onChange={(e) => update(i, { type: e.target.value })}
                 className="rounded-lg border-border bg-surface-2 text-sm text-content focus:border-accent focus:ring-accent">
                 <option value="openai">openai</option>
@@ -185,8 +163,7 @@ function ProvidersCard({ cfg, onSaved }) {
             <div className="grid grid-cols-2 gap-2">
               <input placeholder="label (shown in UI)" value={r.label}
                 onChange={(e) => update(i, { label: e.target.value })} className={inputCls} />
-              <input placeholder="default model" value={r.model}
-                onChange={(e) => update(i, { model: e.target.value })} className={`${inputCls} font-mono`} />
+
               {r.type === 'openai' && (
                 <>
                   <input placeholder="endpoint (e.g. http://localhost:11434/v1)" value={r.endpoint}
@@ -197,11 +174,36 @@ function ProvidersCard({ cfg, onSaved }) {
                     onChange={(e) => update(i, { api_key: e.target.value })} className={inputCls} />
                 </>
               )}
-              <input placeholder="models (comma-separated, optional)" value={r.modelsText}
-                onChange={(e) => update(i, { modelsText: e.target.value })}
-                className={`${inputCls} col-span-2 font-mono`} />
+              <label className="text-xs text-muted">Model discovery
+                <select aria-label="Model discovery" value={r.model_discovery}
+                  onChange={e => update(i, { model_discovery: e.target.value })}
+                  className={`${inputCls} mt-1 w-full`}>
+                  <option value="automatic">Automatic</option><option value="manual">Curated list</option>
+                </select>
+              </label>
+              {r.type === 'openai' && <label className="text-xs text-muted">Discovery API
+                <select aria-label="Discovery API" value={r.discovery_api}
+                  onChange={e => update(i, { discovery_api: e.target.value })}
+                  className={`${inputCls} mt-1 w-full`}>
+                  <option value="auto">Detect from endpoint</option><option value="openai">OpenAI-compatible</option>
+                  <option value="ollama">Ollama</option><option value="lmstudio">LM Studio</option>
+                </select>
+              </label>}
+              <label className="col-span-2 text-xs text-muted">{r.model_discovery === 'manual' ? 'Curated model IDs' : 'Additional model IDs (optional)'}
+                <input aria-label="Configured model IDs" placeholder="model-a, model-b" value={r.modelsText}
+                  onChange={e => update(i, { modelsText: e.target.value })}
+                  className={`${inputCls} mt-1 w-full font-mono`} />
+              </label>
             </div>
             {r.type === 'bedrock' && <BedrockCreds r={r} onChange={(patch) => update(i, patch)} />}
+            <div className="mt-3">
+              <p className="mb-1 text-xs text-muted">Default model</p>
+              <ModelPicker profile={r.name.trim()} value={r.model} label="default model" autoLoad={false}
+                revision={JSON.stringify(profilePayload(r))} loadCatalog={() => api.discoverProfile(profilePayload(r))}
+                onChange={model => update(i, { model })} />
+              {!r.name.trim() && <p className="mt-1 text-xs text-muted">Enter a profile name to discover or specify a default model.</p>}
+              {r.type === 'openai' && r.discovery_api === 'auto' && <p className="mt-1 text-xs text-muted">Standard ports identify Ollama (11434) and LM Studio (1234). Choose the API explicitly for custom ports.</p>}
+            </div>
             <div className="mt-2 flex items-center gap-3">
               <label className="flex items-center gap-1.5 text-xs text-muted">
                 <input type="checkbox" checked={r.supports_tools}
@@ -212,7 +214,7 @@ function ProvidersCard({ cfg, onSaved }) {
               <button onClick={() => test(r.name)} disabled={!r.name}
                 className="ml-auto flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-xs text-content hover:border-accent disabled:opacity-50"
                 title="Send a tiny prompt to verify the profile is reachable (uses the saved config)">
-                <FlaskConical size={12} /> Test
+                <FlaskConical size={12} /> Test generation
               </button>
             </div>
             {testing?.name === r.name && (
@@ -293,6 +295,26 @@ function BedrockCreds({ r, onChange }) {
   )
 }
 
+function profilePayload(r) {
+  const p = {
+    name: r.name.trim(), type: r.type, label: r.label || null, model: r.model || null,
+    models: (r.modelsText || '').split(',').map(s => s.trim()).filter(Boolean),
+    supports_tools: !!r.supports_tools, context_window: r.context_window || null,
+    model_discovery: r.model_discovery, discovery_api: r.discovery_api,
+  }
+  if (r.type === 'openai') {
+    p.endpoint = r.endpoint || null
+    if (r.api_key) p.api_key = r.api_key
+  } else {
+    p.aws_region = r.aws_region || null
+    p.aws_profile = r.aws_profile || null
+    for (const field of ['aws_access_key_id', 'aws_secret_access_key', 'aws_session_token', 'aws_bedrock_api_key']) {
+      if (r[field]) p[field] = r[field]
+    }
+  }
+  return p
+}
+
 function normalizeProfile(p) {
   return {
     ...p,
@@ -305,6 +327,8 @@ function normalizeProfile(p) {
     api_key: '', aws_access_key_id: '',
     aws_secret_access_key: '', aws_session_token: '', aws_bedrock_api_key: '',
     modelsText: (p.models || []).join(', '),
+    model_discovery: p.model_discovery || (p.models?.length ? 'manual' : 'automatic'),
+    discovery_api: p.discovery_api || 'auto',
     supports_tools: p.supports_tools !== false,
     context_window: p.context_window || null,
   }

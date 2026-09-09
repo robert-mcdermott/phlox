@@ -353,6 +353,8 @@ class ProfileIn(BaseModel):
     label: str | None = None
     model: str | None = None
     models: list[str] | None = None
+    model_discovery: Literal['automatic', 'manual'] | None = None
+    discovery_api: Literal['auto', 'openai', 'ollama', 'lmstudio'] = 'auto'
     supports_tools: bool = True
     context_window: int | None = Field(default=None, gt=0)
     # openai

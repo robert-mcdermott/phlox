@@ -5,6 +5,9 @@ engineering plan. The [codebase review](CODEBASE_REVIEW.md) records evidence, li
 and verification; the [original roadmap](ROADMAP_LEGACY.md) preserves the delivery history.
 **M1 and M2 have delivered increments:** [Waves 1–9](IMPLEMENTATION_WAVES.md) deliver
 foundations, document/web evidence, and opt-in bounded Research with admin-managed search.
+**Wave 10 adds automatic model discovery** and a shared searchable picker for user settings,
+assistants and provider setup; see the [wave log](IMPLEMENTATION_WAVES.md) and
+[discovery guide](MODEL_DISCOVERY.md). Projects are deferred to a later wave by user choice.
 The wave log records verification and remaining limits. M3–M5 remain proposed. Existing features and
 completed work are identified explicitly; unchecked entries do not yet ship.
 

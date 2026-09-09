@@ -91,6 +91,15 @@ supplied outside this factory should also carry that metadata when used as fallb
 
 ## 3. Add a profile in `config.yml`
 
+Catalog discovery is separate from generation. `providers/discovery.py` normalizes
+read-only catalogs with bounded caching, safe errors and last-success retention;
+`registry.list_models()` retains the ID-list interface. The authenticated
+`GET /api/providers/{profile}/models?refresh=true` also returns metadata and refresh status.
+Admin-only `POST /api/admin/config/profiles/discover` previews an unsaved `ProfileIn`
+without persistence. A new discovery adapter belongs here, never in the agent harness.
+Do not infer capabilities from model names or invoke/load models during discovery.
+For a custom provider without an adapter, use a curated list. See [model discovery](MODEL_DISCOVERY.md).
+
 ```yaml
 profiles:
   my-thing:

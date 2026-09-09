@@ -196,9 +196,12 @@ by the client. For an authenticated endpoint, supply its real credential.
   Configure tool calling in the model server as required by that server/model.
 - Set `supports_tools: false` for models that cannot handle tool calls. This does not add
   tool capability to an unsupported model. Images likewise require a vision-capable model.
-- An optional `models: [MODEL_A, MODEL_B]` seeds the dropdown. Without it Phlox tries model
-  discovery and falls back to the configured `model`. `context_window` optionally sets a
-  provider ceiling; see [model-call limits](MODEL_CALLS.md).
+- Enable **Automatic** model discovery in **Settings → Configuration → Provider profiles**
+  to find newly installed models when the searchable Model picker opens. Existing explicit
+  `models` lists remain curated until you enable Automatic. Refresh and custom model IDs
+  remain available; failed discovery preserves the previous list and your selection.
+  See [model discovery](MODEL_DISCOVERY.md) for provider support and setup.
+- `context_window` optionally sets a provider ceiling; see [model-call limits](MODEL_CALLS.md).
 
 When Phlox runs in a container, `localhost` refers to that container. Use the host alias
 and networking instructions in [DOCKER.md](DOCKER.md). Provider endpoints saved in the
@@ -592,6 +595,7 @@ and a representative document question after setup.
 | Topic | Guide |
 |---|---|
 | Server installation and containers | [DEPLOYMENT.md](DEPLOYMENT.md), [DOCKER.md](DOCKER.md) |
+| Model catalogs and provider setup | [MODEL_DISCOVERY.md](MODEL_DISCOVERY.md) |
 | Runs, approvals, document evidence | [RUNS.md](RUNS.md), [APPROVALS.md](APPROVALS.md), [SOURCES.md](SOURCES.md), [INGESTION.md](INGESTION.md) |
 | Accounts and Entra ID | [AUTH.md](AUTH.md) |
 | Execution environments | [SANDBOX.md](SANDBOX.md) |

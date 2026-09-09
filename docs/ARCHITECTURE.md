@@ -111,7 +111,7 @@ source router. Wave 8 reuses existing schema fields. See [WEB_SOURCES.md](WEB_SO
 | **Runs** | `runs.py`, `routers/runs.py` | Opt-in queue/worker, event replay, explicit cancellation, approval links and interruption review |
 | **Persistence** | `database.py`, `models.py`, `schemas.py`, `migrations/` | SQLite / Postgres, checked Alembic migrations, ORM tables, Pydantic I/O |
 | **Operations** | `ops.py`, `backup.py`, `maintenance.py` | Offline verified bundles, restore into new destinations, server/maintenance exclusion. See [BACKUP_RESTORE.md](BACKUP_RESTORE.md) |
-| **Providers** | `providers/base.py`, `openai_provider.py`, `bedrock_provider.py`, `registry.py` | Provider abstraction + streaming + embeddings |
+| **Providers** | `providers/base.py`, `openai_provider.py`, `bedrock_provider.py`, `registry.py`, `discovery.py` | Provider abstraction, streaming, embeddings, and read-only model catalogs ([discovery](MODEL_DISCOVERY.md)) |
 | **Agent** | `agent/harness.py`, `registry.py`, `permissions.py`, `events.py`, `context.py` | The resumable loop, tool registry, permission gate, SSE events, context compaction |
 | **Tools** | `agent/tools/{base,fs,shell,code,docs,web,memory,planning,subagent,checkpoint}.py` | Built-in tools (file/exec/web/RAG + memory, todo planning, sub-agents, checkpoints) |
 | **Web evidence** | `web_fetch.py`, `sources.py`, `routers/sources.py` | DNS-pinned bounded fetch/extraction; private snapshots, failures, inspection, deletion and exports |

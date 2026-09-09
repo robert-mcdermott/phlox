@@ -1,3 +1,4 @@
+import ModelPicker from '../models/ModelPicker'
 import { useEffect, useState } from 'react'
 import {
   Bot, Plus, Trash2, Pencil, X, Upload, FileText, Loader2, CheckCircle, AlertCircle,
@@ -144,22 +145,12 @@ function KnowledgeSection({ assistantId }) {
 function AssistantEditor({ assistant, onSaved, onCancel }) {
   const providers = useStore((s) => s.providers)
   const [form, setForm] = useState(() => ({ ...BLANK, ...(assistant || {}) }))
-  const [models, setModels] = useState([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const isNew = !assistant?.id
 
   const patch = (p) => setForm((f) => ({ ...f, ...p }))
 
-  useEffect(() => {
-    if (!form.profile) {
-      setModels([])
-      return
-    }
-    api.getModels(form.profile)
-      .then(({ models: m }) => setModels(m || []))
-      .catch(() => setModels([]))
-  }, [form.profile])
 
   const onAvatarFile = async (e) => {
     const file = e.target.files?.[0]
@@ -251,13 +242,8 @@ function AssistantEditor({ assistant, onSaved, onCancel }) {
             </select>
           </Field>
           <Field label="Model">
-            <select className={inputCls} value={form.model || ''} disabled={!form.profile}
-              onChange={(e) => patch({ model: e.target.value })}>
-              <option value="">{form.profile ? 'Profile default' : '—'}</option>
-              {models.map((m) => (
-                <option key={m} value={m}>{m}</option>
-              ))}
-            </select>
+            <ModelPicker profile={form.profile} value={form.model || ''} allowDefault
+              onChange={model => patch({ model })} />
           </Field>
         </div>
 

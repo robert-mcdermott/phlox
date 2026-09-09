@@ -68,6 +68,12 @@ suggestions:
 # overrides replace this list. `default_profile` above picks the one active on first launch.
 # Profiles may set context_window to cap requests below the user's context setting.
 # See docs/MODEL_CALLS.md; leave headroom for provider-specific tokenization.
+# Discovery is also admin-editable; see docs/MODEL_DISCOVERY.md.
+# model_discovery: automatic merges the live catalog with model/models below.
+# model_discovery: manual uses only configured IDs. When omitted, nonempty models
+# lists remain curated for compatibility; profiles without one discover automatically.
+# discovery_api: auto detects native Ollama/LM Studio on standard ports; explicitly
+# select ollama/lmstudio for custom ports, or openai for generic /models discovery.
 profiles:
   local-ollama:
     type: openai
@@ -75,9 +81,9 @@ profiles:
     endpoint: http://localhost:11434/v1
     api_key: ollama            # required by the client, ignored by Ollama
     model: qwen3.6:35b
-    # Optional: restrict/seed the model dropdown. If omitted, /api/providers
-    # tries to list models from the endpoint.
-    models: [qwen3.6:35b, glm-4.7-flash:latest]
+    model_discovery: automatic
+    discovery_api: ollama
+    models: []                # optional extra IDs absent from the discovered catalog
     supports_tools: true       # set false for models without tool-calling
 
   # LM Studio (local) — enable its server under the "Developer" tab (default port 1234).
@@ -87,9 +93,9 @@ profiles:
     endpoint: http://localhost:1234/v1
     api_key: none            # required by the client, ignored by LM-Studio
     model: qwen/qwen3.6-27b
-    # Optional: restrict/seed the model dropdown. If omitted, /api/providers
-    # tries to list models from the endpoint.
-    models: [qwen/qwen3.6-27b]
+    model_discovery: automatic
+    discovery_api: lmstudio
+    models: []                # optional extra IDs absent from the discovered catalog
     supports_tools: true       # set false for models without tool-calling
 
   # vLLM (local) — e.g.

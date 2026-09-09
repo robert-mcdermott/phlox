@@ -81,7 +81,8 @@ export const api = {
 
   // providers + settings
   getProviders: () => req('GET', '/api/providers'),
-  getModels: (profile) => req('GET', `/api/providers/${profile}/models`),
+  getModels: (profile, refresh = false) => req('GET', `/api/providers/${encodeURIComponent(profile)}/models?refresh=${refresh}`),
+  discoverProfile: (profile) => req('POST', '/api/admin/config/profiles/discover', profile),
   testProfile: (profile) => req('POST', `/api/providers/${profile}/test`),
   getSettings: () => req('GET', '/api/settings'),
   updateSettings: (body) => req('PATCH', '/api/settings', body),

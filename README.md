@@ -23,8 +23,9 @@ everyday use, upgrades, and troubleshooting.
 ## Features
 
 - **Local and cloud models** — connect Ollama, LM Studio, vLLM, OpenAI-compatible services,
-  or AWS Bedrock. Switch provider profiles without leaving the app; use local inference
-  and embeddings without a cloud API key.
+  or AWS Bedrock. [Discover available models](docs/MODEL_DISCOVERY.md) in a searchable picker
+  and switch provider profiles without leaving the app; use local inference and embeddings
+  without a cloud API key.
 - **Agentic workflows** — planning, delegated sub-agents, filesystem and shell tools, with
   per-tool permissions, human approvals, and Git-backed workspace checkpoints.
 - **Code execution and artifacts** — run Python and JavaScript, inspect generated files,

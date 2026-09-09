@@ -455,10 +455,48 @@ version expiry remain outside this wave.
 
 ## Wave 14 — General reliability and task completion
 
-**Status:** planned, near-term priority, added 2026-09-09. **Scope:** application/session/run
+**Status:** in progress; first increment implemented 2026-09-09. **Scope:** application/session/run
 reliability across Chat and Research, M2.3 evidence quality and completion budgets, with a
 bounded bridge to M3 deliverables. Schedule ahead of output inspection and portable exports.
-This is backlog work; current runtime behavior, authentication and limits have not changed.
+The delivery record below distinguishes implemented changes from the remaining plan.
+Research/model limits and synthesis behavior have not changed in this first increment.
+
+**First increment — development and session reliability:**
+
+- **W14.9 implemented:** both launchers use `app.dev`, watching application source and
+  excluding runtime data, including a custom directory inside the source tree. Generated
+  workspace Python files no longer trigger reloads. Manual/demo startup instructions use
+  the same entry point; production continues to start without a watcher.
+- **W14.10 initial delivery:** one development signing secret is inherited by reload
+  children for the launcher lifetime. Explicit secrets retain precedence; a full launcher
+  restart still signs users out unless a stable secret was configured. Startup outages
+  preserve the token and show a connection retry screen. REST, blob/upload and streaming
+  requests invalidate only the session that sent them, protecting a fresh login against
+  delayed 401 responses. Session loss clears private state; same-owner login in the same
+  page reopens the conversation and saved run without resubmitting work. The return hint
+  is in memory only, and explicit logout/page reload clears it.
+- **W14.11 initial delivery:** worker shutdown cancellation becomes `interrupted` with a
+  server-shutdown reason, distinct from user Stop. Completed work and unknown tool outcomes
+  retain their existing treatment. Lifecycle logs include UTC time, boot/PID and private
+  run correlation; auth diagnostics distinguish token expiry/signature failures without
+  logging tokens. Optional HTTP trace-export failure logs are redacted and coalesced.
+
+**Verified for this increment:** backend lint and suite (536 passed, 24 skipped), frontend
+production build, all 40 Chromium browser regressions, shell syntax and diff checks. New
+process tests use the actual Uvicorn watcher with an isolated synthetic app: generated
+scripts do not reload it, real source edits do, and the signing secret survives. Browser
+regressions cover startup 503/network failures, a late 401 after a fresh login, same-owner
+reconnection and a different owner's login. Worker tests distinguish shutdown from Stop,
+retain partial progress and preserve completed outcomes. Diagnostics have redaction and
+coalescing tests. Native Windows launcher execution and external collector delivery were
+not tested; both launcher command selections are checked.
+
+**Still pending:** W14.1–W14.8 (completion/recovery, effective budgets, extraction, working
+context and analysis/deliverables), plus full process-level signal/draining/deadline work in
+W14.11. A stalled tool or open event stream can still delay graceful shutdown. No automatic
+replay of uncertain actions, session refresh protocol, durable return hint or distributed
+worker has been introduced. The next increment prioritizes truthful completion and
+effective model/research settings before enlarging allowances.
 
 **Motivation:** a reviewed long-running research task exposed an empty synthesis saved as
 completed, exhausted search/read allowances, repeated context trimming, and useful financial

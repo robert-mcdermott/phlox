@@ -50,7 +50,7 @@ Manual equivalent:
 # backend  (terminal 1)
 cd backend && uv sync --inexact
 # Create config.yml from config.yml.example only if absent; edit profiles.
-uv run uvicorn app.main:app --reload --port 8000
+uv run -m app.dev --port 8000
 
 # frontend (terminal 2)
 cd frontend && npm install && npm run dev    # http://localhost:5173

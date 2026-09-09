@@ -372,6 +372,38 @@ def test_worker_lifecycle_runs_independently_and_stops_cleanly(client, runtime):
     finally:
         worker.stop()
     assert not worker.available
+    assert state(client, fresh)['status'] == 'completed'
+
+
+@pytest.mark.parametrize('user_stop', [False, True])
+def test_shutdown_is_distinct_from_user_stop_and_preserves_progress(client, runtime, user_stop):
+    worker, provider = runtime
+    provider.mode = 'slow'
+    row = create(client)
+    worker.thread = threading.Thread(target=worker.step)
+    worker.thread.start()
+    assert provider.entered.wait(3)
+    if user_stop:
+        client.post(f'/api/runs/{row["id"]}/cancel')
+    stopping = threading.Thread(target=worker.stop)
+    stopping.start()
+    try:
+        assert worker.cancel_event.wait(3)
+        provider.release.set()
+        stopping.join(5)
+        assert not stopping.is_alive()
+        result = state(client, row)
+        assert result['status'] == ('cancelled' if user_stop else 'interrupted')
+        assert ('user request' if user_stop else 'Server shutdown') in result['reason']
+        events = frames(client.get(f'/api/runs/{row["id"]}/events'))
+        assert any('Saved prefix' in e.get('content', '') for e in events)
+        worker.recover()
+        assert state(client, row)['status'] == result['status']
+        assert provider.actions == []
+    finally:
+        provider.release.set()
+        stopping.join(5)
+        worker.thread.join(5)
 
 
 def test_progress_flood_is_bounded_without_losing_completion():

@@ -5,6 +5,7 @@ import { api } from '../../api/client'
 
 export default function LoginScreen() {
   const authConfig = useStore((s) => s.authConfig)
+  const authNotice = useStore((s) => s.authNotice)
   const login = useStore((s) => s.login)
   const registerAccount = useStore((s) => s.registerAccount)
   const completeEntraLogin = useStore((s) => s.completeEntraLogin)
@@ -38,7 +39,9 @@ export default function LoginScreen() {
       if (mode === 'login') await login(username.trim(), password)
       else await registerAccount({ username: username.trim(), password })
     } catch (err) {
-      setError(mode === 'login' ? 'Invalid username or password.' : String(err).replace('Error: ', ''))
+      setError(mode === 'login'
+        ? (err.status === 401 ? 'Invalid username or password.' : 'Sign-in is unavailable. Check the connection and try again.')
+        : String(err).replace('Error: ', ''))
     } finally {
       setBusy(false)
     }
@@ -63,6 +66,7 @@ export default function LoginScreen() {
         </div>
 
         <form onSubmit={submit} className="space-y-3 rounded-2xl border border-border bg-surface p-6 shadow-sm">
+          {authNotice && <p role="status" className="text-sm text-muted">{authNotice}</p>}
           {error && <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
           <label className="block">
             <span className="mb-1 block text-xs font-medium text-muted">Username</span>

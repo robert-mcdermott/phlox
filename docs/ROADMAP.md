@@ -14,11 +14,15 @@ text artifacts**, selected-passage revision, version comparison and restore; see
 [Editable artifacts](ARTIFACTS.md). Richer project memory, extracted tasks and portable output
 bundles remain proposed.
 **Near-term priority: Wave 14 — General reliability and task completion** is
-[planned in the wave backlog](IMPLEMENTATION_WAVES.md#wave-14--general-reliability-and-task-completion),
+[in progress](IMPLEMENTATION_WAVES.md#wave-14--general-reliability-and-task-completion),
 ahead of output inspection and portable exports. It addresses empty completion, missed
 page evidence, PDF/JSON sources, research context efficiency, configurable budgets and an
 explicit analysis handoff, plus generated-file reload isolation, session continuity and
-restart recovery/diagnostics. These follow-up improvements remain planned.
+restart recovery/diagnostics. The first increment implements dev reload isolation and
+initial session/restart diagnostics: source reloads preserve the launcher signing secret,
+temporary outages retain login, and same-owner reauthentication reopens saved work.
+Completion, budget, evidence and analysis improvements remain planned; see the wave's
+delivery record for verification and remaining restart boundaries.
 The wave log records verification and remaining limits. M3 has an initial delivery; M4–M5 remain proposed. Existing features and
 completed work are identified explicitly; unchecked entries do not yet ship.
 
@@ -537,7 +541,7 @@ schemas; F08 may prototype on fixtures while F07 lands. Expand F10 to the releas
 as M2/M3 ship. This ordering deliberately pairs foundational work with visible progress.
 
 **Near-term follow-up backlog:** [Wave 14 — General reliability and task completion](IMPLEMENTATION_WAVES.md#wave-14--general-reliability-and-task-completion)
-is the next planned increment after Wave 13. Tasks W14.1–W14.11 define its scope, ordering,
+is underway after Wave 13. Tasks W14.1–W14.11 define its scope, ordering,
 budget experiments, application/session/restart reliability and verification. Output inspection and portable exports remain queued
 after this reliability work; the original F01–F10 identifiers above remain unchanged.
 

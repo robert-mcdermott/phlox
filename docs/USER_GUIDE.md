@@ -98,9 +98,11 @@ your existing login; a new admin password is not generated on every restart. Do 
 the example over your working config, delete the database, or select a new data directory
 to enable a feature. See [upgrades and backups](#upgrades-and-backups).
 
-In development, omitting `PHLOX_JWT_SECRET` creates an ephemeral signing secret: restarting
-the backend signs you out. Set a strong, stable secret if you want sessions to survive
-restarts. Never commit the secret or your populated config. [AUTH.md](AUTH.md) covers
+The development launchers watch application source only, so agent-generated Python files
+do not restart Phlox. Without a configured signing secret, they generate one secret for
+the launcher lifetime: source reloads keep your login, but stopping and starting the
+launcher signs you out. Set a strong, stable `PHLOX_JWT_SECRET` to retain sessions across
+full restarts. Never commit the secret or your populated config. [AUTH.md](AUTH.md) covers
 accounts, password resets, and Entra ID SSO.
 
 ### Start, stop, and production preparation
@@ -148,7 +150,7 @@ For development, from `backend/` after preparing the config:
 
 ```bash
 uv sync --frozen --inexact
-uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+uv run -m app.dev --host 127.0.0.1 --port 8000
 ```
 
 In another terminal, from `frontend/`:
@@ -162,6 +164,12 @@ Install the backend's `postgres` extra if needed. After dependency updates, reru
 even if `node_modules` exists. In production, build the frontend with `npm run build` and
 run a single backend without `--reload`, with the production environment and security
 settings above. The Linux guide includes the service definition.
+
+Use `app.dev` for manual development startup too. Running raw Uvicorn with unrestricted
+`--reload` from `backend/` also watches generated workspace scripts, which can restart the
+server during an agent task. Source edits still intentionally restart the backend; finish
+or Stop active work before editing server code. The development secret stays in the
+launcher process and its children; it is not written to disk or exported to your shell.
 
 ## Configure model providers
 
@@ -587,7 +595,9 @@ automatic replay. Full commands and limitations: [BACKUP_RESTORE.md](BACKUP_REST
 | Poor document retrieval | Check processing status and extraction quality; an admin can rebuild unknown/changed embedding identities. Keyword-only search may miss paraphrases; see [INGESTION.md](INGESTION.md) |
 | Code import fails | Package exists inside the selected execution environment; ephemeral containers do not retain ad-hoc installs |
 | MCP connection fails | Command/dependencies installed where Phlox runs, correct transport/URL/credentials, current connection state and tool policy |
-| Logged out on restart | Development ephemeral JWT secret; load a stable secret to retain sessions |
+| Logged out after stopping and starting the dev launcher | Set a stable `PHLOX_JWT_SECRET` to retain sessions across full restarts; source reloads through `app.dev` retain the launcher secret |
+| Login/session check cannot reach the server | Use **Retry connection**; network/5xx failures preserve your saved token. A real session rejection requires signing in again |
+| Python execution unexpectedly restarts dev mode | Restart with the updated launcher or `uv run -m app.dev`; unrestricted raw Uvicorn reload watches generated scripts |
 | Unexpected empty app | Check `PHLOX_DATA`, `DATABASE_URL`, mounted storage, and login identity before creating replacement data |
 | Schema check or data lock failure | Preserve data; check the matching upgrade guide and stop the other application process; no manual stamping |
 | Dev page opens but API fails | Backend readiness and Vite proxy target, especially after changing backend ports |

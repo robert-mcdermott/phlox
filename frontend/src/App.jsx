@@ -15,6 +15,7 @@ export default function App() {
   const init = useStore((s) => s.init)
   const logout = useStore((s) => s.logout)
   const authReady = useStore((s) => s.authReady)
+  const authError = useStore((s) => s.authError)
   const authConfig = useStore((s) => s.authConfig)
   const user = useStore((s) => s.user)
   const newConversation = useStore((s) => s.newConversation)
@@ -25,7 +26,7 @@ export default function App() {
 
   useEffect(() => {
     init()
-    const onUnauthorized = () => logout()
+    const onUnauthorized = () => logout(true)
     window.addEventListener('phlox-unauthorized', onUnauthorized)
     return () => window.removeEventListener('phlox-unauthorized', onUnauthorized)
   }, [init, logout])
@@ -66,6 +67,14 @@ export default function App() {
 
   // Auth gate.
   if (!authReady) {
+    if (authError) return (
+      <div className="flex h-screen items-center justify-center bg-bg text-content p-6">
+        <div className="max-w-md text-center space-y-4">
+          <p role="alert">{authError}</p>
+          <button className="rounded-lg border border-border bg-surface px-4 py-2 text-accent" onClick={init}>Retry connection</button>
+        </div>
+      </div>
+    )
     return <div className="flex h-screen items-center justify-center bg-bg text-muted">Loading…</div>
   }
   if (authConfig?.enabled && !user) {

@@ -27,7 +27,7 @@ To keep your current DB untouched and use a separate data directory the backend 
 ```
 cd backend
 PHLOX_DATA=./data-demo uv run python scripts/seed_demo.py
-PHLOX_DATA=./data-demo uv run uvicorn app.main:app --reload --port 8000
+PHLOX_DATA=./data-demo uv run -m app.dev --port 8000
 ```
 This is how I tested the script, and it's the nicer setup for demos: your day-to-day
 

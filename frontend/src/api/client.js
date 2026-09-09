@@ -1,5 +1,5 @@
 // Thin REST client over the FastAPI backend.
-import { authHeaders, setToken } from './token'
+import { authHeaders, authFetch } from './token'
 
 async function req(method, path, body) {
   const opts = { method, headers: { ...authHeaders() } }
@@ -7,25 +7,19 @@ async function req(method, path, body) {
     opts.headers['Content-Type'] = 'application/json'
     opts.body = JSON.stringify(body)
   }
-  const res = await fetch(path, opts)
-  if (res.status === 401) {
-    setToken(null)
-    window.dispatchEvent(new Event('phlox-unauthorized'))
-  }
+  const res = await authFetch(path, opts)
   if (!res.ok) {
     const text = await res.text()
-    throw new Error(`${res.status}: ${text}`)
+    const error = new Error(`${res.status}: ${text}`)
+    error.status = res.status
+    throw error
   }
   if (res.status === 204) return null
   return res.json()
 }
 
 async function getBlob(path) {
-  const res = await fetch(path, { headers: { ...authHeaders() } })
-  if (res.status === 401) {
-    setToken(null)
-    window.dispatchEvent(new Event('phlox-unauthorized'))
-  }
+  const res = await authFetch(path)
   if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`)
   return res.blob()
 }
@@ -113,7 +107,7 @@ export const api = {
     const fd = new FormData()
     fd.append('file', file)
     if (conversationId) fd.append('conversation_id', conversationId)
-    const res = await fetch('/api/documents', { method: 'POST', body: fd, headers: { ...authHeaders() } })
+    const res = await authFetch('/api/documents', { method: 'POST', body: fd, headers: { ...authHeaders() } })
     if (!res.ok) throw new Error(await res.text())
     return res.json()
   },
@@ -128,7 +122,7 @@ export const api = {
   uploadAssistantDocument: async (id, file) => {
     const fd = new FormData()
     fd.append('file', file)
-    const res = await fetch(`/api/assistants/${id}/documents`, {
+    const res = await authFetch(`/api/assistants/${id}/documents`, {
       method: 'POST',
       body: fd,
       headers: { ...authHeaders() },
@@ -145,7 +139,7 @@ export const api = {
   importSkill: async (file) => {
     const fd = new FormData()
     fd.append('file', file)
-    const res = await fetch('/api/skills/import', { method: 'POST', body: fd, headers: { ...authHeaders() } })
+    const res = await authFetch('/api/skills/import', { method: 'POST', body: fd, headers: { ...authHeaders() } })
     if (!res.ok) throw new Error(await res.text())
     return res.json()
   },
@@ -206,7 +200,7 @@ export const api = {
   listWorkspaceFiles: (conversationId) => req('GET', `/api/files/${conversationId}/list`),
   // Raw text content of a workspace file, for the artifact canvas preview.
   getFileText: async (conversationId, path) => {
-    const res = await fetch(api.fileUrl(conversationId, path), { headers: { ...authHeaders() } })
+    const res = await authFetch(api.fileUrl(conversationId, path), { headers: { ...authHeaders() } })
     if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`)
     return res.text()
   },

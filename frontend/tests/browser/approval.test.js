@@ -275,6 +275,111 @@ async function openApproval(page) {
   await page.getByText('Approval needed', { exact: true }).waitFor()
 }
 
+for (const [path, failure] of [['config', '503'], ['me', '503'], ['me', 'network']]) {
+  test(`startup ${path} ${failure} preserves the session until connection retry`, async (t) => {
+    const { page, state, context } = await fixture(t, { auth: true })
+    state.setup = false
+    state.authenticated = true
+    await page.evaluate(async () => {
+      const { setToken } = await import('/src/api/token.js')
+      setToken('synthetic-preserved-token')
+    })
+    let unavailable = true
+    await context.route(`**/api/auth/${path}`, route => {
+      if (!unavailable) return route.fallback()
+      return failure === 'network' ? route.abort() : route.fulfill({ status: 503, json: { detail: 'Restarting' } })
+    })
+    await page.reload()
+    await page.getByRole('button', { name: 'Retry connection', exact: true }).waitFor()
+    assert.equal(await page.evaluate(() => localStorage.getItem('phlox-token')), 'synthetic-preserved-token')
+    assert.equal(await page.getByRole('button', { name: 'Sign in', exact: true }).count(), 0)
+    assert.equal(await page.getByText('Approval chat', { exact: true }).count(), 0)
+    unavailable = false
+    await page.getByRole('button', { name: 'Retry connection', exact: true }).click()
+    await page.getByText('Approval chat', { exact: true }).waitFor()
+    assert.equal(await page.evaluate(() => localStorage.getItem('phlox-token')), 'synthetic-preserved-token')
+  })
+}
+
+test('a delayed 401 cannot clear a newer login even when the token bytes match', async (t) => {
+  const { page, state, context } = await fixture(t, { auth: true })
+  state.setup = false
+  await page.evaluate(async () => {
+    const { useStore } = await import('/src/store/useStore.js')
+    await useStore.getState().login('tester', 'test-password')
+  })
+  let release
+  let received
+  const pending = new Promise(resolve => { received = resolve })
+  const gate = new Promise(resolve => { release = resolve })
+  await context.route('**/api/auth/me', async route => {
+    received()
+    await gate
+    await route.fulfill({ status: 401, json: { detail: 'Old session rejected' } })
+  })
+  await page.evaluate(async () => {
+    const { api } = await import('/src/api/client.js')
+    window.oldSessionRequest = api.me().catch(() => {})
+  })
+  await pending
+  await page.evaluate(async () => {
+    const { useStore } = await import('/src/store/useStore.js')
+    await useStore.getState().login('tester', 'test-password')
+  })
+  release()
+  await page.evaluate(() => window.oldSessionRequest)
+  assert.equal(await page.evaluate(() => localStorage.getItem('phlox-token')), 'synthetic-test-token')
+  await page.getByText('Approval chat', { exact: true }).waitFor()
+  assert.equal(await page.getByRole('button', { name: 'Sign in', exact: true }).count(), 0)
+})
+
+for (const differentOwner of [false, true]) {
+  test(`reauthentication ${differentOwner ? 'does not reopen another owner’s' : 'reconnects to the owner’s'} run without resubmission`, async (t) => {
+    const { page, state, context } = await fixture(t, { auth: true, durable: true })
+    state.setup = false
+    state.run = { id: 'run-1', conversation_id: 'alpha', status: 'running' }
+    state.events = [{ type: 'token', content: 'Retained research progress.' }]
+    const login = async () => {
+      await page.getByLabel('Username', { exact: true }).fill('tester')
+      await page.getByLabel('Password', { exact: true }).fill('test-password')
+      await page.getByRole('button', { name: 'Sign in', exact: true }).click()
+    }
+    await login()
+    await page.getByText('Approval chat', { exact: true }).click()
+    await page.getByText('Retained research progress.', { exact: true }).waitFor()
+    await context.route('**/api/auth/me', route => route.fulfill({ status: 401, json: { detail: 'Session expired' } }))
+    await page.evaluate(async () => {
+      const { api } = await import('/src/api/client.js')
+      await api.me().catch(() => {})
+    })
+    await page.getByText('Your session ended. Sign in again to return to your saved work.', { exact: true }).waitFor()
+    assert.deepEqual(await page.evaluate(async () => {
+      const { useStore } = await import('/src/store/useStore.js')
+      const s = useStore.getState()
+      return [s.run, s.live, s.messages.length, s.conversations.length, s.activeId]
+    }), [null, null, 0, 0, null])
+    if (differentOwner) await context.route('**/api/auth/login', route => route.fulfill({ json: {
+      token: 'synthetic-other-token', user: { id: 'other', username: 'another', role: 'user' },
+    } }))
+    const before = state.cursors.length
+    await login()
+    await page.getByText('Approval chat', { exact: true }).waitFor()
+    if (differentOwner) {
+      assert.equal(await page.evaluate(async () => {
+        const { useStore } = await import('/src/store/useStore.js')
+        return useStore.getState().activeId
+      }), null)
+      assert.equal(state.cursors.length, before)
+    } else {
+      await page.getByText('Retained research progress.', { exact: true }).waitFor()
+      assert.ok(state.cursors.length > before)
+    }
+    assert.equal(state.creates.length, 0)
+    assert.equal(state.cancellations, 0)
+    assert.equal(state.decisions.length, 0)
+  })
+}
+
 test('partial call usage stays visibly unknown in message receipts and chargeback', async (t) => {
   const { page, state } = await fixture(t)
   state.messages.push({ id: 'partial', role: 'assistant', content: 'Partial result.', usage: {

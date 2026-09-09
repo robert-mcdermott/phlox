@@ -1,7 +1,7 @@
-import { authHeaders } from './token'
+import { authHeaders, authFetch } from './token'
 
 export async function runRequest(path, body, key) {
-  const response = await fetch(path, {
+  const response = await authFetch(path, {
     method: body === undefined ? 'GET' : 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json', ...(key ? { 'Idempotency-Key': key } : {}) },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
@@ -24,7 +24,7 @@ export function subscribeRun(id, onEvent, onDone, onError) {
     let delay = 500
     while (!controller.signal.aborted) {
       try {
-        const response = await fetch(`/api/runs/${id}/events?after=${cursor}`, {
+        const response = await authFetch(`/api/runs/${id}/events?after=${cursor}`, {
           headers: authHeaders(), signal: controller.signal,
         })
         if (!response.ok) {

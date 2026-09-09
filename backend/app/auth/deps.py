@@ -6,10 +6,10 @@ Phlox JWT (Authorization: Bearer) is required.
 """
 from __future__ import annotations
 
-from fastapi import Depends, Header, HTTPException
+from fastapi import Depends, Header, HTTPException, Request
 from sqlalchemy.orm import Session
 
-from app.auth.security import decode_access_token
+from app.auth.security import inspect_access_token
 from app.config import get_auth_config
 from app.database import get_db
 from app.models import Conversation, User
@@ -26,6 +26,7 @@ def _dev_admin() -> User:
 
 
 def get_authenticated_user(
+    request: Request,
     authorization: str | None = Header(default=None),
     db: Session = Depends(get_db),
 ) -> User:
@@ -34,12 +35,15 @@ def get_authenticated_user(
         return _dev_admin()
 
     if not authorization or not authorization.lower().startswith("bearer "):
+        request.state.auth_failure = "missing_token"
         raise HTTPException(401, "Not authenticated")
-    payload = decode_access_token(authorization.split(" ", 1)[1])
+    payload, failure = inspect_access_token(authorization.split(" ", 1)[1])
     if not payload:
+        request.state.auth_failure = failure
         raise HTTPException(401, "Invalid or expired token")
     user = db.get(User, payload.get("sub"))
     if not user or not user.is_active:
+        request.state.auth_failure = "account_unavailable"
         raise HTTPException(401, "User not found or inactive")
     return user
 

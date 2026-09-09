@@ -36,8 +36,17 @@ def create_access_token(user_id: str, role: str) -> str:
 
 
 def decode_access_token(token: str) -> dict[str, Any] | None:
+    return inspect_access_token(token)[0]
+
+
+def inspect_access_token(token: str) -> tuple[dict[str, Any] | None, str | None]:
+    """Safe failure category for server diagnostics; never return JWT data on failure."""
     cfg = get_auth_config()
     try:
-        return jwt.decode(token, cfg["jwt_secret"], algorithms=["HS256"])
+        return jwt.decode(token, cfg["jwt_secret"], algorithms=["HS256"]), None
+    except jwt.ExpiredSignatureError:
+        return None, "expired"
+    except jwt.InvalidSignatureError:
+        return None, "invalid_signature"
     except jwt.PyJWTError:
-        return None
+        return None, "invalid_token"

@@ -3,7 +3,7 @@ import { clearDrafts } from '../utils/drafts'
 import { api } from '../api/client'
 import { streamChat } from '../api/sse'
 import { runRequest, subscribeRun } from '../api/runs'
-import { setToken } from '../api/token'
+import { setToken, authVersion } from '../api/token'
 import { applyTheme, initialTheme } from '../theme/presets'
 import { canvasKind } from '../utils/canvas'
 
@@ -66,16 +66,23 @@ export const useStore = create((set, get) => ({
   authConfig: null, // {enabled, allow_registration, entra_enabled}
   user: null, // signed-in user; must_change_password gates the app until setup is complete
   authReady: false, // true once we've determined auth state
+  authError: null,
+  authNotice: null,
+  authReturnTo: null, // in-memory owner/conversation IDs only; never private content
 
   async init() {
+    const version = authVersion()
+    set({ authError: null, authReady: false })
     applyTheme(get().theme)
     // Determine auth state first; only load app data once authenticated.
-    let cfg = { enabled: false }
+    let cfg
     try {
       cfg = await api.authConfig()
     } catch {
-      /* backend may be starting */
+      if (authVersion() === version) set({ authError: 'Cannot reach Phlox. Your saved session has been kept. Retry when the server is available.' })
+      return
     }
+    if (authVersion() !== version) return
     set({ authConfig: cfg })
 
     if (!cfg.enabled) {
@@ -86,11 +93,16 @@ export const useStore = create((set, get) => ({
     // Auth enabled: try to restore session.
     try {
       const user = await api.me()
+      if (authVersion() !== version) return
       set({ user, authReady: true })
       if (!user.must_change_password) await get().loadApp()
-    } catch {
-      setToken(null)
-      set({ user: null, authReady: true })
+    } catch (error) {
+      if (authVersion() !== version) return
+      if (error.status === 401) {
+        set({ user: null, authReady: true })
+      } else {
+        set({ authReady: false, authError: 'Cannot restore your session while Phlox is unavailable. Your saved session has been kept. Retry shortly.' })
+      }
     }
   },
 
@@ -184,37 +196,56 @@ export const useStore = create((set, get) => ({
 
   async login(username, password) {
     const { token, user } = await api.login(username, password)
-    setToken(token)
-    set({ user })
-    if (!user.must_change_password) await get().loadApp()
+    await get().acceptSession(token, user)
   },
 
   async registerAccount(body) {
     const { token, user } = await api.register(body)
-    setToken(token)
-    set({ user })
-    await get().loadApp()
+    await get().acceptSession(token, user)
   },
 
   async completeEntraLogin(handoff) {
     const { token, user } = await api.entraComplete(handoff)
+    await get().acceptSession(token, user)
+  },
+
+  async acceptSession(token, user) {
     setToken(token)
-    set({ user })
-    await get().loadApp()
+    set({ user, authReady: true, authError: null, authNotice: null })
+    if (!user.must_change_password) await get().restoreApp(user)
+  },
+
+  async restoreApp(user) {
+    const hint = get().authReturnTo
+    set({ authReturnTo: null })
+    try {
+      await get().loadApp()
+      if (get().user === user && hint?.owner === user.id && hint.conversation) {
+        // Selection reauthorizes through the API and reconnects to saved progress;
+        // it never re-submits the original request or approves an action.
+        await get().selectConversation(hint.conversation)
+      }
+    } catch {
+      if (get().user === user) set({ error: 'Signed in, but could not reload saved work. Reopen the conversation when the server is available.' })
+    }
   },
 
   async changePassword(currentPassword, newPassword) {
     const user = await api.changePassword(currentPassword, newPassword)
     set({ user })
-    await get().loadApp()
+    await get().restoreApp(user)
   },
 
-  logout() {
+  logout(expired = false) {
+    const hint = expired && get().user?.id && get().activeId
+      ? { owner: get().user.id, conversation: get().activeId } : null
     clearDrafts()
     get().detachStream()
     setToken(null)
     set({
       streamVersion: get().streamVersion + 1,
+      authReady: true, authError: null, authReturnTo: hint,
+      authNotice: expired ? 'Your session ended. Sign in again to return to your saved work.' : null,
       user: null, conversations: [], messages: [], activeId: null, activeLeafId: null, hasAlternatives: false, branchSwitching: false, live: null, canvas: null,
       artifactDrafts: {}, canvasEditing: false,
       assistants: [], activeAssistantId: null, skills: [], providers: [], settings: null,
@@ -703,7 +734,7 @@ export const useStore = create((set, get) => ({
       get()._subscribeRun(run, version)
     } catch (error) {
       if (get().streamVersion !== version) return
-      if (error.status === 401) { get().logout(); return }
+      if (error.status === 401) return // authFetch invalidates only the originating session
       set({ error: String(error.message), streaming: false, runCreation: null })
       await get()._finalize(version)
     }
@@ -725,7 +756,7 @@ export const useStore = create((set, get) => ({
       },
       async (error) => {
         if (get().streamVersion !== version) return
-        if (error.status === 401) { get().logout(); return }
+        if (error.status === 401) return // authFetch invalidates only the originating session
         set({ streaming: false, abortFn: null, error: error.message })
         await get()._finalize(version)
       },

@@ -338,6 +338,9 @@ class Worker:
         self.thread.start()
 
     def stop(self):
+        from app.observability import lifecycle
+
+        lifecycle('worker_shutdown_requested', run=self.run_id or '-')
         self.stopping.set()
         self.cancel_event.set()
         self.wake.set()
@@ -427,6 +430,14 @@ class Worker:
                 if pending and pending.status == 'pending':
                     pending.status = 'dismissed'
                 outcome = 'cancelled'
+            if outcome == 'cancelled':
+                if row.status == 'cancel_requested':
+                    reason = 'Stopped by user request. Completed actions were not undone.'
+                elif self.stopping.is_set():
+                    outcome = 'interrupted'
+                    reason = 'Server shutdown interrupted execution. Inspect saved progress before continuing; nothing was replayed.'
+                else:
+                    reason = reason or 'Execution was cancelled. Inspect saved progress before continuing.'
             if unknown:
                 outcome = 'interrupted'
                 reason = 'A tool started but its result was not saved. Its outcome is unknown; inspect external results before acknowledging.'
@@ -442,6 +453,9 @@ class Worker:
                     outcome = 'failed'
                 _close(row, outcome, reason)
             db.commit()
+            from app.observability import lifecycle
+
+            lifecycle('run_finished', run=run_id, status=outcome)
             self.run_id = None
         return True
 

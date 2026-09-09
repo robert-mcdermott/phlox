@@ -127,6 +127,18 @@ its live view from sequence zero. Logout detaches subscriptions and clears priva
 login lets the owner reopen the run. A second tab can refresh a saved approval to see a
 result completed elsewhere. Sidebar status refreshes every five seconds while enabled.
 
+When a session expires, signing in again as the same owner in the same page returns to the
+previous conversation and reconnects to its saved progress. No task or approval is submitted
+again. Explicit logout or reloading the login page clears the return hint; reopen the chat
+manually in that case. Temporary startup/network failures preserve the login token and show
+a connection retry action.
+
+Worker shutdown cancellation is recorded as `interrupted` with a server-shutdown reason;
+an explicit user Stop remains `cancelled` with a user-request reason. Unknown tool outcomes
+still take precedence, and previously completed runs remain completed. This does not make
+in-flight execution restartable: connection draining and unresponsive tools can still delay
+shutdown. Full process-level shutdown/deadline improvements remain part of Wave 14.
+
 ## Limits, retention, and evidence
 
 - At most **32 unresolved runs per deployment**, **4 per user**, and **1 per conversation**.

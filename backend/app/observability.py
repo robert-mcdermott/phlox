@@ -10,13 +10,57 @@
 from __future__ import annotations
 
 import logging
+import os
+import threading
 import time
+import uuid
+from datetime import datetime, timezone
 
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config import get_observability_config
 
 logger = logging.getLogger("phlox.request")
+BOOT_ID = uuid.uuid4().hex[:12]
+
+
+def lifecycle(event: str, **metadata) -> None:
+    """Callers supply operational identifiers/states only, never request or tool bodies."""
+    logging.getLogger("phlox.lifecycle").info(
+        "at=%s pid=%s boot=%s event=%s %s",
+        datetime.now(timezone.utc).isoformat(), os.getpid(), BOOT_ID, event,
+        " ".join(f"{key}={value}" for key, value in metadata.items()),
+    )
+
+
+class TelemetryFailureFilter(logging.Filter):
+    """Coalesce optional collector failures without logging endpoint credentials/bodies."""
+
+    def __init__(self, interval=60):
+        super().__init__()
+        self.interval = interval
+        self.next_notice = 0.0
+        self.suppressed = 0
+        self.lock = threading.Lock()
+
+    def filter(self, record):
+        if record.levelno < logging.WARNING:
+            return True
+        with self.lock:
+            now = time.monotonic()
+            if now < self.next_notice:
+                self.suppressed += 1
+                return False
+            record.msg = (
+                "Telemetry export failed; check the configured collector. "
+                "Application execution is independent of trace delivery. "
+                "%s similar messages suppressed since the previous notice."
+            )
+            record.args = (self.suppressed,)
+            record.exc_info = record.exc_text = record.stack_info = None
+            self.suppressed = 0
+            self.next_notice = now + self.interval
+            return True
 
 
 def compute_cost(model: str | None, usage: dict | None) -> float | None:
@@ -55,8 +99,9 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         dur_ms = round((time.monotonic() - start) * 1000, 1)
         user = _user_from_auth(request.headers.get("authorization"))
         logger.info(
-            "%s %s -> %s %sms user=%s",
+            "%s %s -> %s %sms user=%s auth=%s",
             request.method, request.url.path, response.status_code, dur_ms, user or "-",
+            getattr(request.state, "auth_failure", "-"),
         )
         return response
 
@@ -71,6 +116,9 @@ def setup_observability(app) -> None:
     endpoint = otel.get("endpoint")
     if not endpoint:
         return  # tracing disabled
+    exporter_logger = logging.getLogger("opentelemetry.exporter.otlp.proto.http.trace_exporter")
+    if not any(isinstance(f, TelemetryFailureFilter) for f in exporter_logger.filters):
+        exporter_logger.addFilter(TelemetryFailureFilter())
     try:
         from opentelemetry import trace
         from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter

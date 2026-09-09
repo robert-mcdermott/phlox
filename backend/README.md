@@ -8,7 +8,7 @@ From this directory, after creating/editing `config.yml` **only if it does not a
 
 ```bash
 uv sync --frozen --inexact
-uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+uv run -m app.dev --host 127.0.0.1 --port 8000
 ```
 
 Run Vite separately for development, or use the repository launchers to start both servers.

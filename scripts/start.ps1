@@ -222,7 +222,7 @@ $backendLog = Join-Path $logDir 'backend.log'
 
 Write-Step "Starting the backend on :$backendPort..."
 $backendArgs = @('run', 'uvicorn', 'app.main:app', '--host', '127.0.0.1', '--port', "$backendPort")
-if ($Mode -eq 'dev') { $backendArgs += '--reload' }
+if ($Mode -eq 'dev') { $backendArgs = @('run', '-m', 'app.dev', '--host', '127.0.0.1', '--port', "$backendPort") }
 
 # uvicorn logs mostly go to stderr, so both streams are captured (to backend.log and
 # backend.log.err) — Show-LastLog prints both if startup fails.

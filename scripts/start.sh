@@ -183,7 +183,7 @@ else
   PHLOX_BANNER_COLOR=0
 fi
 if [ "$MODE" = "dev" ]; then
-  ( cd "$ROOT/backend" && export PHLOX_ENV="$PHLOX_RUN_ENV" PHLOX_FORCE_COLOR="$PHLOX_BANNER_COLOR" PHLOX_STARTUP_CAPTURE_MARKERS=1 && exec nohup uv run uvicorn app.main:app --host 127.0.0.1 --port "$BACKEND_PORT" --reload ) >>"$BACKEND_LOG" 2>&1 </dev/null &
+  ( cd "$ROOT/backend" && export PHLOX_ENV="$PHLOX_RUN_ENV" PHLOX_FORCE_COLOR="$PHLOX_BANNER_COLOR" PHLOX_STARTUP_CAPTURE_MARKERS=1 && exec nohup uv run -m app.dev --host 127.0.0.1 --port "$BACKEND_PORT" ) >>"$BACKEND_LOG" 2>&1 </dev/null &
 else
   ( cd "$ROOT/backend" && export PHLOX_ENV="$PHLOX_RUN_ENV" PHLOX_FORCE_COLOR="$PHLOX_BANNER_COLOR" PHLOX_STARTUP_CAPTURE_MARKERS=1 && exec nohup uv run uvicorn app.main:app --host 127.0.0.1 --port "$BACKEND_PORT" ) >>"$BACKEND_LOG" 2>&1 </dev/null &
 fi

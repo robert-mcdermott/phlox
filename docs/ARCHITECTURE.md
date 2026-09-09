@@ -41,6 +41,11 @@ OpenAI-compatible endpoint, including local models).
 **Two processes.** In dev, Vite (`:5173`) proxies `/api` to FastAPI (`:8000`). In prod,
 FastAPI serves the built SPA from `frontend/dist` (see `backend/app/main.py`).
 
+Both dev launchers call `app.dev`: Uvicorn watches `backend/app` while excluding the
+configured data directory, and reload children inherit one launcher-lifetime JWT secret.
+Generated workspace scripts therefore do not trigger reloads. Real source edits still
+restart the backend; durable runs preserve their existing conservative interruption policy.
+
 ## 2. The request lifecycle (most important thing to understand)
 
 With `runs.enabled: true`, `routers/runs.py` admits a private `Run` into a bounded DB queue.

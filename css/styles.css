@@ -549,3 +549,23 @@ main:focus { outline: none; }
 /* Search provider configuration introduced in v0.2.1. */
 #web-search .grid-3 { margin: 22px 0; }
 #web-search .detail-note + p { margin-top: 14px; }
+
+/* Projects and versioned output introduced in v0.3.0. */
+.release-grid, .workspace-grid {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px;
+}
+.workspace-followup { margin-top: 20px; }
+.workspace-grid .text-link { display: inline-block; }
+#alternatives, #artifacts { scroll-margin-top: 88px; }
+.workspace-grid .info-card { padding: 28px; }
+.workspace-grid .check-list { font-size: 0.92rem; }
+.workspace-grid .detail-note { margin-top: 18px; }
+.artifact-steps { padding-left: 22px; margin: 20px 0; color: var(--text-muted); font-size: 0.92rem; }
+.artifact-steps li + li { margin-top: 10px; }
+.artifact-steps strong { color: var(--text); }
+@media (max-width: 680px) {
+  .release-grid, .workspace-grid { grid-template-columns: minmax(0, 1fr); }
+  .workspace-grid .info-card { padding: 22px; }
+}
+
+.release-link .release-summary { flex: 1 1 220px; }

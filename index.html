@@ -6,16 +6,16 @@
     <title>Phlox — Self-hosted AI agents, research, and tools</title>
     <meta
       name="description"
-      content="Self-hosted AI chat, agents, and research with your choice of local or cloud models. Explore Phlox v0.2.1: opt-in Research mode, cited reports, and your choice of web search provider."
+      content="Self-hosted AI chat, agents, and research with your choice of local or cloud models. Explore Phlox v0.3.0: automatic model discovery, private projects, inspectable context, and versioned artifact editing."
     />
     <meta name="author" content="Robert McDermott" />
 
     <!-- Open Graph -->
     <meta property="og:type" content="website" />
-    <meta property="og:title" content="Phlox v0.2.1 — Your models. Your workspace." />
+    <meta property="og:title" content="Phlox v0.3.0 — Your models. Your workspace." />
     <meta
       property="og:description"
-      content="An open-source AI workspace with opt-in research, inspectable citations, configurable web search, and agent tools. Connect local or cloud models on your own infrastructure."
+      content="An open-source AI workspace with private projects, cited research, conversation alternatives, and editable artifacts. Connect local or cloud models on your own infrastructure."
     />
     <meta
       property="og:image"
@@ -50,8 +50,8 @@
         </a>
         <nav class="nav" id="nav" aria-label="Main navigation">
           <a href="#features">Features</a>
+          <a href="#workspace">Workspace</a>
           <a href="#research">Research</a>
-          <a href="#themes">Themes</a>
           <a href="#quickstart">Quick start</a>
           <a href="#docs">Docs</a>
         </nav>
@@ -97,22 +97,22 @@
             </h1>
             <p class="hero-sub">
               Chat, research documents and the web, and put an agent to work with tools you control.
-              Run Phlox on your own infrastructure with local models or your preferred cloud
-              provider.
+              Organize work into private projects and turn answers into editable documents and code.
+              Run it all with local models or your preferred cloud provider.
             </p>
             <div class="hero-cta">
               <a class="btn btn-primary" href="#quickstart">Get started</a>
               <a
                 class="btn btn-secondary"
-                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/USER_GUIDE.md"
+                href="https://github.com/robert-mcdermott/phlox/blob/v0.3.0/docs/USER_GUIDE.md"
                 >Read the user guide</a
               >
             </div>
             <a
               class="release-link"
-              href="https://github.com/robert-mcdermott/phlox/releases/tag/v0.2.1"
-              ><span>v0.2.1</span> Research mode, configurable search, and a cleaner chat workspace
-              <span aria-hidden="true">→</span></a
+              href="https://github.com/robert-mcdermott/phlox/releases/tag/v0.3.0"
+              ><span>v0.3.0</span>
+              <span class="release-summary">Model discovery, private projects, and versioned artifacts →</span></a
             >
             <div class="hero-providers">
               <span class="hero-providers-label">Runs over</span>
@@ -161,8 +161,8 @@
             ><span class="strip-label">code, files, and MCP</span>
           </div>
           <div class="strip-item">
-            <span class="strip-num">3 runners</span
-            ><span class="strip-label">local, container, or AgentCore</span>
+            <span class="strip-num">File versions</span
+            ><span class="strip-label">edit, compare, and restore</span>
           </div>
           <div class="strip-item">
             <span class="strip-num">Apache 2.0</span
@@ -173,34 +173,37 @@
       <section class="section release-section" id="release">
         <div class="container">
           <div class="section-head">
-            <span class="kicker">New in v0.2.1</span>
-            <h2 class="section-title">Ask a question. Follow the research.</h2>
+            <span class="kicker">New in v0.3.0</span>
+            <h2 class="section-title">A workspace for work that evolves</h2>
             <p class="section-lead">
-              Choose your sources, follow the plan, and inspect the evidence in a cited report.
-              Everyday chat stays one click away.
+              Bring in new models, keep projects organized, explore alternate answers, and refine
+              the files you create. Your research and agent tools stay close at hand.
             </p>
           </div>
-          <div class="grid-3">
-            <a class="info-card feature-link" href="#research">
-              <span class="kicker">Research</span>
-              <h3>From question to cited report</h3>
-              <p>Opt into planning, evidence gathering, and report writing using the web,
-                selected documents, or both. Choose the depth and follow progress.</p>
-              <span class="text-link">Explore Research mode →</span>
+          <div class="release-grid">
+            <a class="info-card feature-link" href="#providers">
+              <span class="kicker">Model discovery</span>
+              <h3>New models, ready to choose</h3>
+              <p>Pull a model in Ollama or download one in LM Studio, then refresh the searchable picker. Discover cloud catalogs too, without restarting Phlox.</p>
+              <span class="text-link">Explore model discovery →</span>
             </a>
-            <a class="info-card feature-link" href="#web-search">
-              <span class="kicker">Search</span>
-              <h3>Your choice of search provider</h3>
-              <p>Keep DuckDuckGo or configure Serper or a public SearXNG endpoint in the admin
-                console. DuckDuckGo remains the fallback when another provider fails.</p>
-              <span class="text-link">Configure web search →</span>
+            <a class="info-card feature-link" href="#workspace">
+              <span class="kicker">Projects and context</span>
+              <h3>Keep each project focused</h3>
+              <p>Group conversations with shared instructions and selected documents. Inspect the context before sending and the retained context record after a response.</p>
+              <span class="text-link">Explore private projects →</span>
             </a>
-            <a class="info-card feature-link" href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/USER_GUIDE.md#chat-and-everyday-use">
-              <span class="kicker">Chat experience</span>
-              <h3>More room for the conversation</h3>
-              <p>A compact composer, expandable token details, per-chat text drafts, and
-                Jump to latest make it easier to write and read while replies stream.</p>
-              <span class="text-link">Explore the chat controls →</span>
+            <a class="info-card feature-link" href="#alternatives">
+              <span class="kicker">Conversation alternatives</span>
+              <h3>Explore another answer</h3>
+              <p>Regenerate a reply or edit an earlier message while preserving the original path. Revisit alternatives with their citations and saved answer files.</p>
+              <span class="text-link">Explore conversation alternatives →</span>
+            </a>
+            <a class="info-card feature-link" href="#artifacts">
+              <span class="kicker">Editable artifacts</span>
+              <h3>Refine the result</h3>
+              <p>Edit Markdown, HTML, and code beside the chat. Request an AI revision of selected text, review the proposal, and save versions you can compare or restore.</p>
+              <span class="text-link">Explore artifact editing →</span>
             </a>
           </div>
         </div>
@@ -210,7 +213,7 @@
       <section class="band" id="providers">
         <div class="container band-inner">
           <div class="band-copy reveal">
-            <h2 class="section-title">Local models and cloud providers</h2>
+            <h2 class="section-title">Discover models from your providers</h2>
             <p class="section-lead">
               Connect <strong>AWS Bedrock</strong> or an
               <strong>OpenAI-compatible endpoint</strong>, including Ollama, LM Studio, and vLLM.
@@ -218,14 +221,18 @@
               Vision, tools, and context limits depend on your chosen model.
             </p>
             <ul class="check-list">
-              <li>Define as many provider profiles as you like, switch between them instantly</li>
-              <li>Local embeddings (e.g. <code>nomic-embed-text</code>) keep RAG fully offline</li>
-              <li>Edit provider profiles and supported runtime defaults in the admin panel</li>
+              <li>Configure a provider in the admin console and choose Automatic discovery</li>
+              <li>Search available models in Settings, assistant setup, and provider configuration</li>
+              <li>Reopen the picker or use Refresh models after adding a model to your server</li>
+              <li>Keep curated lists when you prefer a fixed set of choices</li>
             </ul>
+            <p class="detail-note">Discovery reads the provider catalog; it does not download models
+              or change your selected model. Bedrock catalog access requires AWS listing permissions.</p>
+            <a class="text-link" href="https://github.com/robert-mcdermott/phlox/blob/v0.3.0/docs/MODEL_DISCOVERY.md">Model discovery and provider setup →</a>
           </div>
           <div class="code-card reveal">
             <div class="code-head">
-              <span class="code-file">config.yml</span>
+              <span class="code-file">Optional config.yml seed</span>
               <button
                 class="copy-btn"
                 aria-label="Copy provider configuration"
@@ -245,6 +252,8 @@
     <span class="c-key">endpoint</span>: http://localhost:11434/v1
     <span class="c-key">api_key</span>: ollama       <span class="c-cmt"># ignored by Ollama</span>
     <span class="c-key">model</span>: your-installed-model
+    <span class="c-key">model_discovery</span>: automatic
+    <span class="c-key">discovery_api</span>: ollama
     <span class="c-key">supports_tools</span>: <span class="c-bool">true</span></code></pre>
           </div>
         </div>
@@ -260,6 +269,36 @@
             </p>
           </div>
           <div class="feature-grid">
+            <article class="feature-card">
+              <div class="feature-ic">
+                <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor"
+                  stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M3 7V4h6l2 3h10v13H3V7Z" />
+                </svg>
+              </div>
+              <h3>Private projects</h3>
+              <p>Group conversations around shared instructions and selected documents. Keep project work private, with personal memory off by default.</p>
+            </article>
+            <article class="feature-card">
+              <div class="feature-ic">
+                <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor"
+                  stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M4 3h16v18H4V3Zm4 5h8m-8 4h8m-8 4h5" />
+                </svg>
+              </div>
+              <h3>Inspectable context</h3>
+              <p>Review instructions, model destination, history, memory, and document choices before sending. Inspect the retained context record beneath a response.</p>
+            </article>
+            <article class="feature-card">
+              <div class="feature-ic">
+                <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor"
+                  stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M6 3v18m0-14h6a6 6 0 0 1 6 6v8m-15-3 3 3 3-3m6 0 3 3 3-3" />
+                </svg>
+              </div>
+              <h3>Conversation alternatives</h3>
+              <p>Edit a message or regenerate an answer without losing the original. Switch between saved paths and continue from the one you choose.</p>
+            </article>
             <article class="feature-card">
               <div class="feature-ic">
                 <svg
@@ -344,8 +383,8 @@
               </div>
               <h3>Artifacts and canvas</h3>
               <p>
-                Browse generated files and view HTML or Markdown in a resizable canvas beside the
-                conversation, with preview, source, and download controls.
+                Preview HTML and Markdown beside the conversation. Edit text and code, request selected-text
+                AI revisions, and compare, restore, or download saved versions.
               </p>
             </article>
             <article class="feature-card">
@@ -462,6 +501,73 @@
         </div>
       </section>
 
+      <!-- ===== Projects, alternatives, and editable output ===== -->
+      <section class="section section-alt" id="workspace">
+        <div class="container">
+          <div class="section-head">
+            <span class="kicker">Private projects · Inspectable context</span>
+            <h2 class="section-title">Give ongoing work a place of its own</h2>
+            <p class="section-lead">Keep related conversations, instructions, and reference documents
+              together. Start a project when you need one; everyday chat remains the default.</p>
+          </div>
+          <div class="workspace-grid">
+            <article class="info-card">
+              <h3>Shared direction across your chats</h3>
+              <p>Create a private project with reusable instructions and selected documents. Start
+                conversations inside it, move existing chats in or out, and archive finished projects.
+                Other project conversations are not automatically added to a chat’s history.</p>
+              <ul class="check-list">
+                <li>Project content stays private to its owner, including from administrators</li>
+                <li>Personal memory is off by default in projects</li>
+                <li>Project conversations do not automatically save facts to global memory</li>
+              </ul>
+              <a class="text-link" href="https://github.com/robert-mcdermott/phlox/blob/v0.3.0/docs/PROJECTS.md">Projects guide →</a>
+            </article>
+            <article class="info-card">
+              <h3>See the context behind an answer</h3>
+              <p>Open Context in the composer to review the model destination, instructions,
+                compatible history, memory, and document choices. Exclude context you do not want
+                included in the next turn.</p>
+              <ul class="check-list">
+                <li>Review the retained context record beneath a response</li>
+                <li>Inspect captured source passages alongside citations</li>
+                <li>Keep the original transcript visible when context changes start a new history segment</li>
+              </ul>
+              <p class="detail-note">Context records describe retained context and attempted model
+                calls; they are not a complete transcript of every outbound request.</p>
+            </article>
+          </div>
+          <div class="workspace-grid workspace-followup">
+            <article class="info-card" id="alternatives">
+              <span class="kicker">Conversation alternatives</span>
+              <h3>Try another direction. Keep the original.</h3>
+              <p>Regenerate a reply or edit an earlier message to create an alternative. Previous
+                answers, citations, context records, and saved answer files remain available.
+                Switch paths with compact controls; your choice survives a reload.</p>
+              <p class="detail-note">Only the selected path continues into the next chat turn or
+                Markdown export. Switching answers does not roll back workspace files; use a
+                checkpoint when you need to restore the workspace.</p>
+              <a class="text-link" href="https://github.com/robert-mcdermott/phlox/blob/v0.3.0/docs/CONVERSATION_ALTERNATIVES.md">Conversation alternatives guide →</a>
+            </article>
+            <article class="info-card" id="artifacts">
+              <span class="kicker">Versioned artifacts</span>
+              <h3>From generated file to finished work</h3>
+              <p>Edit supported text files directly in the canvas, preview HTML or Markdown, and
+                compare saved versions. Select a passage and describe a change to request an AI
+                revision, then review and apply or discard the proposed edit.</p>
+              <ol class="artifact-steps">
+                <li><strong>Edit and review.</strong> Make your changes or refine selected text with AI.</li>
+                <li><strong>Save a version.</strong> Keep a durable copy to compare, download, or restore later.</li>
+                <li><strong>Use in workspace.</strong> Explicitly update the file the agent works with.</li>
+              </ol>
+              <p class="detail-note">Saving a version keeps the workspace file unchanged until you
+                choose Use in workspace. Save drafts before refreshing or closing the browser.</p>
+              <a class="text-link" href="https://github.com/robert-mcdermott/phlox/blob/v0.3.0/docs/ARTIFACTS.md">Artifact editing guide →</a>
+            </article>
+          </div>
+        </div>
+      </section>
+
       <!-- ===== Agentic harness deep dive ===== -->
       <section class="section section-alt" id="agent">
         <div class="container">
@@ -500,6 +606,7 @@
                 <p>
                   <code>save_memory</code> persists durable facts across chats. Every workspace is a
                   git repo that auto-snapshots after mutating tools, with one-click restore.
+                  Project chats keep global memory separate and do not automatically save to it.
                 </p>
               </div>
               <div class="split-item">
@@ -514,9 +621,9 @@
               <div class="split-item">
                 <h3><span class="num">05</span> Artifact canvas</h3>
                 <p>
-                  When the agent writes an HTML or Markdown file, it opens in a live, resizable
-                  canvas beside the chat — sandboxed preview, raw-source toggle, one-click download
-                  — instead of a plain file link.
+                  Preview HTML and Markdown in a resizable canvas beside the chat. Edit supported
+                  text files, review selected-text AI revisions, and save immutable versions.
+                  Choose Use in workspace when a saved version should replace the agent’s file.
                 </p>
               </div>
             </div>
@@ -569,7 +676,7 @@
               </li>
             </ul>
             <p>
-              <a href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/RUNS.md"
+              <a href="https://github.com/robert-mcdermott/phlox/blob/v0.3.0/docs/RUNS.md"
                 >Run behavior and recovery →</a
               >
             </p>
@@ -728,7 +835,7 @@
                 <li>Use Stop to cancel further work; incomplete research reports its gaps</li>
               </ul>
               <p class="guide-links">
-                <a href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/RESEARCH.md">Research setup, limits, and examples →</a>
+                <a href="https://github.com/robert-mcdermott/phlox/blob/v0.3.0/docs/RESEARCH.md">Research setup, limits, and examples →</a>
               </p>
               <p class="detail-note">
                 Research uses the current question and selected sources, with bounded gathering and
@@ -781,7 +888,7 @@
               Public endpoints vary in availability; if the configured provider and DuckDuckGo both
               fail, Phlox reports the failure. Queries go to the selected provider and to DuckDuckGo
               when fallback is needed.</p>
-            <p><a href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/RESEARCH.md#search-engine-administration">Search configuration and troubleshooting →</a></p>
+            <p><a href="https://github.com/robert-mcdermott/phlox/blob/v0.3.0/docs/RESEARCH.md#search-engine-administration">Search configuration and troubleshooting →</a></p>
           </div>
         </div>
       </section>
@@ -815,15 +922,15 @@
                 </li>
               </ul>
               <p class="guide-links">
-                <a href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/SOURCES.md"
+                <a href="https://github.com/robert-mcdermott/phlox/blob/v0.3.0/docs/SOURCES.md"
                   >Document citations</a
                 >
                 ·
-                <a href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/WEB_SOURCES.md"
+                <a href="https://github.com/robert-mcdermott/phlox/blob/v0.3.0/docs/WEB_SOURCES.md"
                   >Web evidence</a
                 >
                 ·
-                <a href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/INGESTION.md"
+                <a href="https://github.com/robert-mcdermott/phlox/blob/v0.3.0/docs/INGESTION.md"
                   >Processing and indexes</a
                 >
               </p>
@@ -1642,7 +1749,7 @@
           <p class="qs-note">
             Includes Outrun, Blade Runner 2049, Chaos Theory, both Cyberpunk variants, Synthwave,
             and more.
-            <a href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/THEMING.md"
+            <a href="https://github.com/robert-mcdermott/phlox/blob/v0.3.0/docs/THEMING.md"
               >Full catalog and custom themes →</a
             >
           </p>
@@ -1675,7 +1782,7 @@
               <pre
                 class="code-block"
                 id="qs-nix"
-              ><code>git clone --branch v0.2.1 --depth 1 https://github.com/robert-mcdermott/phlox.git
+              ><code>git clone --branch v0.3.0 --depth 1 https://github.com/robert-mcdermott/phlox.git
 cd phlox
 ./scripts/start.sh dev</code></pre>
             </div>
@@ -1693,38 +1800,38 @@ cd phlox
               <pre
                 class="code-block"
                 id="qs-win"
-              ><code>git clone --branch v0.2.1 --depth 1 https://github.com/robert-mcdermott/phlox.git
+              ><code>git clone --branch v0.3.0 --depth 1 https://github.com/robert-mcdermott/phlox.git
 cd phlox
 .\scripts\start.ps1 dev</code></pre>
             </div>
           </div>
           <ol class="setup-steps">
             <li>
-              <strong>Connect a model.</strong> Edit the profiles in
-              <code>backend/config.yml</code> to match your endpoint and installed model. The
-              launcher does not install model servers or download models.
-            </li>
-            <li>
               <strong>Sign in.</strong> A fresh database prints a temporary administrator password
               at startup. Replace it at first login; existing installations retain their accounts.
             </li>
             <li>
-              <strong>Start a conversation.</strong> Choose a profile in Settings. Stop the app with
+              <strong>Connect a provider.</strong> Open Settings → Configuration → Provider profiles.
+              Enter the endpoint and credentials, enable Automatic discovery, choose a default model,
+              and save. The launcher does not install model servers or download models.
+            </li>
+            <li>
+              <strong>Start a conversation.</strong> Choose a profile and model in Settings. Stop the app with
               Ctrl+C or the platform’s <code>scripts/stop</code> launcher.
             </li>
           </ol>
           <p class="qs-note">
             <a
-              href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/USER_GUIDE.md#first-time-setup"
+              href="https://github.com/robert-mcdermott/phlox/blob/v0.3.0/docs/USER_GUIDE.md#first-time-setup"
               >Detailed first-time setup</a
             >
             ·
             <a
-              href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/USER_GUIDE.md#configure-model-providers"
+              href="https://github.com/robert-mcdermott/phlox/blob/v0.3.0/docs/USER_GUIDE.md#configure-model-providers"
               >Provider configuration</a
             >
             ·
-            <a href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/DOCKER.md"
+            <a href="https://github.com/robert-mcdermott/phlox/blob/v0.3.0/docs/DOCKER.md"
               >Docker / Podman</a
             >
           </p>
@@ -1735,7 +1842,7 @@ cd phlox
               for shared use. Auth-enabled production requires a stable
               <code>PHLOX_JWT_SECRET</code> and an isolated runner; follow the
               <a
-                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/USER_GUIDE.md#start-stop-and-production-preparation"
+                href="https://github.com/robert-mcdermott/phlox/blob/v0.3.0/docs/USER_GUIDE.md#start-stop-and-production-preparation"
                 >production setup guide</a
               >
               before using <code>prod</code>.
@@ -1743,21 +1850,22 @@ cd phlox
           </div>
           <div class="operator-note" id="upgrade">
             <span class="kicker">Existing installations</span>
-            <h3>Upgrading to v0.2.1</h3>
+            <h3>Upgrading to v0.3.0</h3>
             <ol>
               <li>Stop Phlox and preserve a complete offline backup of the database, data paths,
                 configuration, and external secrets.</li>
-              <li>Check out v0.2.1, install the release dependencies, and follow the checked upgrade
-                procedure. There is no new schema migration from v0.2.0; the revision remains
-                <code>0005_ingestion</code>.</li>
-              <li>Start Phlox normally. Chat and DuckDuckGo remain the defaults. Select Research
-                when needed, and configure other search providers in the admin console.</li>
+              <li>Check out v0.3.0, install the release dependencies, and follow the checked upgrade
+                procedure. Startup applies the new project, conversation-alternative, and artifact
+                migrations through <code>0008_artifacts</code>. Do not stamp the database manually.</li>
+              <li>Rebuild the frontend for production, then restart Phlox. Chat and DuckDuckGo remain
+                the defaults. Existing provider profiles with configured model lists stay curated;
+                enable Automatic in the admin console to discover additional models.</li>
             </ol>
-            <p>Upgrading from before v0.2.0? Follow the full upgrade guide for schema checks,
-              document-index identity, and older approvals. Existing v0.2.0 indexes do not need
-              rebuilding solely for this release.</p>
+            <p>Artifact versions are stored in the database; saved answer files also use the data
+              directory. Keep both in your backup. Upgrading from before v0.2.0? Follow the full
+              guide for earlier schema and document-index requirements.</p>
             <p>
-              <a href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/BACKUP_RESTORE.md"
+              <a href="https://github.com/robert-mcdermott/phlox/blob/v0.3.0/docs/BACKUP_RESTORE.md"
                 >Backup, migration, and restore guide →</a
               >
             </p>
@@ -1768,7 +1876,7 @@ cd phlox
       <section class="section section-alt" id="docs">
         <div class="container">
           <div class="section-head">
-            <span class="kicker">Documentation · v0.2.1</span>
+            <span class="kicker">Documentation · v0.3.0</span>
             <h2 class="section-title">A guide for every stage</h2>
             <p class="section-lead">
               Start with the User Guide, then use the focused guides for your deployment and
@@ -1777,7 +1885,7 @@ cd phlox
           </div>
           <a
             class="guide-banner"
-            href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/USER_GUIDE.md"
+            href="https://github.com/robert-mcdermott/phlox/blob/v0.3.0/docs/USER_GUIDE.md"
             ><div>
               <span class="kicker">Start here</span>
               <h3>Phlox User Guide</h3>
@@ -1790,119 +1898,131 @@ cd phlox
               <h3>Start and operate</h3>
               <a
                 class="doc-entry"
-                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/USER_GUIDE.md"
+                href="https://github.com/robert-mcdermott/phlox/blob/v0.3.0/docs/USER_GUIDE.md"
                 ><strong>User Guide</strong
                 ><span>Installation, configuration, everyday use, and troubleshooting.</span></a
               ><a
                 class="doc-entry"
-                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/BACKUP_RESTORE.md"
+                href="https://github.com/robert-mcdermott/phlox/blob/v0.3.0/docs/BACKUP_RESTORE.md"
                 ><strong>Backup and restore</strong
                 ><span>Checked upgrades, offline backups, verification, and recovery.</span></a
               ><a
                 class="doc-entry"
-                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/DEPLOYMENT.md"
+                href="https://github.com/robert-mcdermott/phlox/blob/v0.3.0/docs/DEPLOYMENT.md"
                 ><strong>Linux deployment</strong
                 ><span>systemd, reverse proxy, TLS, and production configuration.</span></a
               ><a
                 class="doc-entry"
-                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/DOCKER.md"
+                href="https://github.com/robert-mcdermott/phlox/blob/v0.3.0/docs/DOCKER.md"
                 ><strong>Docker / Podman</strong
                 ><span>Images, persistent data, provider networking, and sandbox setup.</span></a
               ><a
                 class="doc-entry"
-                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/AUTH.md"
+                href="https://github.com/robert-mcdermott/phlox/blob/v0.3.0/docs/AUTH.md"
                 ><strong>Authentication</strong
                 ><span>Accounts, private data, and Entra ID SSO.</span></a
               ><a
                 class="doc-entry"
-                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/SANDBOX.md"
+                href="https://github.com/robert-mcdermott/phlox/blob/v0.3.0/docs/SANDBOX.md"
                 ><strong>Execution runners</strong
                 ><span>Local, container, and remote execution choices.</span></a
               ><a
                 class="doc-entry"
-                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/BUDGETS.md"
+                href="https://github.com/robert-mcdermott/phlox/blob/v0.3.0/docs/BUDGETS.md"
                 ><strong>Budgets</strong
                 ><span>Monthly thresholds and enforcement boundaries.</span></a
               >
             </div>
             <div class="docs-group">
-              <h3>Use the agent and sources</h3>
-              <a class="doc-entry" href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/RESEARCH.md">
+              <h3>Chat, projects, and sources</h3>
+              <a class="doc-entry" href="https://github.com/robert-mcdermott/phlox/blob/v0.3.0/docs/PROJECTS.md">
+                <strong>Projects and context</strong><span>Private projects, shared instructions, document scope, and context inspection.</span>
+              </a>
+              <a class="doc-entry" href="https://github.com/robert-mcdermott/phlox/blob/v0.3.0/docs/CONVERSATION_ALTERNATIVES.md">
+                <strong>Conversation alternatives</strong><span>Edit, regenerate, navigate saved paths, and retain answer files.</span>
+              </a>
+              <a class="doc-entry" href="https://github.com/robert-mcdermott/phlox/blob/v0.3.0/docs/ARTIFACTS.md">
+                <strong>Editable artifacts</strong><span>Text editing, AI revisions, saved versions, and workspace updates.</span>
+              </a>
+              <a class="doc-entry" href="https://github.com/robert-mcdermott/phlox/blob/v0.3.0/docs/RESEARCH.md">
                 <strong>Research mode</strong><span>Source scope, depth, progress, citations, and Stop.</span>
               </a>
-              <a class="doc-entry" href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/RESEARCH.md#search-engine-administration">
+              <a class="doc-entry" href="https://github.com/robert-mcdermott/phlox/blob/v0.3.0/docs/RESEARCH.md#search-engine-administration">
                 <strong>Web search providers</strong><span>DuckDuckGo, Serper, public SearXNG, and fallback.</span>
               </a>
               <a
                 class="doc-entry"
-                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/RUNS.md"
+                href="https://github.com/robert-mcdermott/phlox/blob/v0.3.0/docs/RUNS.md"
                 ><strong>Runs and Stop</strong
                 ><span>Reconnect, approvals, interruption recovery, and retention.</span></a
               ><a
                 class="doc-entry"
-                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/APPROVALS.md"
+                href="https://github.com/robert-mcdermott/phlox/blob/v0.3.0/docs/APPROVALS.md"
                 ><strong>Tool approvals</strong
                 ><span>Review, resume, expiry, and current policy checks.</span></a
               ><a
                 class="doc-entry"
-                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/SOURCES.md"
+                href="https://github.com/robert-mcdermott/phlox/blob/v0.3.0/docs/SOURCES.md"
                 ><strong>Document citations</strong
                 ><span>Captured passages, source locations, and export.</span></a
               ><a
                 class="doc-entry"
-                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/WEB_SOURCES.md"
+                href="https://github.com/robert-mcdermott/phlox/blob/v0.3.0/docs/WEB_SOURCES.md"
                 ><strong>Web evidence</strong
                 ><span>Fetch behavior, source inspection, limitations, and deletion.</span></a
               ><a
                 class="doc-entry"
-                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/INGESTION.md"
+                href="https://github.com/robert-mcdermott/phlox/blob/v0.3.0/docs/INGESTION.md"
                 ><strong>Document processing</strong
                 ><span>Upload progress, retries, reprocessing, and index rebuilds.</span></a
               ><a
                 class="doc-entry"
-                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/SKILLS.md"
+                href="https://github.com/robert-mcdermott/phlox/blob/v0.3.0/docs/SKILLS.md"
                 ><strong>Skills</strong
                 ><span>Reusable workflows and slash-command invocation.</span></a
               >
             </div>
             <div class="docs-group">
               <h3>Configure and extend</h3>
+              <a class="doc-entry" href="https://github.com/robert-mcdermott/phlox/blob/v0.3.0/docs/MODEL_DISCOVERY.md">
+                <strong>Model discovery</strong><span>Automatic catalogs, searchable selection, curated lists, and provider support.</span>
+              </a>
               <a
                 class="doc-entry"
-                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/MODEL_CALLS.md"
+                href="https://github.com/robert-mcdermott/phlox/blob/v0.3.0/docs/MODEL_CALLS.md"
                 ><strong>Usage and model calls</strong
                 ><span>Context limits, pricing, retries, and unknown usage.</span></a
               ><a
                 class="doc-entry"
-                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/OBSERVABILITY.md"
+                href="https://github.com/robert-mcdermott/phlox/blob/v0.3.0/docs/OBSERVABILITY.md"
                 ><strong>Observability</strong
                 ><span>Usage reports, structured logs, and tracing.</span></a
               ><a
                 class="doc-entry"
-                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/API_GATEWAY.md"
+                href="https://github.com/robert-mcdermott/phlox/blob/v0.3.0/docs/API_GATEWAY.md"
                 ><strong>API gateway</strong
                 ><span>Per-user keys and OpenAI-compatible completions.</span></a
               ><a
                 class="doc-entry"
-                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/GUARDRAILS.md"
+                href="https://github.com/robert-mcdermott/phlox/blob/v0.3.0/docs/GUARDRAILS.md"
                 ><strong>Guardrails</strong
                 ><span>Optional text-pattern redaction and blocking.</span></a
               ><a
                 class="doc-entry"
-                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/MCP.md"
+                href="https://github.com/robert-mcdermott/phlox/blob/v0.3.0/docs/MCP.md"
                 ><strong>MCP tools</strong><span>Connect and manage external tool servers.</span></a
               ><a
                 class="doc-entry"
-                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/THEMING.md"
+                href="https://github.com/robert-mcdermott/phlox/blob/v0.3.0/docs/THEMING.md"
                 ><strong>Theming</strong><span>The 18 palettes and custom themes.</span></a
               ><a
                 class="doc-entry"
-                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/DEVELOPMENT.md"
+                href="https://github.com/robert-mcdermott/phlox/blob/v0.3.0/docs/DEVELOPMENT.md"
                 ><strong>Development</strong
                 ><span>Local checks, browser tests, and retrieval fixtures.</span></a
               ><a
                 class="doc-entry"
-                href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/ARCHITECTURE.md"
+                href="https://github.com/robert-mcdermott/phlox/blob/v0.3.0/docs/ARCHITECTURE.md"
                 ><strong>Architecture</strong><span>System map and extension points.</span></a
               >
             </div>
@@ -1913,12 +2033,12 @@ cd phlox
               >current roadmap</a
             >
             ·
-            <a href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/ADDING_A_TOOL.md"
+            <a href="https://github.com/robert-mcdermott/phlox/blob/v0.3.0/docs/ADDING_A_TOOL.md"
               >add a tool</a
             >
             ·
             <a
-              href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/ADDING_A_PROVIDER.md"
+              href="https://github.com/robert-mcdermott/phlox/blob/v0.3.0/docs/ADDING_A_PROVIDER.md"
               >add a provider</a
             >
           </p>
@@ -1959,6 +2079,10 @@ cd phlox
           <div class="footer-col">
             <h4>Product</h4>
             <a href="#features">Features</a>
+            <a href="#workspace">Projects and artifacts</a>
+            <a href="#providers">Model discovery</a>
+            <a href="#research">Research</a>
+            <a href="#themes">Themes</a>
             <a href="#agent">Agentic harness</a>
             <a href="#assistants">Custom assistants</a>
             <a href="#skills">Agent skills</a>
@@ -1968,14 +2092,14 @@ cd phlox
           </div>
           <div class="footer-col">
             <h4>Docs</h4>
-            <a href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/USER_GUIDE.md"
+            <a href="https://github.com/robert-mcdermott/phlox/blob/v0.3.0/docs/USER_GUIDE.md"
               >User Guide</a
             >
-            <a href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/BACKUP_RESTORE.md"
+            <a href="https://github.com/robert-mcdermott/phlox/blob/v0.3.0/docs/BACKUP_RESTORE.md"
               >Upgrading and backups</a
             >
             <a
-              href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/ARCHITECTURE.md"
+              href="https://github.com/robert-mcdermott/phlox/blob/v0.3.0/docs/ARCHITECTURE.md"
               target="_blank"
               rel="noopener"
               >Architecture</a
@@ -1987,13 +2111,13 @@ cd phlox
               >Roadmap</a
             >
             <a
-              href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/API_GATEWAY.md"
+              href="https://github.com/robert-mcdermott/phlox/blob/v0.3.0/docs/API_GATEWAY.md"
               target="_blank"
               rel="noopener"
               >API Gateway</a
             >
             <a
-              href="https://github.com/robert-mcdermott/phlox/blob/v0.2.1/docs/THEMING.md"
+              href="https://github.com/robert-mcdermott/phlox/blob/v0.3.0/docs/THEMING.md"
               target="_blank"
               rel="noopener"
               >Theming</a
@@ -2001,8 +2125,8 @@ cd phlox
           </div>
           <div class="footer-col">
             <h4>Project</h4>
-            <a href="https://github.com/robert-mcdermott/phlox/releases/tag/v0.2.1"
-              >v0.2.1 release notes</a
+            <a href="https://github.com/robert-mcdermott/phlox/releases/tag/v0.3.0"
+              >v0.3.0 release notes</a
             >
             <a href="https://github.com/robert-mcdermott/phlox" target="_blank" rel="noopener"
               >GitHub repository</a

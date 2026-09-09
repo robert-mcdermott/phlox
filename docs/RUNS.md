@@ -26,9 +26,10 @@ runs:
 ```
 
 This is a **file-only, restart-required** setting. It defaults to false. Startup upgrades
-the configured database to the current head, `0006_projects`, including when the flag is off.
+the configured database to the current head, `0007_branches`, including when the flag is off.
 Revision `0003_runs` introduced run tables; `0004_sources` adds citations and `0005_ingestion`
-adds document processing/provenance metadata. `0006_projects` adds [projects and context records](PROJECTS.md).
+adds document processing/provenance metadata. `0006_projects` adds [projects and context records](PROJECTS.md). `0007_branches` preserves
+[conversation alternatives](CONVERSATION_ALTERNATIVES.md), including the parent of resumed answers.
 The [document worker](INGESTION.md) is always
 available independently of `runs.enabled`; chat Stop does not cancel document processing.
 No manual stamping or new database is required. Known Wave-4 revisions remain checkable

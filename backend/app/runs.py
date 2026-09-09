@@ -52,6 +52,9 @@ def public(row):
 
 
 def require_idle(db, conversation_id, except_run=None):
+    from app.branches import ACTIVE
+    if conversation_id in ACTIVE:
+        raise HTTPException(409, 'This conversation is still responding. Stop it and wait before making changes.')
     query = db.query(Run).filter(Run.active_conversation_id == conversation_id)
     if except_run:
         query = query.filter(Run.id != except_run)
@@ -60,6 +63,9 @@ def require_idle(db, conversation_id, except_run=None):
 
 
 def require_deletable(db, conversation_id):
+    from app.branches import ACTIVE
+    if conversation_id in ACTIVE:
+        raise HTTPException(409, 'Stop active work before deleting this conversation.')
     if db.query(Run.id).filter(Run.conversation_id == conversation_id, Run.status.in_(BUSY)).first():
         raise HTTPException(409, 'Stop active work and wait for confirmation before deleting this conversation.')
 
@@ -74,6 +80,8 @@ def current_user(db, user_id):
 
 
 def create(db, user, req, key=None):
+    if not req.conversation_id and (req.edit_message_id or req.regenerate_message_id or req.regenerate):
+        raise HTTPException(400, 'Select an existing conversation before editing or regenerating.')
     if not runs_enabled() or not worker.available:
         raise HTTPException(503, 'Reconnectable runs are not enabled or the worker is unavailable.')
     key = key or uuid.uuid4().hex
@@ -97,6 +105,9 @@ def create(db, user, req, key=None):
         if conv:
             require_idle(db, conv.id)
             approvals.require_no_approval(db, conv.id)
+            from app.branches import check_request
+            check_request(conv, req)
+            payload['expected_leaf_id'] = conv.active_leaf_id
         active = db.query(Run).filter(Run.active_conversation_id.is_not(None))
         if active.count() >= MAX_ACTIVE or active.filter(Run.user_id == user.id).count() >= MAX_USER_ACTIVE:
             raise HTTPException(429, 'Run queue is full. Finish or dismiss unresolved work before retrying.')

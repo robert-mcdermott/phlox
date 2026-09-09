@@ -17,6 +17,7 @@ specialized deployment guides when making it available to others.
 - [Reconnectable runs and Stop](#reconnectable-runs-and-stop)
 - [Chat and everyday use](#chat-and-everyday-use)
 - [Projects and context](PROJECTS.md)
+- [Conversation alternatives](CONVERSATION_ALTERNATIVES.md)
 - [Documents, search, and citations](#documents-search-and-citations)
 - [Assistants, skills, memory, and MCP](#assistants-skills-memory-and-mcp)
 - [Accounts, execution, and costs](#accounts-execution-and-costs)
@@ -336,8 +337,10 @@ runs enabled again to resume. This is not scheduled execution or distributed wor
 Start a new conversation from the sidebar, optionally choose an assistant, and send a
 message. Use Settings → Model to select a provider and model. Conversation controls can
 retain model/generation choices for that chat. The sidebar supports history, search,
-rename, delete, and Markdown export. Editing a message or regenerating an answer can cause
-new model calls; unresolved approvals/runs must be handled first.
+rename, delete, and Markdown export. Edits and regenerated answers preserve their originals;
+use the previous/next controls beneath a message to select an alternative and continue it.
+Only the selected path is used for replies and exports. Editing and retrying make new model
+calls; unresolved approvals/runs must be handled first. See [Conversation alternatives](CONVERSATION_ALTERNATIVES.md).
 
 Attach images for a vision model. Answers support Markdown, highlighted/copyable code,
 LaTeX math, and Mermaid diagrams. If a model writes files, open **Workspace Files** to browse
@@ -549,7 +552,7 @@ secret environment**. Enabling runs or citations does not require a fresh databa
    frontend (`npm ci` then `npm run build`) for production. The development launcher does
    not refresh existing frontend dependencies automatically after every lockfile change.
 4. Start normally. Checked Alembic migrations run before application bootstrap. Current
-   head is `0006_projects`; this includes projects and the earlier run/source migrations even with runs
+   head is `0007_branches`; this includes conversation alternatives, projects and the earlier run/source migrations even with runs
    disabled. Do not stamp a database manually or overwrite it with an empty one.
 5. Check `/api/readiness`, sign in, and verify an existing conversation and document.
 

@@ -62,7 +62,8 @@ def selection(db, req, conversation, user_id, assistant=None):
 
 
 def history_messages(conversation, data):
-    messages = list(conversation.messages)
+    from app.branches import active
+    messages = active(conversation)
     if not data['options']['history']:
         return [m for m in messages if m.role == 'user'][-1:]
     if data['key'] is None:
@@ -71,17 +72,29 @@ def history_messages(conversation, data):
         wanted = None
     else:
         wanted = data['key']
-    selected, include = [], False
-    for message in messages:
-        if message.role == 'user':
-            marker = next((a for a in message.attachments or [] if a.get('type') == 'context'), {})
-            include = marker.get('key') == wanted
-        if include:
-            selected.append(message)
+    from types import SimpleNamespace
+    selected = []
+    for index, message in enumerate(messages):
+        if message.role != 'user':
+            continue
+        end = next((i for i in range(index + 1, len(messages)) if messages[i].role == 'user'), len(messages))
+        segment = messages[index:end]
+        answer = next((m for m in segment if m.role == 'assistant' and 'context_key' in (m.usage or {})), None)
+        marker = next((a for a in message.attachments or [] if a.get('type') == 'context'), {})
+        key = answer.usage['context_key'] if answer else marker.get('key')
+        if key == wanted:
+            if answer:
+                # Regeneration may use updated project context without mutating the
+                # original question's attachments or another answer's history.
+                segment[0] = SimpleNamespace(id=message.id, role=message.role, content=message.content,
+                                             attachments=answer.usage.get('context_attachments', message.attachments))
+            selected.extend(segment)
     return selected
 
 
 def validate_record(db, conversation, data):
+    if 'branch_leaf_id' in data and conversation.active_leaf_id != data['branch_leaf_id']:
+        raise HTTPException(409, 'Conversation selection changed. Start a new turn.')
     if (conversation.params or {}).get('project_membership') != data.get('membership'):
         raise HTTPException(409, 'Conversation project changed. Start a new turn.')
     if data.get('project_id'):

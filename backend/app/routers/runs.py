@@ -19,8 +19,16 @@ def create(body: ChatRequest, idempotency_key: str = Header(min_length=1, max_le
 
 @router.get('')
 def latest(conversation_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    require_owned_conversation(db, conversation_id, user)
-    row = db.query(Run).filter_by(conversation_id=conversation_id, user_id=user.id).order_by(Run.created_at.desc(), Run.id.desc()).first()
+    conv = require_owned_conversation(db, conversation_id, user)
+    from app.branches import active
+    selected = {m.id for m in active(conv)}
+    rows = db.query(Run).filter_by(conversation_id=conversation_id, user_id=user.id).order_by(Run.created_at.desc(), Run.id.desc())
+    # Unresolved work always wins; completed/failed receipts belong to their selected
+    # path. A failed attempt without a saved answer belongs to its admitted leaf.
+    row = rows.filter(Run.active_conversation_id.is_not(None)).first()
+    if row is None:
+        row = next((r for r in rows if r.message_id in selected or
+                    (not r.message_id and (r.payload.get('branch_parent_id', r.payload.get('expected_leaf_id')) == conv.active_leaf_id))), None)
     return runs.public(row) if row else None
 
 

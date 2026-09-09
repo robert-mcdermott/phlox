@@ -133,4 +133,5 @@ Suggested manual checks:
    projects, chats, and context records are not accessible.
 
 Collaborative sharing, automatic decisions/tasks, dedicated project memory, project-wide
-artifact editing, versioned output and conversation branching remain later roadmap work.
+artifact editing and version diffs remain later roadmap work.
+[Conversation alternatives](CONVERSATION_ALTERNATIVES.md) now preserve edited prompts and regenerated answers.

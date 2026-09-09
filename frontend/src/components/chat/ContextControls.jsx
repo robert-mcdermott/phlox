@@ -5,6 +5,7 @@ import { useStore } from '../../store/useStore'
 
 export default function ContextControls({ value, onChange, research, documentIds, disabled }) {
   const activeId = useStore(s => s.activeId)
+  const leaf = useStore(s => s.activeLeafId)
   const projectId = useStore(s => s.activeProjectId)
   const assistantId = useStore(s => s.activeAssistantId)
   const settings = useStore(s => s.settings)
@@ -22,8 +23,8 @@ export default function ContextControls({ value, onChange, research, documentIds
       .catch(() => { if (current) { setData(null); setError('Context preview unavailable. Check the project and provider settings.') } })
       .finally(() => { if (current) setBusy(false) })
     return () => { current = false }
-  }, [open, payload, settings?.active_profile, settings?.model])
-  useEffect(() => { setOpen(false); setData(null) }, [activeId, projectId])
+  }, [open, payload, leaf, settings?.active_profile, settings?.model])
+  useEffect(() => { setOpen(false); setData(null) }, [activeId, projectId, leaf])
   const patch = values => onChange({ ...value, ...values })
   const exclude = (key, id, included) => patch({ [key]: included ? (value[key] || []).filter(x => x !== id) : [...(value[key] || []), id] })
   return <div className="mb-2 text-xs text-muted">

@@ -9,6 +9,8 @@ from pydantic import BaseModel, Field, field_validator
 
 # -- conversations / messages ---------------------------------------------
 class MessageOut(BaseModel):
+    parent_id: str | None = None
+    alternatives: list[str] = []
     id: str
     role: str
     content: str
@@ -40,6 +42,8 @@ class ConversationOut(BaseModel):
 
 
 class ConversationDetail(ConversationOut):
+    active_leaf_id: str | None = None
+    has_alternatives: bool = False
     system_prompt: str | None = None
     params: dict | None = None
     messages: list[MessageOut] = []
@@ -245,6 +249,9 @@ class ContextOptions(BaseModel):
 
 
 class ChatRequest(BaseModel):
+    edit_message_id: str | None = None
+    regenerate_message_id: str | None = None
+    expected_leaf_id: str | None = None
     project_id: str | None = None
     context: ContextOptions = Field(default_factory=ContextOptions)
     # Null remains ordinary chat; skills never opt a user into Research mode.
@@ -265,7 +272,7 @@ class ChatRequest(BaseModel):
     # Uploaded/library documents directly referenced by this user message.
     document_ids: list[str] = []
     # When true, re-run the existing history without appending a new user message
-    # (used by "regenerate" after the last assistant turn was deleted).
+    # (the previous answer is preserved as an alternative).
     regenerate: bool = False
     # Base64 data URLs of attached images (data:image/...;base64,...).
     images: list[str] = []

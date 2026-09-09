@@ -1,3 +1,4 @@
+import AlternativeNavigation from './AlternativeNavigation'
 import ResearchProgress from './ResearchProgress'
 import ContextRecord from './ContextRecord'
 import { useEffect, useState } from 'react'
@@ -50,7 +51,7 @@ function Thinking({ text }) {
 export default function Message({ message, conversationId, isLast }) {
   const editMessage = useStore((s) => s.editMessage)
   const regenerate = useStore((s) => s.regenerate)
-  const streaming = useStore((s) => s.streaming)
+  const streaming = useStore((s) => s.streaming || s.branchSwitching || s.run?.needs_acknowledgement || !!s.live?.pendingApproval)
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
   const [source, setSource] = useState(null)
@@ -134,6 +135,7 @@ export default function Message({ message, conversationId, isLast }) {
               {message.content}
             </div>
           )}
+          <AlternativeNavigation message={message} />
           {canEdit && message.content && (
             <button
               onClick={() => { setDraft(message.content); setEditing(true) }}
@@ -160,6 +162,7 @@ export default function Message({ message, conversationId, isLast }) {
           </div>
         )}
         {source && <SourcePanel key={`${conversationId}:${source.source_id}`} conversationId={conversationId} reference={source} onClose={() => setSource(null)} />}
+        <AlternativeNavigation message={message} />
         <ArtifactViewer artifacts={message.artifacts} conversationId={conversationId} />
         {message.usage?.turn_id && <ContextRecord conversationId={conversationId} turnId={message.usage.turn_id} />}
         {message.content && (

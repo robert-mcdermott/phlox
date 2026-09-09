@@ -8,7 +8,9 @@ foundations, document/web evidence, and opt-in bounded Research with admin-manag
 **Wave 10 adds automatic model discovery** and a shared searchable picker for user settings,
 assistants and provider setup; see the [wave log](IMPLEMENTATION_WAVES.md) and
 [discovery guide](MODEL_DISCOVERY.md). **Wave 11 delivers private projects and context inspection**;
-see [Projects](PROJECTS.md). Richer project memory, extracted tasks, and artifact versions remain proposed.
+see [Projects](PROJECTS.md). **Wave 12 preserves conversation alternatives and bounded answer
+files**; see [Conversation alternatives](CONVERSATION_ALTERNATIVES.md). Richer project memory,
+extracted tasks, artifact editing and version diffs remain proposed.
 The wave log records verification and remaining limits. M3 has an initial delivery; M4–M5 remain proposed. Existing features and
 completed work are identified explicitly; unchecked entries do not yet ship.
 
@@ -325,9 +327,10 @@ Users can identify and remove the context behind an answer.
 
 ### M3.2 — Preserve conversation alternatives
 
-- [ ] Replace destructive edit/regenerate truncation with immutable message ancestry and
+- [x] Replace destructive edit/regenerate truncation with immutable message ancestry and
   an active branch pointer. Keep branch navigation simple: previous/next alternative first.
-- [ ] Bind runs and artifacts to a branch/version. Fork from a workspace checkpoint or
+- [x] Bind runs and artifacts to a branch/version. **Wave 12** pins answer ancestry and
+  retains bounded finalized artifact snapshots (full artifact editing remains M3.3). Fork from a workspace checkpoint or
   declare that file state is shared; do not imply that switching message branches undoes files.
 - [ ] Add optional side-by-side model comparison with explicit extra cost and a chosen
   result. It must obey the same data policy and not mutate a shared workspace concurrently.

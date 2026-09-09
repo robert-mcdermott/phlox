@@ -38,6 +38,7 @@ export default function ArtifactViewer({ artifacts, conversationId }) {
                 <span className="text-sm text-content">{a.name}</span>
               </div>
             )}
+            <p className="px-2 py-1 text-[10px] text-muted">{a.snapshot_status === 'saved' ? 'Saved with this answer' : 'Current workspace file · no saved copy'}</p>
             <button
               type="button"
               onClick={() => api.downloadFile(url, a.name)}

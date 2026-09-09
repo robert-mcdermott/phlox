@@ -41,6 +41,8 @@ everyday use, upgrades, and troubleshooting.
 - **Custom assistants and skills** — create specialized assistants with their own prompts,
   knowledge bases, and capabilities. Invoke reusable [skills](docs/SKILLS.md) with slash
   commands or let the agent discover relevant workflows.
+- **Conversation alternatives** — retry answers and revise prompts without losing earlier
+  conversations, evidence, or saved output. [Explore alternatives](docs/CONVERSATION_ALTERNATIVES.md).
 - **Projects and visible context** — organize ongoing work in private [projects](docs/PROJECTS.md)
   with selected documents and shared instructions. Review context before sending and inspect
   retained passages supplied to model calls afterward.

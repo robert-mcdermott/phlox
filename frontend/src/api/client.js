@@ -46,6 +46,7 @@ async function openBlob(path, filename, newTab = false) {
 }
 
 export const api = {
+  selectAlternative: (id, messageId, leaf) => req('POST', `/api/conversations/${id}/alternatives/${messageId}`, { expected_leaf_id: leaf }),
   listProjects: () => req('GET', '/api/projects'),
   getProject: id => req('GET', `/api/projects/${id}`),
   createProject: body => req('POST', '/api/projects', body),

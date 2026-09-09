@@ -9,11 +9,30 @@ from app.auth.deps import get_current_user, require_owned_conversation
 from app.database import get_db
 from app.models import User
 from app.workspace.manager import resolve_in_workspace, workspace_dir
+from app import artifact_snapshots  # noqa: F401 — register committed message-file cleanup
 
 router = APIRouter(prefix="/api/files", tags=["files"])
 
 # Internal/noise directories never shown in the workspace files listing.
 _HIDDEN_DIRS = {".git", ".phlox", ".hutchchat", "__pycache__", "node_modules", ".venv", ".cache"}
+
+
+@router.get('/{conversation_id}/saved/{message_id}/{index}')
+def saved_file(conversation_id: str, message_id: str, index: int,
+               db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    from app.models import Message
+    from app.config import ATTACHMENTS_DIR
+    require_owned_conversation(db, conversation_id, user)
+    message = db.get(Message, message_id)
+    if not message or message.conversation_id != conversation_id:
+        raise HTTPException(404, 'Saved artifact not found')
+    artifact = next((a for a in message.artifacts or [] if a.get('snapshot_status') == 'saved'
+                     and a.get('snapshot_index') == index), None)
+    path = ATTACHMENTS_DIR / message_id / f'artifact-{index}'
+    if artifact is None or not path.is_file():
+        raise HTTPException(404, 'Saved artifact not found')
+    return FileResponse(str(path), filename=artifact.get('name') or 'artifact',
+                        headers={'X-Content-Type-Options': 'nosniff'})
 
 
 @router.get("/{conversation_id}")

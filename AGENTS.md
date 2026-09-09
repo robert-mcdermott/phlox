@@ -12,6 +12,7 @@ including local models like Ollama).
 **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — the system map and the request
 lifecycle. Then the focused guides:
 - [docs/USER_GUIDE.md](docs/USER_GUIDE.md) — installation, configuration, usage, and troubleshooting
+- [docs/CONVERSATION_ALTERNATIVES.md](docs/CONVERSATION_ALTERNATIVES.md) — preserved edits/retries, selected history and saved answer files
 - [docs/PROJECTS.md](docs/PROJECTS.md) — private projects, context selection/records, and migration
 - [docs/RUNS.md](docs/RUNS.md) — opt-in reconnectable execution, Stop, and recovery
 - [docs/INGESTION.md](docs/INGESTION.md) — document queue/retry, embedding identity, staged index rebuilds
@@ -121,4 +122,9 @@ deployment gate. Extend along the documented seams above.
 projects with context inspection. Project search ceilings live in `ToolContext.document_scope`
 and must survive delegation/resume; empty scope means no documents. Per-turn `ContextRecord`
 rows track complete retained passages in fitted outbound input and cascade with conversations.
-Current schema head is `0006_projects`; older revision metadata must remain checkable.
+**Wave 12 ships conversation alternatives:** use `branches.active()` for model history and
+exports; `Conversation.messages` contains every saved path and is for ownership/deletion.
+Persist answers with their pinned parent, including approval resumes. Request-bound streams
+and durable runs block branch/project mutation while active. File snapshots retain bounded
+answer output separately from the shared workspace; selection never restores files.
+Current schema head is `0007_branches`; older revision metadata must remain checkable.

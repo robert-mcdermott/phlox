@@ -97,7 +97,7 @@ def test_fresh_and_repeated_upgrade_match_models(engines):
     engine = engines()
     upgrade(engine)
     upgrade(engine)
-    assert status(engine) == {'current': '0006_projects', 'head': '0006_projects'}
+    assert status(engine) == {'current': '0007_branches', 'head': '0007_branches'}
     assert check(engine)['compatible']
     with engine.connect() as conn:
         validate(conn, expected=Base.metadata)
@@ -170,7 +170,7 @@ def test_concurrent_upgrade_serializes(engines):
     engine = engines()
     with ThreadPoolExecutor(max_workers=2) as pool:
         list(pool.map(lambda _: upgrade(engine), range(2)))
-    assert status(engine)['current'] == '0006_projects'
+    assert status(engine)['current'] == '0007_branches'
 
 
 def test_different_databases_do_not_share_alembic_context(engines):
@@ -221,7 +221,7 @@ def test_backup_restore_populated_instance(engines, tmp_path, monkeypatch):
     restored = pg_target or sa.create_engine(f'sqlite:///{target / "data/phlox.db"}')
     try:
         assert_content(restored)
-        assert status(restored)['current'] == '0006_projects'
+        assert status(restored)['current'] == '0007_branches'
         for name, content in files.items():
             assert (target / 'data' / name).read_bytes() == content
         restored_workspace = target / 'data/workspaces/conversation'
@@ -403,7 +403,7 @@ def test_lifespan_failure_releases_lock_and_readiness_checks_schema(client, monk
         pass
     with maintenance_lock(DATA_DIR, ENGINE):
         pass
-    monkeypatch.setattr('app.migrations.status', lambda _: {'current': None, 'head': '0006_projects'})
+    monkeypatch.setattr('app.migrations.status', lambda _: {'current': None, 'head': '0007_branches'})
     response = client.get('/api/readiness')
     assert response.status_code == 503 and response.json()['database']['ready'] is False
 
@@ -503,7 +503,7 @@ def test_wave4_revision_can_be_checked_backed_up_and_upgraded(engines, tmp_path)
                   pg_bin_dir=os.environ.get('PHLOX_TEST_PG_BIN_DIR'))
     upgrade(engine)
     assert_content(engine)
-    assert status(engine)['current'] == '0006_projects'
+    assert status(engine)['current'] == '0007_branches'
 
 
 def test_run_evidence_survives_restore_without_replaying(engines, tmp_path):
@@ -756,5 +756,54 @@ def test_wave6_sources_upgrade_and_ingestion_metadata_restore(engines, tmp_path)
             web = db.query(Source).filter_by(kind='web').one()
             assert web.url == 'https://example.com/policy' and web.excerpt == 'Preserve web evidence too.'
             assert inspect_source(db, db.get(Conversation, 'conversation'), web.id)['available']
+    finally:
+        restored.dispose()
+
+
+def test_wave12_populated_projects_upgrade_and_branch_restore(engines, tmp_path):
+    from app.migrations import expected_metadata
+    from app import branches
+    engine = engines()
+    frozen = expected_metadata('0006_projects')
+    frozen.create_all(engine)
+    with engine.begin() as conn:
+        conn.exec_driver_sql('CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL PRIMARY KEY)')
+        conn.exec_driver_sql("INSERT INTO alembic_version VALUES ('0006_projects')")
+    populate(engine)
+    with engine.begin() as conn:
+        conn.execute(frozen.tables['messages'].insert().values(id='answer', conversation_id='conversation',
+                     role='assistant', content='Original answer', usage={'total': 9}, created_at=datetime.now(timezone.utc)))
+    assert check(engine)['compatible']
+    upgrade(engine)
+    assert_content(engine)
+    with Session(engine) as db:
+        conv = db.get(Conversation, 'conversation')
+        assert conv.active_leaf_id == 'answer'
+        assert db.get(Message, 'answer').parent_id == 'message'
+        replacement = Message(id='replacement', conversation_id=conv.id, role='assistant', content='Alternative answer')
+        branches.append(db, conv, replacement, 'message')
+        db.commit()
+        assert branches.detail(conv)['messages'][-1]['alternatives'] == ['answer', 'replacement']
+    config = tmp_path / 'config.yml'
+    config.write_text('{}')
+    data = tmp_path / 'data'
+    (data / 'attachments' / 'answer').mkdir(parents=True)
+    (data / 'attachments' / 'answer' / 'artifact-0').write_text('Saved report')
+    bundle, target = tmp_path / 'branch-backup', tmp_path / 'branch-restored'
+    pg_bin = os.environ.get('PHLOX_TEST_PG_BIN_DIR')
+    create_backup(engine, data, config, bundle, stopped=True, pg_bin_dir=pg_bin)
+    pg_target = engines() if engine.dialect.name == 'postgresql' else None
+    restore_backup(bundle, target, database_url=pg_target.url if pg_target is not None else None,
+                   stopped=True, pg_bin_dir=pg_bin)
+    restored = pg_target or sa.create_engine(f'sqlite:///{target / "data/phlox.db"}')
+    try:
+        assert check(restored)['compatible']
+        assert (target / 'data/attachments/answer/artifact-0').read_text() == 'Saved report'
+        with Session(restored) as db:
+            conv = db.get(Conversation, 'conversation')
+            assert conv.active_leaf_id == 'replacement'
+            branches.choose(conv, 'answer')
+            assert [m.content for m in branches.active(conv)] == ['Keep this text', 'Original answer']
+            assert db.get(Message, 'answer').usage == {'total': 9}
     finally:
         restored.dispose()

@@ -394,8 +394,36 @@ embedding/tool traffic or claim shortened excerpts were supplied in full. Exclus
 not erase old transcripts or isolate workspace files. Project context changes affect
 subsequent model calls, not an already in-flight provider request.
 
-## Later wave — Conversation alternatives and versioned output
+## Wave 12 — Conversation alternatives and preserved output
 
-Preserve edited/regenerated message alternatives, then build editable versioned artifacts
-with clear workspace-state semantics. Continue evaluating Research quality with configured
-models before increasing autonomy or making competitive quality claims.
+**Status:** implemented and verified, 2026-09-09.
+
+| Task | Delivered behavior | Acceptance |
+|---|---|---|
+| W12.1 — Saved ancestry | Edits append prompt alternatives; retries append answer alternatives | Original transcripts, citations, usage and context records remain accessible |
+| W12.2 — Navigation | Compact previous/next controls with remembered nested continuations | Reload preserves selection; selected history alone supplies chat context and exports |
+| W12.3 — Execution binding | Pinned answer parent, stale-selection checks, busy guards | Approval resumes and durable replay cannot drift onto another path |
+| W12.4 — Saved output | Bounded private answer-file copies, canvas/download access, cleanup | Later workspace writes do not overwrite saved answer bytes; shared workspace is explicit |
+| W12.5 — Upgrade and docs | Additive `0007_branches`, frozen Wave 11 schema, user guide | Populated SQLite/Postgres upgrade and restore retain ancestry, content and files |
+
+See [Conversation alternatives](CONVERSATION_ALTERNATIVES.md) for usage and manual checks.
+**Verification:** 529 backend tests passed with disposable Postgres coverage enabled;
+one inapplicable SQLite case skipped. All 29 Chromium scenarios were verified, including
+edits/retries, reload/navigation, failed attempts, saved-file preview/download and phone
+canvas sizing. Ruff, the frontend production build, local documentation links and
+`git diff --check` passed. Desktop and phone layouts were visually reviewed with synthetic
+data. Tests did not use live model credentials or the user's database. Existing deprecation
+and bundle-size warnings remain. An artifact path normalization fix also preserves file
+results when the workspace root uses a filesystem alias, as on macOS.
+
+Boundaries: one active path per conversation, shared execution workspace, no branch merge,
+no simultaneous model comparison, no artifact editor or version diff UI. Saved files are
+limited to 32 MiB per file and 64 MiB per answer; older/missing/oversized files are explicitly
+current-workspace links. Retries incur normal usage and repeat tools only after current
+permission checks. Source snapshots retain their existing access and expiry rules.
+
+## Next wave — Editable, versioned artifacts
+
+Build document editing, selected-section revision, version diffs and explicit restore on
+the preserved conversation and output foundations. Continue evaluating Research quality
+with configured models before increasing autonomy or making competitive quality claims.

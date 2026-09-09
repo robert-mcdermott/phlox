@@ -30,11 +30,12 @@ accounts, tool preferences, MCP connections, or index work. A migration failure 
 startup. `/api/readiness` is 503 when the database revision is unavailable/out of date or
 the selected sandbox is unavailable.
 
-The current head is `0006_projects`, adding private projects, per-turn context records, and
+The current head is `0007_branches`, adding message ancestry and saved conversation
+selection ([Conversation alternatives](CONVERSATION_ALTERNATIVES.md)). `0006_projects` adds private projects, per-turn context records, and
 a nullable conversation project association ([Projects](PROJECTS.md)). `0005_ingestion` adds nullable document processing, chunk provenance,
 and embedding identity metadata for [Wave 7](INGESTION.md). `0004_sources` adds private
 evidence snapshots, turn-source links, and nullable message citations; `0003_runs` adds
-run/replay/action tables. Revisions `0001_wave3`, `0002_ledger_width`, `0003_runs`, `0004_sources`, and `0005_ingestion` remain
+run/replay/action tables. Revisions `0001_wave3`, `0002_ledger_width`, `0003_runs`, `0004_sources`, `0005_ingestion`, and `0006_projects` remain
 readable by check/backup before upgrade. The initial revision, `0001_wave3`, contains a **frozen** schema snapshot and
 the previous releases' explicit additive-column allowlist. Existing tables are inspected
 for column types/lengths/nullability, primary keys, uniqueness, foreign keys, and named

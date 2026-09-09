@@ -34,6 +34,19 @@ def known_revision(revision):
 
 
 def expected_metadata(revision):
+    if revision == '0006_projects':
+        import json
+        import sqlalchemy as sa
+        from app.migrations.baseline import metadata
+        result = expected_metadata('0005_ingestion')
+        additions = json.loads(Path(__file__).with_name('schema_v6_additions.json').read_text())
+        frozen = metadata({'tables': additions})
+        for table in frozen.tables.values():
+            table.to_metadata(result)
+        conversations = result.tables['conversations']
+        conversations.append_column(sa.Column('project_id', sa.String(32), nullable=True))
+        sa.Index('ix_conversations_project_id', conversations.c.project_id)
+        return result
     if revision == '0005_ingestion':
         import sqlalchemy as sa
         result = expected_metadata('0004_sources')

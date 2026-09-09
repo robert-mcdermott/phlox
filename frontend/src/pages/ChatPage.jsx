@@ -1,3 +1,4 @@
+import { AlternativeNotice } from '../components/chat/AlternativeNavigation'
 import { useEffect, useRef, useState } from 'react'
 import { AlertTriangle, Ban } from 'lucide-react'
 import Message from '../components/chat/Message'
@@ -210,6 +211,7 @@ export default function ChatPage() {
           <Welcome />
         ) : (
           <div className="mx-auto max-w-3xl space-y-5 px-4 py-6">
+            <AlternativeNotice />
             {messages.map((m, i) => (
               <Message
                 key={m.id}

@@ -48,41 +48,44 @@ export default function CanvasPanel() {
   const [error, setError] = useState(null)
   const [view, setView] = useState('preview') // 'preview' | 'source' — html only
   const onDragStart = useResize(width, setWidth)
+  const requestVersion = useRef(0)
 
   const load = useCallback(() => {
     if (!canvas) return
+    const version = ++requestVersion.current
     setLoading(true)
     setError(null)
-    api
-      .getFileText(canvas.conversationId, canvas.path)
-      .then(setText)
-      .catch((e) => setError(String(e.message || e)))
-      .finally(() => setLoading(false))
+    const request = canvas.savedUrl ? api.getBlob(canvas.savedUrl).then(blob => blob.text()) : api.getFileText(canvas.conversationId, canvas.path)
+    request.then(value => { if (version === requestVersion.current) setText(value) })
+      .catch(e => { if (version === requestVersion.current) setError(String(e.message || e)) })
+      .finally(() => { if (version === requestVersion.current) setLoading(false) })
   }, [canvas])
 
   useEffect(() => {
     setView('preview')
     load()
+    return () => { requestVersion.current++ }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canvas?.conversationId, canvas?.path, canvas?.nonce])
 
   if (!canvas) return null
 
   const Icon = KIND_ICON[canvas.kind] || FileText
-  const rawUrl = api.fileUrl(canvas.conversationId, canvas.path)
+  const rawUrl = canvas.savedUrl || api.fileUrl(canvas.conversationId, canvas.path)
 
   return (
     <div
-      className="relative flex h-full shrink-0 flex-col border-l border-border bg-surface"
-      style={{ width }}
+      role="region" aria-label="Artifact canvas"
+      className="fixed inset-0 z-20 flex h-full shrink-0 flex-col border-l border-border bg-surface md:relative md:inset-auto"
+      style={{ width, maxWidth: '100vw' }}
     >
       <div
         onMouseDown={onDragStart}
         className="absolute left-0 top-0 z-10 h-full w-1.5 -translate-x-1/2 cursor-col-resize hover:bg-accent/30"
         title="Drag to resize"
       />
-      <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
-        <div className="flex min-w-0 items-center gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-3 py-2">
+        <div className="flex min-w-0 basis-full items-center gap-2 md:basis-auto">
           <Icon size={16} className="shrink-0 text-accent" />
           <span className="truncate text-sm font-medium text-content" title={canvas.name}>
             {canvas.name}

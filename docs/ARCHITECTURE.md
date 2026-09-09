@@ -9,7 +9,8 @@
 > operational limitations. The [active roadmap](ROADMAP.md) describes proposed changes;
 > opt-in [reconnectable runs](RUNS.md), [document citations](SOURCES.md), and
 > [captured web sources](WEB_SOURCES.md) and private [projects/context records](PROJECTS.md) now ship.
-> Artifact versioning remains proposed.
+> [Conversation alternatives](CONVERSATION_ALTERNATIVES.md) and bounded saved answer files now ship.
+> Artifact editing and version diffs remain proposed.
 
 Phlox is a feature-rich, ChatGPT-style web app. It does
 chat, an agentic tool-using harness (code execution, filesystem, shell, web), document
@@ -83,6 +84,25 @@ A chat turn flows through these pieces:
 The **canonical message format** (provider-neutral) is documented at the top of
 `providers/base.py`. Providers translate it to/from their wire formats; the harness never
 deals with provider-specific shapes.
+
+### Conversation alternatives
+
+`branches.py` reconstructs the selected path through `Message.parent_id` and
+`Conversation.active_leaf_id`; `branch_choices` remembers nested selections. Every
+message stays in the conversation for ownership and deletion, but chat preparation,
+project context preview, and exports use only the selected ancestry. Edit appends a user
+sibling; regenerate prepares history through the original user and appends an assistant
+sibling. Preparation is serialized with run admission; request-bound execution also holds
+an in-process busy marker until its stream exits. Clients send their expected leaf to
+reject stale edits/sends/selections. Approval state pins `branch_parent_id`.
+
+Assistant usage retains prepared context markers so regenerating with updated project
+knowledge does not rewrite another alternative's user attachments. `ContextRecord` binds
+the attempt to its parent and selection. `artifact_snapshots.py` copies bounded finalized
+answer files into attachment storage; owner-checked saved-file endpoints and canvas use
+these bytes. Current workspace file APIs remain separate. Committed message deletion
+removes its attachment directory; rollback preserves it. See the alternatives guide for
+limits, shared workspace semantics, and migration `0007_branches`.
 
 ### Evidence seam
 

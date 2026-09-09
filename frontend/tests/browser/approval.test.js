@@ -38,6 +38,8 @@ async function fixture(t, { approval = null, auth = false, durable = false } = {
   const page = await context.newPage()
   page.setDefaultTimeout(8000)
   const state = {
+    savedFileReads: [],
+    branchMode: false, branchViews: {}, selections: [], branchFailure: false, activeLeaf: null,
     projects: [], projectSaves: [], conversationProjects: {}, contextReads: [],
     settings: { active_profile: 'test', model: 'test-model', theme: 'phlox-dark', max_tokens: 1000, max_tool_rounds: 3 },
     modelCatalog: { profile: 'test', models: ['test-model'] }, modelReads: 0,
@@ -61,6 +63,10 @@ async function fixture(t, { approval = null, auth = false, durable = false } = {
     const path = new URL(route.request().url()).pathname
     const method = route.request().method()
     const json = (body, status = 200) => route.fulfill({ status, json: body })
+    if (path === '/api/files/alpha/saved/answer-old/0') {
+      state.savedFileReads.push(path)
+      return route.fulfill({ contentType: 'text/plain', body: '# Original retained report\n\nSaved bytes from the original answer.' })
+    }
     if (path === '/api/auth/config') return json({ enabled: auth, runs_enabled: durable })
     const user = { id: 'local', username: 'tester', role: 'admin', must_change_password: state.setup }
     if (path === '/api/auth/me') return state.authenticated ? json(user) : json({ detail: 'Sign in' }, 401)
@@ -90,9 +96,16 @@ async function fixture(t, { approval = null, auth = false, durable = false } = {
       state.exportReads++
       return json({ markdown: state.exportMarkdown })
     }
+    if (path.startsWith('/api/conversations/alpha/alternatives/')) {
+      const target = path.split('/').at(-1)
+      state.selections.push(route.request().postDataJSON())
+      state.messages = state.branchViews[target]
+      state.activeLeaf = state.messages.at(-1).id
+      return json({ id: 'alpha', title: 'Approval chat', messages: state.messages, active_leaf_id: state.activeLeaf, has_alternatives: true })
+    }
     if (path === '/api/conversations/alpha') {
       if (method === 'PATCH') state.conversationProjects.alpha = route.request().postDataJSON().project_id
-      return json({ id: 'alpha', title: 'Approval chat', messages: state.messages, project_id: state.conversationProjects.alpha })
+      return json({ id: 'alpha', title: 'Approval chat', messages: state.messages, active_leaf_id: state.activeLeaf, has_alternatives: state.branchMode, project_id: state.conversationProjects.alpha })
     }
     if (path === '/api/conversations/beta') return json({ id: 'beta', title: 'Other chat', messages: [{ id: 'b', role: 'user', content: 'Only the other conversation' }] })
     if (path === '/api/chat/approvals/alpha') return json(state.approval ? [state.approval] : [])
@@ -215,6 +228,23 @@ async function fixture(t, { approval = null, auth = false, durable = false } = {
     }
     if (path === '/api/chat') {
       state.chatRequests.push(route.request().postDataJSON())
+      if (state.branchMode) {
+        const body = route.request().postDataJSON()
+        if (state.branchFailure) return route.fulfill({ contentType: 'text/event-stream', body: sse(
+          { type: 'conversation', id: 'alpha' }, { type: 'error', content: 'Synthetic retry failed' }, { type: 'done', message_id: '', outcome: 'failed' }) })
+        const old = state.messages
+        const question = body.edit_message_id ? { ...old[0], id: 'user-edited', content: body.message, alternatives: [old[0].id, 'user-edited'] } : old[0]
+        const answer = { id: 'answer-new', role: 'assistant', content: 'A different approach.', parent_id: question.id,
+          alternatives: body.edit_message_id ? ['answer-new'] : ['answer-old', 'answer-new'], model: 'test-model' }
+        if (!body.edit_message_id) old[1].alternatives = answer.alternatives
+        else old[0].alternatives = question.alternatives
+        state.branchViews[body.edit_message_id ? old[0].id : 'answer-old'] = old
+        state.messages = [question, answer]
+        state.branchViews[body.edit_message_id ? question.id : answer.id] = state.messages
+        state.activeLeaf = answer.id
+        return route.fulfill({ contentType: 'text/event-stream', body: sse(
+          { type: 'conversation', id: 'alpha' }, { type: 'token', content: answer.content }, { type: 'done', message_id: answer.id, outcome: 'completed' }) })
+      }
       state.approval = pending()
       return route.fulfill({ contentType: 'text/event-stream', body: sse(
         { type: 'conversation', id: 'alpha' },
@@ -865,4 +895,74 @@ test('streaming respects reading position and Jump to latest restores following'
   assert.equal(await scroll.evaluate(el => el.scrollTop), 0)
   await page.getByRole('button', { name: 'Jump to latest', exact: true }).click()
   assert.ok(await scroll.evaluate(el => el.scrollTop > 100))
+})
+
+
+test('regeneration keeps alternatives navigable after reload on a phone', async t => {
+  const { page, state } = await fixture(t)
+  state.branchMode = true
+  state.messages = [{ id: 'user-1', role: 'user', content: 'Explore the options' },
+    { id: 'answer-old', role: 'assistant', content: 'The original approach.', model: 'test-model' }]
+  state.activeLeaf = 'answer-old'
+  await page.getByText('Approval chat', { exact: true }).click()
+  await page.getByTitle('Regenerate', { exact: true }).click()
+  await page.getByRole('navigation', { name: 'answer alternatives' }).getByText('2 of 2').waitFor()
+  assert.equal(state.chatRequests[0].regenerate_message_id, 'answer-old')
+  assert.equal(state.chatRequests[0].expected_leaf_id, 'answer-old')
+  await page.getByRole('button', { name: 'Previous answer alternative' }).click()
+  await page.getByText('The original approach.', { exact: true }).waitFor()
+  assert.equal(state.selections[0].expected_leaf_id, 'answer-new')
+  await page.reload()
+  await page.getByText('Approval chat', { exact: true }).click()
+  await page.getByRole('navigation', { name: 'answer alternatives' }).getByText('1 of 2').waitFor()
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.getByRole('button', { name: 'Next answer alternative' }).click()
+  await page.getByText('A different approach.', { exact: true }).waitFor()
+})
+
+test('editing preserves prompt alternatives and a failed retry leaves the old answer usable', async t => {
+  const { page, state } = await fixture(t)
+  state.branchMode = true
+  state.messages = [{ id: 'user-1', role: 'user', content: 'Explore the options' },
+    { id: 'answer-old', role: 'assistant', content: 'The original approach.', model: 'test-model' }]
+  state.activeLeaf = 'answer-old'
+  await page.getByText('Approval chat', { exact: true }).click()
+  state.branchFailure = true
+  await page.getByTitle('Regenerate', { exact: true }).click()
+  await page.getByText('Synthetic retry failed', { exact: true }).waitFor()
+  await page.getByText('The original approach.', { exact: true }).waitFor()
+  state.branchFailure = false
+  await page.getByRole('button', { name: 'Edit', exact: true }).click()
+  await page.locator('textarea').first().fill('Explore a different direction')
+  await page.getByRole('button', { name: 'Save & resend', exact: true }).click()
+  await page.getByRole('navigation', { name: 'prompt alternatives' }).getByText('2 of 2').waitFor()
+  assert.equal(state.chatRequests.at(-1).edit_message_id, 'user-1')
+  assert.equal(state.chatRequests.at(-1).expected_leaf_id, 'answer-old')
+  await page.getByRole('button', { name: 'Previous prompt alternative' }).click()
+  await page.getByText('Explore the options', { exact: true }).waitFor()
+  await page.getByText('The original approach.', { exact: true }).waitFor()
+})
+
+
+test('saved artifact canvas and download use answer bytes', async t => {
+  const { page, state } = await fixture(t)
+  state.messages.push({ id: 'answer-old', role: 'assistant', content: 'Here is your report.', artifacts: [
+    { name: 'report.md', path: 'report.md', ext: '.md', snapshot_status: 'saved', url: '/api/files/alpha/saved/answer-old/0' },
+  ] })
+  await page.getByText('Approval chat', { exact: true }).click()
+  await page.getByTitle('Open in canvas', { exact: true }).click()
+  await page.getByRole('heading', { name: 'Original retained report', exact: true }).waitFor()
+  await page.getByRole('button', { name: 'Source', exact: true }).click()
+  await page.getByText('# Original retained report', { exact: false }).waitFor()
+  const previewReads = state.savedFileReads.length
+  assert.ok(previewReads >= 1)
+  const download = page.waitForEvent('download')
+  await page.getByTitle('Download', { exact: true }).click()
+  await download
+  assert.equal(state.savedFileReads.length, previewReads + 1)
+  await page.setViewportSize({ width: 390, height: 844 })
+  const panel = await page.getByRole('region', { name: 'Artifact canvas', exact: true }).boundingBox()
+  assert.ok(panel.x >= 0 && panel.x + panel.width <= 391, 'canvas fits phone width')
+  await page.getByTitle('Close', { exact: true }).click()
+  assert.equal(await page.getByRole('region', { name: 'Artifact canvas', exact: true }).count(), 0)
 })

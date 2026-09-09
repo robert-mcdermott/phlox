@@ -30,7 +30,7 @@ def _rel(ctx: ToolContext, path) -> str:
 def _artifact(ctx: ToolContext, p) -> list[dict]:
     """Build an artifact entry so a written file is viewable/downloadable in the UI."""
     try:
-        rel = str(p.relative_to(ctx.workspace))
+        rel = str(p.resolve().relative_to(ctx.workspace.resolve()))
     except ValueError:
         return []
     return [{"name": rel, "path": rel, "ext": p.suffix.lower(), "size": p.stat().st_size}]

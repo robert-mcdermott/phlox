@@ -43,6 +43,8 @@ export default function Composer() {
   const owner = useStore(s => s.user?.id || s.user?.username || 'anonymous')
   const runsEnabled = useStore(s => s.authConfig?.runs_enabled)
   const [mode, setMode] = useState('chat')
+  const branchSwitching = useStore(s => s.branchSwitching)
+  const leaf = useStore(s => s.activeLeafId)
   const [context, setContext] = useState({})
   const projectId = useStore(s => s.activeProjectId)
   const project = useStore(s => s.projects.find(p => p.id === s.activeProjectId))
@@ -94,6 +96,8 @@ export default function Composer() {
       setDocuments([])
     }
   }, [activeId])
+
+  useEffect(() => { setContext({}) }, [leaf])
 
   useEffect(() => {
     setMode('chat')
@@ -158,7 +162,7 @@ export default function Composer() {
       ...[...projectIds].filter(id => !selectedIds.has(id)),
     ] }))
   }
-  const canSubmit =
+  const canSubmit = !branchSwitching &&
     (text.trim() || images.length > 0 || documentIds.length > 0 || skillRefs.length > 0) &&
     !uploading && !project?.archived &&
     pendingDocs.length === 0 &&

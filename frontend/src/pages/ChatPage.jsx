@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { AlertTriangle, Ban } from 'lucide-react'
 import Message from '../components/chat/Message'
 import Composer from '../components/chat/Composer'
@@ -178,16 +178,30 @@ export default function ChatPage() {
   const activeId = useStore((s) => s.activeId)
   const error = useStore((s) => s.error)
   const endRef = useRef(null)
+  const scrollRef = useRef(null)
+  const following = useRef(true)
+  const [showLatest, setShowLatest] = useState(false)
+  const jumpToLatest = () => {
+    following.current = true
+    setShowLatest(false)
+    endRef.current?.scrollIntoView({ behavior: 'instant', block: 'end' })
+  }
+  useEffect(() => { jumpToLatest() }, [activeId])
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (following.current) endRef.current?.scrollIntoView({ behavior: 'instant', block: 'end' })
+    else setShowLatest(true)
   }, [messages, live])
 
   const empty = messages.length === 0 && !live
 
   return (
     <div className="flex flex-1 flex-col min-h-0">
-      <div className="flex-1 overflow-y-auto">
+      <div ref={scrollRef} role="region" aria-label="Conversation messages" tabIndex={0} className="flex-1 overflow-y-auto" onScroll={() => {
+        const el = scrollRef.current
+        following.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+        setShowLatest(!following.current)
+      }}>
         {empty ? (
           <Welcome />
         ) : (
@@ -212,6 +226,7 @@ export default function ChatPage() {
                     toolCalls: live.toolCalls,
                     artifacts: live.artifacts,
                     sources: live.sources,
+                    research: live.research,
                   }}
                   conversationId={activeId}
                 />
@@ -238,6 +253,7 @@ export default function ChatPage() {
           </div>
         )}
       </div>
+      {showLatest && <button onClick={jumpToLatest} className="mx-auto my-1 rounded-full border border-border bg-surface-2 px-3 py-1 text-xs text-accent">Jump to latest</button>}
       <div className="px-4 pt-2">
         <RunStatus />
         <BudgetBanner />

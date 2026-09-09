@@ -221,7 +221,21 @@ class SkillOut(SkillBase):
 
 
 # -- chat ------------------------------------------------------------------
+class ResearchOptions(BaseModel):
+    scope: Literal["web", "documents", "both"] = "web"
+    depth: Literal["brief", "standard", "thorough"] = "standard"
+    domains: list[str] = Field(default_factory=list, max_length=10)
+
+    @field_validator("domains")
+    @classmethod
+    def validate_domains(cls, domains):
+        from app.research import normalize_domains
+        return normalize_domains(domains)
+
+
 class ChatRequest(BaseModel):
+    # Null remains ordinary chat; skills never opt a user into Research mode.
+    research: ResearchOptions | None = None
     conversation_id: str | None = None
     message: str = ""
     profile: str | None = None
@@ -254,6 +268,14 @@ class ApproveRequest(BaseModel):
     pending_id: str
     # call_id -> "allow" | "deny"
     decisions: dict[str, Literal["allow", "deny"]]
+
+
+class WebSearchUpdate(BaseModel):
+    engine: Literal["ddg", "serper", "searxng"] = "ddg"
+    serper_api_key: str = Field(default="", max_length=512)
+    clear_serper_api_key: bool = False
+    searxng_url: str = Field(default="", max_length=2048)
+    interval_seconds: float = Field(default=2, ge=1, le=30, allow_inf_nan=False)
 
 
 # -- settings --------------------------------------------------------------

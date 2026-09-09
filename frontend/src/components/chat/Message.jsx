@@ -1,3 +1,4 @@
+import ResearchProgress from './ResearchProgress'
 import { useEffect, useState } from 'react'
 import { Copy, Check, Brain, Pencil, RefreshCw, FileText, Sparkles } from 'lucide-react'
 import Markdown from '../markdown/Markdown'
@@ -89,6 +90,7 @@ export default function Message({ message, conversationId, isLast }) {
     return (
       <div className="group flex justify-end">
         <div className="flex max-w-[80%] flex-col items-end gap-2">
+          {(message.attachments || []).some(a => a.type === 'research') && <span className="text-xs font-medium text-accent">Research request</span>}
           {images.length > 0 && (
             <div className="flex flex-wrap justify-end gap-2">
               {images.map((img, i) => (
@@ -148,6 +150,7 @@ export default function Message({ message, conversationId, isLast }) {
   return (
     <div className="group flex justify-start">
       <div className="w-full max-w-[85%]">
+        <ResearchProgress research={message.research || message.usage?.research} />
         {message.thinking && <Thinking text={message.thinking} />}
         <ToolCallGroup calls={toolCalls} />
         {message.content && (

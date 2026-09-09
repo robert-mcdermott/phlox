@@ -149,3 +149,8 @@ the model. See [WEB_SOURCES.md](WEB_SOURCES.md) for the transport and privacy co
 Preserve that notice in tool output even when there are no hits: keyword degradation after
 an embedding/index failure is different from a successful search with no matching passages.
 Never bypass its current SQL ownership/readiness/assistant checks. See [INGESTION.md](INGESTION.md).
+
+The harness validates arguments against each tool’s JSON Schema before approval or dispatch.
+Keep schemas accurate; malformed arguments produce an actionable tool error. Research mode
+additionally restricts the registry to its explicit read-tool allowlist. Adding a tool or
+MCP connection does not automatically make it available to Research mode.

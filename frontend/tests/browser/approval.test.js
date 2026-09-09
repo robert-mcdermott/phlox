@@ -38,7 +38,7 @@ async function fixture(t, { approval = null, auth = false, durable = false } = {
   const page = await context.newPage()
   page.setDefaultTimeout(8000)
   const state = {
-    docs: [], retries: [], rebuilds: 0, index: { mode: 'keyword', rebuild_required: true, notice: 'Embedding model changed. Rebuild required.' },
+    searchSaves: [], searchTests: [], chatRequests: [], docs: [], retries: [], rebuilds: 0, index: { mode: 'keyword', rebuild_required: true, notice: 'Embedding model changed. Rebuild required.' },
     sources: {}, sourceReads: [], exportReads: 0, exportMarkdown: '',
     approval, decisions: [], reject: false, authenticated: false, setup: true,
     run: null, events: [], cursors: [], cancellations: 0, creates: [], loseAcceptance: false,
@@ -90,6 +90,15 @@ async function fixture(t, { approval = null, auth = false, durable = false } = {
     if (path === '/api/settings/suggestions') return json({ suggestions: [] })
     if (path === '/api/usage/budget') return json({ budgets: [] })
     if (path === '/api/admin/config') return json(state.config)
+    if (path === '/api/admin/config/web-search' && method === 'PUT') {
+      const body = route.request().postDataJSON(); state.searchSaves.push(body)
+      state.config.web_search = { engine: body.engine, interval_seconds: body.interval_seconds, searxng_url: body.searxng_url, serper_api_key_set: !!body.serper_api_key }
+      return json(state.config)
+    }
+    if (path === '/api/admin/config/web-search/test') {
+      state.searchTests.push(route.request().postDataJSON())
+      return json({ ok: true, engine: 'ddg', result_count: 3, fallback_reason: 'Primary HTTP 403.' })
+    }
     if (path === '/api/admin/config/pricing' && method === 'PUT') {
       state.config.pricing = route.request().postDataJSON().pricing
       return json(state.config)
@@ -153,6 +162,7 @@ async function fixture(t, { approval = null, auth = false, durable = false } = {
       return json(state.run)
     }
     if (path === '/api/chat') {
+      state.chatRequests.push(route.request().postDataJSON())
       state.approval = pending()
       return route.fulfill({ contentType: 'text/event-stream', body: sse(
         { type: 'conversation', id: 'alpha' },
@@ -554,4 +564,89 @@ test('document processing recovery and index rebuild show progress and failures'
   state.index = { ...state.index, status: 'error', error: 'Rebuild failed. Previous index preserved.' }
   await page.getByText('Rebuild failed. Previous index preserved.', { exact: true }).waitFor()
   await page.getByRole('button', { name: 'Rebuild search index', exact: true }).waitFor()
+})
+
+// Wave 9: real composer/settings, isolated APIs, no model/search credentials.
+test('research is explicit, uses selected documents, and returns to Chat after send', async (t) => {
+  const { page, state } = await fixture(t)
+  state.docs = [{ id: 'research-doc', filename: 'Policy.md', status: 'ready', conversation_id: 'alpha' }]
+  await page.getByText('Approval chat', { exact: true }).click()
+  assert.equal(await page.getByRole('combobox', { name: 'Chat mode', exact: true }).inputValue(), 'chat')
+  await page.getByRole('combobox', { name: 'Chat mode', exact: true }).selectOption('research')
+  await page.getByRole('combobox', { name: 'Research sources', exact: true }).selectOption('documents')
+  await page.getByPlaceholder('Message Phlox…').fill('Compare the policies')
+  assert.equal(await page.getByRole('button', { name: 'Send', exact: true }).isDisabled(), true)
+  await page.getByRole('checkbox', { name: 'Policy.md', exact: true }).check()
+  await page.getByRole('button', { name: 'Send', exact: true }).click()
+  await page.getByText('I can save the plan.', { exact: true }).first().waitFor()
+  assert.equal(state.chatRequests.length, 1)
+  assert.deepEqual(state.chatRequests[0].research, { scope: 'documents', depth: 'standard', domains: [] })
+  assert.deepEqual(state.chatRequests[0].document_ids, ['research-doc'])
+  assert.equal(state.chatRequests[0].auto_approve, false)
+  assert.equal(await page.getByRole('combobox', { name: 'Chat mode', exact: true }).inputValue(), 'chat')
+})
+
+test('per-conversation drafts survive switching and reload', async (t) => {
+  const { page } = await fixture(t)
+  await page.getByText('Approval chat', { exact: true }).click()
+  await page.getByPlaceholder('Message Phlox…').fill('Alpha unsent draft')
+  await page.getByText('Other chat', { exact: true }).click()
+  assert.equal(await page.getByPlaceholder('Message Phlox…').inputValue(), '')
+  await page.getByPlaceholder('Message Phlox…').fill('Beta unsent draft')
+  await page.getByText('Approval chat', { exact: true }).click()
+  assert.equal(await page.getByPlaceholder('Message Phlox…').inputValue(), 'Alpha unsent draft')
+  await page.reload(); await page.getByText('Approval chat', { exact: true }).click()
+  assert.equal(await page.getByPlaceholder('Message Phlox…').inputValue(), 'Alpha unsent draft')
+  assert.equal(await page.getByRole('combobox', { name: 'Chat mode', exact: true }).inputValue(), 'chat')
+})
+
+test('admin tests unsaved search, sees fallback, and saved keys are masked', async (t) => {
+  const { page, state } = await fixture(t)
+  await page.getByRole('button', { name: 'Appearance', exact: true }).click()
+  await page.getByRole('button', { name: 'Configuration', exact: true }).click()
+  const panel = page.getByRole('region', { name: 'Web search configuration' })
+  await panel.getByLabel('Search engine', { exact: true }).selectOption('serper')
+  await panel.getByLabel('Serper API key', { exact: false }).fill('synthetic-key')
+  await panel.getByRole('button', { name: 'Test search', exact: true }).click()
+  await panel.getByText(/Fallback used: Primary HTTP 403/).waitFor()
+  assert.equal(state.searchTests[0].serper_api_key, 'synthetic-key')
+  assert.equal(state.searchSaves.length, 0)
+  await panel.getByRole('button', { name: 'Save search settings', exact: true }).click()
+  await panel.getByText('Saved. New searches use these settings immediately.', { exact: true }).waitFor()
+  assert.equal(await panel.getByLabel('Serper API key', { exact: false }).inputValue(), '')
+  await panel.getByLabel('Search engine', { exact: true }).selectOption('searxng')
+  await panel.getByRole('link', { name: 'searx.space', exact: true }).waitFor()
+})
+
+test('research progress replays after reload with its plan and counters', async (t) => {
+  const { page, state } = await fixture(t, { durable: true })
+  state.run = { id: 'run-1', conversation_id: 'alpha', status: 'running' }
+  state.events = [{ type: 'research', phase: 'gather', started_at: Date.now()/1000, plan: 'Compare dates and policy allowances.', searches: 2, reads: 1, limits: { searches: 6, reads: 8 }, source_count: 3, usage: {} }]
+  await page.getByText('Approval chat', { exact: true }).click()
+  await page.getByRole('region', { name: 'Research progress' }).getByText('Gathering evidence', { exact: true }).waitFor()
+  await page.reload(); await page.getByText('Approval chat', { exact: true }).click()
+  const progress = page.getByRole('region', { name: 'Research progress' })
+  await progress.waitFor()
+  assert.equal(await progress.count(), 1)
+  await progress.getByText('Research plan', { exact: true }).click()
+  await progress.getByText('Compare dates and policy allowances.', { exact: true }).waitFor()
+  assert.match(await progress.textContent(), /2\/6 searches/)
+})
+
+test('streaming respects reading position and Jump to latest restores following', async (t) => {
+  const { page, state } = await fixture(t)
+  state.messages = Array.from({ length: 40 }, (_, i) => ({ id: 'msg-'+i, role: i % 2 ? 'assistant' : 'user', content: 'Message '+i+' '+('content '.repeat(60)) }))
+  await page.getByText('Approval chat', { exact: true }).click()
+  await page.getByText(/^Message 39 /).waitFor()
+  const scroll = page.getByRole('region', { name: 'Conversation messages', exact: true })
+  await scroll.evaluate(el => { el.scrollTop = 0; el.dispatchEvent(new Event('scroll', { bubbles: true })) })
+  await page.getByRole('button', { name: 'Jump to latest', exact: true }).waitFor()
+  await page.evaluate(async () => {
+    const { useStore } = await import('/src/store/useStore.js')
+    useStore.setState({ streaming: true, live: { content: '', sources: [], toolCalls: [], artifacts: [], thinking: '' } })
+    useStore.getState()._onEvent({ type: 'token', content: 'New streamed content.' })
+  })
+  assert.equal(await scroll.evaluate(el => el.scrollTop), 0)
+  await page.getByRole('button', { name: 'Jump to latest', exact: true }).click()
+  assert.ok(await scroll.evaluate(el => el.scrollTop > 100))
 })

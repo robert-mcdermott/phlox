@@ -29,6 +29,7 @@ from app.schemas import (
     ResilienceUpdate,
     SandboxUpdate,
     SuggestionsUpdate,
+    WebSearchUpdate,
 )
 
 # Every route is admin-only via the per-handler ``require_admin`` dependency, which also
@@ -73,6 +74,7 @@ def _effective_config() -> dict:
         "sandbox_status": sandbox_status(),
         "suggestions": config.get_suggestions(),
         "guardrails": config.get_guardrails_config(),
+        "web_search": _mask_search(config.get_web_search_config()),
         # Read-only metadata for the guardrails UI: the built-in detectors' labels,
         # regexes (shown on the info tooltip), and replacement tokens.
         "guardrails_builtins": [
@@ -92,6 +94,52 @@ def _effective_config() -> dict:
 def read_config(_: User = Depends(require_admin)):
     """Effective config for the admin UI (file merged with overrides), secrets masked."""
     return _effective_config()
+
+
+def _mask_search(cfg):
+    return {k: v for k, v in cfg.items() if k != 'serper_api_key'} | {
+        'serper_api_key_set': bool(cfg.get('serper_api_key')),
+    }
+
+
+def _search_settings(body):
+    from app.search import endpoint_url
+    cfg = body.model_dump(exclude={'clear_serper_api_key'})
+    if not body.serper_api_key.strip() and not body.clear_serper_api_key:
+        cfg['serper_api_key'] = config.get_web_search_config().get('serper_api_key', '')
+    else:
+        cfg['serper_api_key'] = body.serper_api_key.strip() if not body.clear_serper_api_key else ''
+    if cfg['engine'] == 'serper' and not cfg['serper_api_key']:
+        raise HTTPException(422, 'Enter a Serper API key, or select DuckDuckGo before removing it.')
+    if cfg['searxng_url'] or cfg['engine'] == 'searxng':
+        try:
+            cfg['searxng_url'] = endpoint_url(cfg['searxng_url'])
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from None
+    return cfg
+
+
+@router.put('/web-search')
+def update_web_search(body: WebSearchUpdate, user: User = Depends(require_admin)):
+    from app.search import reset_health
+    app_config.set_section('web_search', _search_settings(body), user.id)
+    reset_health()
+    return _effective_config()
+
+
+@router.post('/web-search/test')
+def test_web_search(body: WebSearchUpdate, _: User = Depends(require_admin)):
+    """Explicit test of unsaved settings; a fixed public query may consume one API credit."""
+    from app.agent.tools.web import WebSearch
+    from app.search import search, SearchError, reset_health
+    cfg = _search_settings(body)
+    reset_health()
+    try:
+        results, engine, fallback = search(cfg, 'SearXNG documentation', 3, None, WebSearch()._search_ddgs)
+        return {'ok': True, 'engine': engine, 'fallback_reason': fallback,
+                'result_count': len(WebSearch()._normalize_results(results, 3))}
+    except SearchError as exc:
+        return {'ok': False, 'error': str(exc)}
 
 
 @router.put("/profiles")

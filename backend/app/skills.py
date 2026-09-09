@@ -182,6 +182,10 @@ Produce a sourced answer, not a from-memory essay. Requires the `web_search` and
 `web_fetch` tools; if web search is not enabled this turn, say so and ask the user to
 enable it rather than answering from memory.
 
+This skill is writing and research guidance for ordinary chat. It does not activate the
+separate Research mode. If the user selected Research mode, its server-enforced stages,
+source scope and limits take precedence over this workflow.
+
 ## Workflow
 1. **Decompose** the question into 2–5 concrete sub-questions.
 2. **Search broadly**: run a distinct `web_search` per sub-question; prefer primary
@@ -190,8 +194,9 @@ enable it rather than answering from memory.
    claims you need; note publication dates.
 4. **Cross-check**: any load-bearing fact should appear in at least two independent
    sources, or be flagged as single-source.
-5. **Write up**: synthesized answer first, then key findings with inline numbered
-   citations, then a Sources list mapping numbers to URLs. Note disagreements between
+5. **Write up**: synthesized answer first, then key findings with the stable [S#]
+   citation labels returned by fetched sources, then a Sources list. Never treat a search
+   snippet as fetched evidence. Note disagreements between
    sources explicitly.
 
 ## Rules

@@ -236,7 +236,7 @@ class BedrockProvider(LLMProvider):
                 try:
                     args = json.loads(blk["args"]) if blk["args"] else {}
                 except json.JSONDecodeError:
-                    args = {}
+                    args = None  # Preserve malformed input as invalid; never dispatch an empty call.
                 calls.append(ToolCall(id=blk["id"], name=blk["name"], arguments=args))
             yield StreamDelta(type="tool_calls", tool_calls=calls)
         else:

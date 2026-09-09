@@ -371,6 +371,12 @@ def prepare_chat(req, db, user, cancel_event, run_id=None, tool_observer=None):
         from app.runs import require_idle
         require_idle(db, conversation.id, except_run=run_id)
         approvals.require_no_approval(db, conversation.id)
+        if req.regenerate and req.research is None:
+            from app.schemas import ResearchOptions
+            latest = next((m for m in reversed(list(conversation.messages)) if m.role == 'user'), None)
+            previous = next((a for a in (latest.attachments or []) if a.get('type') == 'research'), None) if latest else None
+            if previous:
+                req = req.model_copy(update={'research': ResearchOptions.model_validate(previous)})
 
     # The pinned assistant wins on existing conversations; req.assistant_id only applies
     # when creating a new one (prevents retrieval-scope spoofing via the request body).
@@ -432,12 +438,13 @@ def prepare_chat(req, db, user, cancel_event, run_id=None, tool_observer=None):
     # Inject relevant long-term memories (this user's, cross-conversation) into the prompt.
     from app.memory import memory_preamble
 
-    system_prompt += memory_preamble(db, req.message, user.id)
+    if not req.research:
+        system_prompt += memory_preamble(db, req.message, user.id)
 
     referenced_docs: list[Document]
     if req.regenerate:
         referenced_docs = _resolve_document_refs(
-            db, user, conversation, _latest_user_document_ids(conversation), strict=False
+            db, user, conversation, _latest_user_document_ids(conversation), strict=bool(req.research)
         )
     else:
         referenced_docs = _resolve_document_refs(db, user, conversation, req.document_ids)
@@ -445,8 +452,22 @@ def prepare_chat(req, db, user, cancel_event, run_id=None, tool_observer=None):
     # Capability limits are hard server-side rules; the UI mirrors them as disabled
     # toggles. A missing key means allowed.
     caps = (assistant.capabilities or {}) if assistant else {}
-    web_search_allowed = req.web_search and caps.get("web_search", True)
-    document_search_requested = req.document_search and caps.get("document_search", True)
+    research = None
+    if req.research:
+        from app.research import Research, INSTRUCTIONS
+        research = Research(req.research.model_dump(), [doc.id for doc in referenced_docs])
+        if not caps.get('tools', True):
+            raise HTTPException(422, 'This assistant does not allow the tools required for Research mode.')
+        if req.research.scope != 'documents' and not caps.get('web_search', True):
+            raise HTTPException(422, 'This assistant does not allow web research.')
+        if req.research.scope != 'web' and (not caps.get('document_search', True) or not referenced_docs):
+            raise HTTPException(422, 'Select at least one ready document and an assistant that permits document search.')
+        if req.research.scope == 'web' and referenced_docs:
+            raise HTTPException(422, 'Choose Documents + web to include the attached documents in research.')
+        if req.images:
+            raise HTTPException(422, 'Research uses document and web passages. Use normal chat for image attachments.')
+    web_search_allowed = (req.research.scope != 'documents' if req.research else req.web_search) and caps.get("web_search", True)
+    document_search_requested = (req.research.scope != "web" if req.research else req.document_search) and caps.get("document_search", True)
     assistant_has_kb = assistant is not None and (
         db.query(Document.id)
         .filter(Document.assistant_id == assistant.id, Document.status == "ready")
@@ -462,6 +483,8 @@ def prepare_chat(req, db, user, cancel_event, run_id=None, tool_observer=None):
     invoked_skills = []
     seen_skills: set[str] = set()
     for name in skill_names:
+        if research and (name != 'deep-research' or req.research.scope == 'documents'):
+            continue  # Research uses its bounded workflow; other skills remain available in chat.
         s = resolve_skill(db, name, user.id)
         if s and s.name not in seen_skills:
             seen_skills.add(s.name)
@@ -472,15 +495,15 @@ def prepare_chat(req, db, user, cancel_event, run_id=None, tool_observer=None):
     # Progressive disclosure for auto-activation: list name+description only; the model
     # loads full instructions via use_skill. Needs the tools capability (it IS a tool).
     skill_listing = ""
-    if req.skills_enabled and caps.get("tools", True):
+    if not research and req.skills_enabled and caps.get("tools", True):
         skill_listing = skills_preamble(db, user.id, exclude=seen_skills)
         system_prompt += skill_listing
 
-    if assistant_has_kb:
+    if assistant_has_kb and not research:
         system_prompt += ASSISTANT_KB_PROMPT
     elif document_search_requested:
         system_prompt += DOCUMENT_SEARCH_PROMPT
-    if referenced_docs:
+    if referenced_docs and not research:
         system_prompt += _referenced_document_context(
             db,
             referenced_docs,
@@ -490,13 +513,28 @@ def prepare_chat(req, db, user, cancel_event, run_id=None, tool_observer=None):
             accounting.turn_id,
         )
 
+    params = {
+        **generation_params(settings),
+        **((assistant.params if assistant else None) or {}),
+        "max_tool_rounds": (conversation.params or {}).get(
+            "max_tool_rounds", settings["max_tool_rounds"]
+        ),
+    }
+
+    if research and int(params['max_tool_rounds']) < 3:
+        raise HTTPException(422, 'Research needs at least three model passes. Increase Max tool rounds in Settings → Model.')
+
     # Regenerate re-runs existing history (the client already removed the prior assistant
     # turn); otherwise append the new user message (+ any image attachments).
+    if research:
+        system_prompt += INSTRUCTIONS
     if not req.regenerate:
         user_msg = Message(conversation_id=conversation.id, role="user", content=req.message)
         db.add(user_msg)
         db.commit()
         attachment_refs: list[dict] = []
+        if research:
+            attachment_refs.append({'type': 'research', **req.research.model_dump()})
         if req.images:
             from app.attachments import save_message_images
 
@@ -511,6 +549,10 @@ def prepare_chat(req, db, user, cancel_event, run_id=None, tool_observer=None):
         db.refresh(conversation)
 
     history = _build_history(conversation, system_prompt)
+    if research:
+        # Selected-source research starts from the current question, not evidence from unrelated turns.
+        latest_user = next((m for m in reversed(history) if m['role'] == 'user'), {'role': 'user', 'content': req.message})
+        history = [history[0], latest_user]
     # Guardrails input redaction: scrub the outbound history copy (system prompt, user
     # turns, replayed tool output) before it feeds compaction or the model. The harness
     # re-scrubs before every provider round; this covers the compaction call too. The
@@ -519,14 +561,6 @@ def prepare_chat(req, db, user, cancel_event, run_id=None, tool_observer=None):
         from app.guardrails import scrub_messages
 
         history, _, _ = scrub_messages(history, guardrails_input)
-    params = {
-        **generation_params(settings),
-        **((assistant.params if assistant else None) or {}),
-        "max_tool_rounds": (conversation.params or {}).get(
-            "max_tool_rounds", settings["max_tool_rounds"]
-        ),
-    }
-
     from app.model_calls import ScopedProvider
     from dataclasses import replace
 
@@ -539,6 +573,11 @@ def prepare_chat(req, db, user, cancel_event, run_id=None, tool_observer=None):
                 logger.exception("Provider build failed")
                 yield events.error(f"Provider error: {e}")
                 yield events.done("")
+                return
+
+            if research and not provider.supports_tools:
+                yield events.error('Research requires a model with tool calling enabled. Choose a compatible provider in Settings.')
+                yield events.done('', outcome='failed')
                 return
 
             # Build an optional fallback provider (used if the primary errors mid-stream).
@@ -566,13 +605,15 @@ def prepare_chat(req, db, user, cancel_event, run_id=None, tool_observer=None):
             if not caps.get("tools", True):
                 # Chat + knowledge only: no code execution, shell, files, or MCP tools.
                 enabled_tools &= {"web_search", "search_documents"}
+            if research:
+                enabled_tools &= research.allowed_tools()
             session = AgentSession(
                 db, conversation, provider, REGISTRY, gate, params, profile, model,
                 allowed_tools=enabled_tools,
                 fallback_provider=fallback,
                 cancel_event=cancel_event,
                 assistant_id=assistant.id if assistant else None,
-                accounting=accounting, tool_observer=tool_observer,
+                accounting=accounting, tool_observer=tool_observer, research=research,
             )
             yield from session.run(compacted)
         finally:
@@ -664,6 +705,15 @@ def prepare_approval(req, db, user, cancel_event, validate_only=False, tool_obse
         assistant is None or assistant.id != state["assistant_id"]
     ):
         raise HTTPException(409, "Assistant access changed. Dismiss this approval and start a new turn.")
+    if state.get('research'):
+        options = state['research']['options']
+        if options['scope'] != 'web':
+            _resolve_document_refs(db, user, conversation, state['research']['document_ids'])
+        caps = (assistant.capabilities or {}) if assistant else {}
+        if (not caps.get('tools', True) or
+                (options['scope'] != 'documents' and not caps.get('web_search', True)) or
+                (options['scope'] != 'web' and not caps.get('document_search', True))):
+            raise HTTPException(409, 'Research source permissions changed. Dismiss this approval and start a new turn.')
     from app.guardrails import get_rules, scrub_messages
 
     if scrub_messages(state["messages"], get_rules("input"))[2]:

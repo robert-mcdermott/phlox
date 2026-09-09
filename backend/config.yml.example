@@ -13,7 +13,7 @@
 # `resilience`, generation `defaults`, and the sandbox container *limits*. Those overrides
 # are stored in the database and take precedence over this file. The sections that stay
 # file-only (for bootstrap/security): `auth` (incl. jwt_secret), `runs`, `database`,
-# `embeddings`, `vector_store`, `web_search`, `web_fetch`,
+# `embeddings`, `vector_store`, `web_fetch`,
 # the sandbox `runner` *type*, and `observability.otel`/`request_logging`.
 
 # Authentication is enabled by default. On a clean database Phlox creates `admin` with a
@@ -179,10 +179,8 @@ resilience:
   max_retries: 2               # SDK-level retries on transient errors (429/5xx/timeouts)
   fallback_profile: null       # e.g. "local-ollama" — used if the active provider errors
 
-# Live web search. By default `web_search` uses ddgs, which needs no API key or signup.
-# Optional: point at a SearXNG instance with JSON output enabled.
-web_search:
-  searxng_url: ""              # e.g. http://localhost:8080 (or set SEARXNG_URL)
+# Web search: DuckDuckGo is the default and fallback. Configure Serper or a public
+# JSON-enabled SearXNG instance in Settings → Configuration → Web search (no file edit).
 
 # web_fetch SSRF guard. FILE-ONLY (not in the admin UI — like the sandbox runner type,
 # loosening this at runtime would be a security surprise). By default `web_fetch` refuses

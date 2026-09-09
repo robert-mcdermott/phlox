@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { clearDrafts } from '../utils/drafts'
 import { api } from '../api/client'
 import { streamChat } from '../api/sse'
 import { runRequest, subscribeRun } from '../api/runs'
@@ -8,7 +9,7 @@ import { canvasKind } from '../utils/canvas'
 
 // Shape of the in-progress assistant turn assembled from SSE events.
 function emptyLive() {
-  return { sources: [], content: '', thinking: '', toolCalls: [], artifacts: [], status: '', pendingApproval: null }
+  return { research: null, sources: [], content: '', thinking: '', toolCalls: [], artifacts: [], status: '', pendingApproval: null }
 }
 
 export const useStore = create((set, get) => ({
@@ -170,6 +171,7 @@ export const useStore = create((set, get) => ({
   },
 
   logout() {
+    clearDrafts()
     get().detachStream()
     setToken(null)
     set({
@@ -250,7 +252,7 @@ export const useStore = create((set, get) => ({
       if (get().activeId !== id || get().streamVersion !== version || get().streaming) return
       const p = approvals[0]
       set({ live: p ? {
-        ...emptyLive(), content: p.content || '', toolCalls: p.tool_steps || [],
+        ...emptyLive(), research: p.research || null, content: p.content || '', toolCalls: p.tool_steps || [],
         artifacts: p.artifacts || [], usage: p.usage, sources: p.sources || [],
         pendingApproval: { pendingId: p.pending_id, calls: p.calls, status: p.status, expiresAt: p.expires_at },
       } : null })
@@ -318,6 +320,7 @@ export const useStore = create((set, get) => ({
       skills = [],
       skillRefs = [],
       skillsEnabled = true,
+      research = null,
     } = {},
   ) {
     if (!text.trim() && images.length === 0 && documentIds.length === 0 && skills.length === 0) return
@@ -326,7 +329,7 @@ export const useStore = create((set, get) => ({
       set({
         queued: {
           text, images, documentIds, documentRefs, autoApprove, webSearch, documentSearch,
-          skills, skillRefs, skillsEnabled,
+          skills, skillRefs, skillsEnabled, research,
         },
       })
       return
@@ -340,6 +343,7 @@ export const useStore = create((set, get) => ({
       return
     }
     const attachments = [
+      ...(research ? [{ type: 'research', ...research }] : []),
       ...images.map((url, idx) => ({ type: 'image', idx, url })),
       ...documentRefs.map((doc) => ({
         type: 'document',
@@ -375,6 +379,7 @@ export const useStore = create((set, get) => ({
       images,
       skills,
       skills_enabled: skillsEnabled,
+      research,
       // Only meaningful for a new conversation; the server pins it there and ignores
       // it on existing ones.
       assistant_id: get().activeAssistantId,
@@ -405,10 +410,16 @@ export const useStore = create((set, get) => ({
     const idx = get().messages.findIndex((m) => m.id === messageId)
     if (idx === -1 || String(messageId).startsWith('tmp-')) return
     const version = get().streamVersion
+    const previousAttachments = get().messages[idx].attachments || []
+    const research = previousAttachments.find(a => a.type === 'research')
+    const documents = previousAttachments.filter(a => a.type === 'document')
     await api.truncateFrom(get().activeId, messageId)
     if (get().streamVersion !== version) return
     set((s) => ({ messages: s.messages.slice(0, idx) }))
-    await get().sendMessage(newText)
+    await get().sendMessage(newText, research ? {
+      research: { scope: research.scope, depth: research.depth, domains: research.domains || [] },
+      documentIds: documents.map(d => d.document_id), documentRefs: documents,
+    } : {})
   },
 
   _onEvent(ev) {
@@ -458,6 +469,9 @@ export const useStore = create((set, get) => ({
               ]
           break
         }
+        case 'research':
+          live.research = ev
+          break
         case 'tool_progress':
           // Live partial output from a still-running tool (e.g. run_shell) — appended so
           // the tool card shows progress instead of staying blank until it finishes.

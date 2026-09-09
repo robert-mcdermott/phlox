@@ -87,7 +87,11 @@ def public_snapshot(pending: PendingApproval) -> dict:
     # Only the in-flight assistant preamble; no system prompts or prior user history.
     content = next((m.get("content", "") for m in reversed(state.get("messages", []))
                     if m.get("role") == "assistant"), "")
+    from app.research import Research
+
     return {
+        "research": ({**Research(state=state['research']).progress(),
+                      'phase': 'paused'} if state.get('research') else None),
         "sources": state.get("sources") or [],
         "pending_id": pending.id,
         "status": status,

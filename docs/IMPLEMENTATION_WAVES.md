@@ -303,10 +303,39 @@ claim verification, or autonomous Research mode. Snapshots remain private for 30
 source removal does not rewrite messages, run events, exports or backups. A stopped OS
 resolver may finish in a bounded daemon task, but cannot initiate a connection.
 
-## Following wave — Bounded Research mode
+## Wave 9 — Opt-in Research and admin-managed search
 
-Build an explicit research workflow on captured document/web evidence: source selection,
-server-enforced scope, bounded search/read/synthesize passes, progress and budget visibility,
-and useful partial answers when sources or budget run out. Evaluate it against Quick answer
-using reproducible fixtures before broadening autonomy. Optional OCR/local semantic model
-evaluation and larger-library processing remain separately scoped work.
+**Status:** implemented and verified, 2026-09-08. **Scope:** bounded M2.3 Research mode,
+M1 tool argument validation, and targeted draft/scroll UX. No schema migration or new
+configuration-file flag. See [Research mode](RESEARCH.md) for setup and manual verification.
+
+| Task | Delivered behavior | Acceptance |
+|---|---|---|
+| W9.1 — Explicit Research choice | Chat is the default; select Research, source scope, depth, and optional domains. Existing deep-research skills remain guidance, not a mode switch. | New chats/turns stay Chat; regeneration retains the original Research choice. |
+| W9.2 — Staged research | Provider-neutral planning, bounded sequential gathering/cross-checking, then a reserved synthesis pass. | Planning/report stages cannot dispatch tools; read counts, duplicates, passes, time and reported-token thresholds constrain gathering. |
+| W9.3 — Source scope | Selected document intersection and web domain/redirect checks, fresh question context, no memory injection or child/MCP/exec tools. | A model cannot widen document selection or fetch beyond domain scope; current policy still controls approvals. |
+| W9.4 — Search administration | Live DDG/Serper/public HTTPS SearXNG selection, write-only key entry/removal, unsaved test, paced requests, provider cooldown, one DDG fallback. | Keys never return through admin reads; fallback is explicit; cancellation prevents fallback; malformed/private/oversized service responses fail closed. |
+| W9.5 — Visible continuity | Plan/stage/source counters/available usage, saved report metadata and citations, approval and durable event replay, partial completion notices. | Stop causes no synthesis; reload replays the same progress; available evidence survives export. |
+| W9.6 — Chat UX | Per-conversation session drafts, clear on logout, scroll following only near the bottom, keyboard-accessible Jump to latest. | Switching/reloading restores text without carrying Research mode or attachments; readers can scroll during generation. |
+
+**Verification:** 444 backend tests passed, 21 optional cases skipped; all 20 Chromium
+scenarios, Ruff, frontend production build, local documentation links and `git diff --check`
+pass. Desktop and phone Research controls and the admin search form were visually reviewed
+using isolated API fixtures. Existing deprecation and large-bundle warnings remain. No paid
+provider calls or user credentials were used. Scripted fixtures do not establish live-model
+research quality or public search uptime; the guide includes a configured-provider test.
+
+Boundaries: time/reported-token thresholds apply between operations; final synthesis and
+in-flight requests may exceed them. Search credits are separate from model costs. Public
+SearXNG JSON availability varies; no instance is automatically chosen or scraped from the
+directory. Legacy config remains a seed until an admin saves search settings. The initial
+workflow is sequential, uses selected personal documents and fetched HTML/text, and does
+not add OCR, date-range filtering, parallel researchers, project context, artifact editing,
+or scheduling. Ordinary chat and existing editable skill records remain available.
+
+## Following wave — Projects and inspectable context
+
+Introduce private projects with linked chats, selected knowledge and instructions, then
+show users which context is used. Build versioned artifacts and preserved conversation
+alternatives as the next deliverable wave. Continue measuring Research quality with real
+configured models before increasing autonomy or making competitive quality claims.

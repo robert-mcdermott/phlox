@@ -33,6 +33,8 @@ everyday use, upgrades, and troubleshooting.
 - **Document and web research with citations** — search PDFs, Word documents, Markdown,
   and code, or discover and read web pages. Inspect the retained passage behind each
   [citation](docs/SOURCES.md), including document locations or web URLs and fetch times.
+  Choose [Research mode](docs/RESEARCH.md) for a bounded plan, evidence gathering, and report;
+  configure Serper or public SearXNG search in the admin console, with DuckDuckGo fallback.
 - **Reconnectable runs** — optional [persistent execution](docs/RUNS.md) continues across
   browser refreshes and chat switches, with explicit Stop, saved approvals, and recovery.
 - **Custom assistants and skills** — create specialized assistants with their own prompts,

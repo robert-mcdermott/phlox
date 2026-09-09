@@ -430,3 +430,18 @@ Quick end-to-end checks that the foundation passed (reproduce any of these):
 - Artifact canvas: ask the agent to `write_file` an `.html` or `.md` file → the canvas
   panel auto-opens with a live preview (Preview/Source toggle for html); the "View" button
   on an artifact chip or in the Workspace Files modal reopens any prior one.
+
+## Research and search configuration
+
+[Research mode](RESEARCH.md) is an explicit `ChatRequest.research` option; null preserves
+normal chat. `app/research.py` owns scope, stage, and budget state; `AgentSession` applies
+it to planning/gathering/synthesis and persists it in approvals and message usage metadata.
+The same events use legacy SSE or durable run replay. Selected-source research excludes
+prior chat history and memory injection. Document filters and redirect URL policy enforce
+the selection at the read seams. Tool arguments are validated against registry schemas
+before approval/dispatch; malformed provider JSON remains invalid.
+
+`app/search.py` routes search through the admin DB overlay: DDG, Serper, or SearXNG, with
+a bounded DDG fallback and process-local pacing/cooldown. No new tables or migration are
+required; provider keys use the existing protected-at-the-API, plaintext-at-rest overlay
+contract. See the research guide for actual operational and accounting limits.

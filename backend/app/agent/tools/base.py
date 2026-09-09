@@ -53,6 +53,7 @@ class ToolContext:
     parent_call_id: str | None = None
     # Optional thread-safe durable journal for child tool dispatch/results.
     tool_observer: Any = None
+    research: Any = None
 
 
 @dataclass

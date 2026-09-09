@@ -150,6 +150,7 @@ export const api = {
 
   // admin deployment config (config.yml overlay; section = profiles|pricing|resilience|generation|sandbox|guardrails)
   getAdminConfig: () => req('GET', '/api/admin/config'),
+  testWebSearch: (body) => req('POST', '/api/admin/config/web-search/test', body),
   updateAdminConfig: (section, body) => req('PUT', `/api/admin/config/${section}`, body),
   previewGuardrails: (body) => req('POST', '/api/admin/config/guardrails/preview', body),
 

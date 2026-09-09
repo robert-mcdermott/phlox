@@ -96,10 +96,12 @@ class AgentSession:
         assistant_id: str | None = None,
         accounting=None,
         tool_observer=None,
+        research=None,
     ):
         from app.model_calls import CallScope
 
         self.accounting = accounting or CallScope.new(conversation.id, conversation.user_id)
+        self.research = research
         self.tool_observer = tool_observer
         self.journal_prefix = uuid.uuid4().hex
         self.db = db
@@ -116,6 +118,8 @@ class AgentSession:
         self.allowed_tools = set(gate.enabled_names())
         if allowed_tools is not None:
             self.allowed_tools &= allowed_tools
+        if research:
+            self.allowed_tools &= research.allowed_tools()
         self.final_text = ""
         # Set by the caller (e.g. the chat router, watching for a client disconnect) so a
         # user's "Stop" click can actually halt an in-flight turn — kill any running
@@ -142,12 +146,25 @@ class AgentSession:
             allowed_tools=frozenset(self.allowed_tools),
             accounting=self.accounting,
             tool_observer=tool_observer,
+            research=research,
         )
 
     def _observe_child_tool(self, kind, call, **data):
         if self.ephemeral and self.tool_observer:
             self.tool_observer({"type": kind, "id": f"{self.journal_prefix}:{call.id}",
                                 "name": call.name, **data})
+
+    def _research_event(self):
+        from app.model_calls import turn_usage
+        return events.sse("research", **self.research.progress(
+            turn_usage(self.accounting), len(self._source_refs())))
+
+    def _has_research_evidence(self):
+        from app.models import Source, SourceUse
+        return self.db.query(Source.id).join(SourceUse).filter(
+            SourceUse.turn_id == self.accounting.turn_id,
+            Source.conversation_id == self.conversation.id, Source.excerpt.isnot(None),
+        ).first() is not None
 
     def _source_refs(self):
         return sources.catalog(self.db, self.accounting.turn_id, self.conversation.id)
@@ -169,6 +186,10 @@ class AgentSession:
     def resume(self, state: dict, decisions: dict[str, str]) -> Iterator[str]:
         """Continue a paused turn with the user's approval decisions (call_id -> allow|deny)."""
         state = deepcopy(state)
+        if state.get('research'):
+            from app.research import Research
+            self.research = self.ctx.research = Research(state=state['research'])
+            self.allowed_tools &= self.research.allowed_tools()
         self.rounds_used = int(state["rounds_used"])
         self.turn_usage = dict(state["turn_usage"])
         messages = deepcopy(state["messages"])
@@ -190,6 +211,8 @@ class AgentSession:
         initial_decisions: dict[str, str] | None = None,
     ) -> Iterator[str]:
         max_rounds = int(self.params.get("max_tool_rounds", 12))
+        if self.research:
+            max_rounds = min(max_rounds, self.research.limits['rounds'])
         enabled = self.allowed_tools if self.allowed_tools is not None else self.gate.enabled_names()
         tools = self.registry.specs(enabled_names=enabled)
 
@@ -225,6 +248,19 @@ class AgentSession:
             if self._cancelled():
                 yield from self._finalize("", tool_steps, all_artifacts)
                 return
+            if self.research:
+                from app.model_calls import turn_usage
+                instruction = self.research.before_round(self.rounds_used, max_rounds,
+                                                        turn_usage(self.accounting)['total'])
+                # Transient stage instructions are not persisted as user messages. End with
+                # a user turn for providers that disallow assistant-prefill continuations.
+                round_messages = deepcopy(messages)
+                round_messages[0]['content'] += '\n\nCurrent research stage: ' + instruction
+                round_messages.append({'role': 'user', 'content': 'Proceed with the current research stage.'})
+                round_tools = tools if self.research.phase == 'gather' else []
+                yield self._research_event()
+            else:
+                round_messages, round_tools = messages, tools
             self.rounds_used += 1
             round_text = ""
             pending_calls: list[ToolCall] = []
@@ -239,13 +275,13 @@ class AgentSession:
                     redactor = StreamRedactor(guardrails_out)
                     thinking_redactor = StreamRedactor(guardrails_out)
                 provider_messages = (
-                    scrub_messages(messages, guardrails_in)[0] if guardrails_in else messages
+                    scrub_messages(round_messages, guardrails_in)[0] if guardrails_in else round_messages
                 )
                 try:
                     from app.model_calls import stream_model
 
                     model_stream = stream_model(
-                        self.provider, provider_messages, tools, self.params,
+                        self.provider, provider_messages, round_tools, self.params,
                         replace(self.accounting, kind="fallback") if used_fallback else self.accounting,
                         cancel_event=self.cancel_event,
                     )
@@ -270,7 +306,8 @@ class AgentSession:
                                         break
                                 if chunk:
                                     round_text += chunk
-                                    yield events.token(chunk)
+                                    if not self.research or self.research.phase == "synthesize":
+                                        yield events.token(chunk)
                             elif delta.type == "reasoning":
                                 streamed_any = True
                                 chunk = delta.text or ""
@@ -279,7 +316,7 @@ class AgentSession:
                                     if thinking_redactor.blocked:
                                         blocked = True
                                         break
-                                if chunk:
+                                if chunk and not self.research:
                                     yield events.thinking(chunk)
                             elif delta.type == "usage":
                                 u = delta.usage or {}
@@ -328,11 +365,12 @@ class AgentSession:
                 if redactor.blocked or thinking_redactor.blocked:
                     blocked = True
                 else:
-                    if think_tail:
+                    if think_tail and not self.research:
                         yield events.thinking(think_tail)
                     if tail:
                         round_text += tail
-                        yield events.token(tail)
+                        if not self.research or self.research.phase == "synthesize":
+                            yield events.token(tail)
             if blocked:
                 self.outcome = "blocked"
                 matched = sorted(redactor.matched | thinking_redactor.matched)
@@ -356,6 +394,25 @@ class AgentSession:
                 )
                 round_text += note
                 yield events.token(note)
+
+            if self.research:
+                if self._cancelled():
+                    yield from self._finalize(round_text, tool_steps, all_artifacts)
+                    return
+                if self.research.phase == 'synthesize':
+                    if pending_calls:
+                        round_text += '\n\nResearch ended: the model requested more tools instead of completing the report. No further actions were executed.'
+                    if not self._has_research_evidence():
+                        round_text += '\n\nNo supporting passages were retained in this research run. Treat the report as unverified.'
+                    yield from self._finalize(round_text, tool_steps, all_artifacts)
+                    return
+                if self.research.phase == 'plan' or not pending_calls:
+                    self.research.advance(round_text)
+                    messages.append({'role': 'assistant', 'content': round_text})
+                    yield self._research_event()
+                    continue
+                # Bound oversized provider tool-call batches as well as model passes.
+                pending_calls = pending_calls[:16]
 
             if not pending_calls:
                 yield from self._finalize(round_text, tool_steps, all_artifacts)
@@ -400,6 +457,16 @@ class AgentSession:
         for call in calls:
             if self._cancelled():
                 break
+            tool = self.registry.get(call.name)
+            if tool is not None:
+                from app.agent.validation import argument_error
+                invalid = argument_error(tool, call.arguments)
+                if invalid is not None:
+                    yield events.tool_call(call.id, call.name, call.arguments)
+                    yield from self._emit_result(call, ToolResult(
+                        content=invalid,
+                        is_error=True), tool_steps, all_artifacts, messages)
+                    continue
             if call.name == "spawn_subagent":
                 child_count += 1
                 if child_count > MAX_SUBAGENTS_PER_ROUND:
@@ -474,6 +541,13 @@ class AgentSession:
         for call in calls:
             if self._cancelled():
                 break
+            if self.research:
+                denied = self.research.admit(call.name, call.arguments)
+                if denied:
+                    yield from self._emit_result(call, ToolResult(content=denied, is_error=True),
+                                                 tool_steps, all_artifacts, messages)
+                    continue
+                yield self._research_event()
             self._observe_child_tool("child_tool_start", call, arguments=call.arguments)
             yield events.sse("tool_start", id=call.id, name=call.name)
             yield events.status(f"Running {call.name}…")
@@ -576,11 +650,14 @@ class AgentSession:
         all_artifacts: list[dict],
     ) -> Iterator[str]:
         self.outcome = "paused"
+        if self.research:
+            yield events.sse('research', **{**self.research.progress(), 'phase': 'paused'})
         from app.model_calls import turn_usage
 
         totals = turn_usage(self.accounting)
         self.turn_usage = {k: totals[k] for k in ("input", "output", "total")}
         state = {
+            "research": deepcopy(self.research.state) if self.research else None,
             "sources": self._source_refs(),
             "version": 3,
             "turn_id": self.accounting.turn_id,
@@ -728,6 +805,18 @@ class AgentSession:
         from app.model_calls import turn_usage
 
         usage = turn_usage(self.accounting)
+        if self.research:
+            import time
+            if self.outcome in {'cancelled', 'failed', 'limit_reached'} and self.research.phase != 'synthesize':
+                refs = self._source_refs()
+                final_text = ('Research ended before a complete report was written. '
+                              'The collected passages remain available for inspection: '
+                              + (', '.join('[' + r['label'] + ']' for r in refs) if refs else 'none were retained.')
+                              + '\n\nNo complete conclusion was reached. Start a new Research turn to continue.')
+            self.research.state['phase'] = self.outcome
+            self.research.state['finished_at'] = time.time()
+            usage['research'] = self.research.progress(dict(usage), len(self._source_refs()))
+            yield self._research_event()
 
         msg = Message(
             conversation_id=self.conversation.id,

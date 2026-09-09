@@ -1,3 +1,5 @@
+import ResearchControls from './ResearchControls'
+import { useConversationDraft } from '../../utils/drafts'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Send,
@@ -37,7 +39,10 @@ function docStatus(doc) {
 }
 
 export default function Composer() {
-  const [text, setText] = useState('')
+  const owner = useStore(s => s.user?.id || s.user?.username || 'anonymous')
+  const runsEnabled = useStore(s => s.authConfig?.runs_enabled)
+  const [mode, setMode] = useState('chat')
+  const [research, setResearch] = useState({ scope: 'web', depth: 'standard', domainsText: '' })
   const [autoApprove, setAutoApprove] = useState(false)
   const [webSearch, setWebSearch] = useState(false)
   const [documentSearch, setDocumentSearch] = useState(false)
@@ -57,6 +62,7 @@ export default function Composer() {
   const send = useStore((s) => s.sendMessage)
   const stop = useStore((s) => s.stopStreaming)
   const activeId = useStore((s) => s.activeId)
+  const [text, setText, draftError] = useConversationDraft(owner, activeId)
   const queued = useStore((s) => s.queued)
   const clearQueued = useStore((s) => s.clearQueued)
   const assistants = useStore((s) => s.assistants)
@@ -86,6 +92,8 @@ export default function Composer() {
   }, [activeId])
 
   useEffect(() => {
+    setMode('chat')
+    setImages([])
     setDocumentRefs([])
     setDocPicker({ open: false, query: '', start: 0, end: 0 })
     setSkillRefs([])
@@ -136,7 +144,10 @@ export default function Composer() {
     (text.trim() || images.length > 0 || documentIds.length > 0 || skillRefs.length > 0) &&
     !uploading &&
     pendingDocs.length === 0 &&
-    erroredDocs.length === 0
+    erroredDocs.length === 0 &&
+    (mode !== 'research' || (skillsAllowed && images.length === 0 &&
+      (research.scope === 'documents' || webSearchAllowed) &&
+      (research.scope === 'web' ? documentIds.length === 0 : documentSearchAllowed && documentIds.length > 0)))
 
   const updateMentionPicker = (value, cursor) => {
     const before = value.slice(0, cursor)
@@ -201,7 +212,8 @@ export default function Composer() {
     if (!canSubmit) return
     // While streaming, the store queues this as a follow-up (steering).
     send(text.trim(), {
-      autoApprove,
+      research: mode === 'research' ? { scope: research.scope, depth: research.depth, domains: research.scope === 'documents' ? [] : research.domainsText.split(',').map(s => s.trim()).filter(Boolean) } : null,
+      autoApprove: mode === 'research' ? false : autoApprove,
       webSearch: webSearch && webSearchAllowed,
       documentSearch: documentSearch && documentSearchAllowed,
       images,
@@ -212,6 +224,7 @@ export default function Composer() {
       skillsEnabled: skillsEnabled && skillsAllowed,
     })
     setText('')
+    setMode('chat')
     setImages([])
     setDocumentRefs([])
     setDocPicker({ open: false, query: '', start: 0, end: 0 })
@@ -312,6 +325,9 @@ export default function Composer() {
   return (
     <div className="border-t border-border bg-surface px-4 py-3">
       <div className="mx-auto max-w-3xl">
+        {mode === 'research' && <ResearchControls value={research} onChange={setResearch} documents={documents} selected={documentRefs} onSelect={setDocumentRefs} webAllowed={webSearchAllowed} docsAllowed={documentSearchAllowed} runsEnabled={runsEnabled} />}
+        {mode === 'research' && (images.length > 0 || (research.scope === 'web' && documentIds.length > 0)) && <p role="status" className="mb-2 text-xs text-muted">Remove images for Research mode. To research attached documents, choose Selected documents or Documents + web.</p>}
+        {draftError && <p role="status" className="mb-2 text-xs text-muted">{draftError}</p>}
         {queued && (
           <div className="mb-2 flex items-center gap-2 rounded-lg border border-accent/40 bg-accent/10 px-3 py-1.5 text-xs text-content">
             <span className="font-medium text-accent">Queued follow-up:</span>
@@ -490,7 +506,7 @@ export default function Composer() {
                     ? 'Queue a follow-up…'
                     : 'Message Phlox…'
             }
-            className="max-h-[220px] flex-1 resize-none bg-transparent py-1.5 text-content outline-none placeholder:text-muted"
+            className="max-h-[220px] min-w-0 flex-1 resize-none border-0 bg-transparent px-1 py-1.5 text-content outline-none placeholder:text-muted focus:ring-0"
           />
           {streaming ? (
             <button onClick={stop} className="mb-0.5 rounded-lg bg-red-500 p-2 text-white hover:bg-red-600" title="Stop">
@@ -507,50 +523,39 @@ export default function Composer() {
             </button>
           )}
         </div>
-        <div className="mt-1.5 flex items-center justify-between gap-3 px-1 text-xs text-muted">
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-            <label className="flex cursor-pointer items-center gap-1.5" title="Auto-approve tools that normally ask">
-              <input type="checkbox" checked={autoApprove} onChange={(e) => setAutoApprove(e.target.checked)}
-                className="rounded border-border text-accent focus:ring-accent" />
-              <Zap size={12} /> Agent mode
-            </label>
-            <label
-              className={`flex items-center gap-1.5 ${webSearchAllowed ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'}`}
-              title={webSearchAllowed ? 'Allow live web search for this prompt' : 'Disabled by this assistant'}
-            >
-              <input type="checkbox" checked={webSearch && webSearchAllowed} disabled={!webSearchAllowed}
-                onChange={(e) => setWebSearch(e.target.checked)}
-                className="rounded border-border text-accent focus:ring-accent" />
-              <Search size={12} /> Web search
-            </label>
-            <label
-              className={`flex items-center gap-1.5 ${documentSearchAllowed ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'}`}
-              title={documentSearchAllowed ? 'Search uploaded documents for this prompt' : 'Disabled by this assistant'}
-            >
-              <input type="checkbox" checked={documentSearch && documentSearchAllowed} disabled={!documentSearchAllowed}
-                onChange={(e) => setDocumentSearch(e.target.checked)}
-                className="rounded border-border text-accent focus:ring-accent" />
-              <FileSearch size={12} /> Search documents
-            </label>
-            {skills.length > 0 && (
-              <label
-                className={`flex items-center gap-1.5 ${skillsAllowed ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'}`}
-                title={
-                  skillsAllowed
-                    ? 'Let the agent load registered skills on its own (type / to invoke one explicitly)'
-                    : 'Disabled by this assistant'
-                }
-              >
-                <input type="checkbox" checked={skillsEnabled && skillsAllowed} disabled={!skillsAllowed}
-                  onChange={(e) => setSkillsEnabled(e.target.checked)}
-                  className="rounded border-border text-accent focus:ring-accent" />
-                <Sparkles size={12} /> Skills
-              </label>
-            )}
-          </div>
-          <TokenMeter />
+        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-muted" aria-label="Message options">
+          <select aria-label="Chat mode" value={mode} onChange={e => setMode(e.target.value)}
+            className="h-8 shrink-0 rounded-lg border-border bg-surface-2 py-1 pl-2 pr-7 text-xs font-medium text-content focus:border-accent focus:ring-accent">
+            <option value="chat">Chat</option><option value="research" disabled={!skillsAllowed}>Research</option>
+          </select>
+          {mode === 'research' ? <span className="px-1 text-muted">Plan · Gather · Report</span> : <>
+            <ComposerToggle label="Agent mode" icon={Zap} checked={autoApprove} onChange={setAutoApprove}
+              title="Auto-approve tools that normally ask" />
+            <ComposerToggle label="Web search" icon={Search} checked={webSearch && webSearchAllowed}
+              disabled={!webSearchAllowed} onChange={setWebSearch}
+              title={webSearchAllowed ? 'Allow live web search for this prompt' : 'Disabled by this assistant'} />
+            <ComposerToggle label="Search documents" shortLabel="Documents" icon={FileSearch}
+              checked={documentSearch && documentSearchAllowed} disabled={!documentSearchAllowed} onChange={setDocumentSearch}
+              title={documentSearchAllowed ? 'Search uploaded documents for this prompt' : 'Disabled by this assistant'} />
+            {skills.length > 0 && <ComposerToggle label="Skills" icon={Sparkles}
+              checked={skillsEnabled && skillsAllowed} disabled={!skillsAllowed} onChange={setSkillsEnabled}
+              title={skillsAllowed ? 'Let the agent load registered skills on its own (type / to invoke one explicitly)' : 'Disabled by this assistant'} />}
+            <div className="ml-auto"><TokenMeter /></div>
+          </>}
         </div>
       </div>
     </div>
   )
+}
+
+function ComposerToggle({ label, shortLabel, icon: Icon, checked, disabled, onChange, title }) {
+  return <label className={`relative shrink-0 ${disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`} title={title}>
+    <input type="checkbox" aria-label={label} checked={checked} disabled={disabled}
+      onChange={e => onChange(e.target.checked)} className="peer sr-only" />
+    <span className="flex h-8 items-center gap-1.5 rounded-lg border border-transparent px-2 text-muted hover:bg-surface-2 peer-checked:border-border peer-checked:bg-surface-2 peer-checked:text-accent peer-focus-visible:ring-2 peer-focus-visible:ring-accent peer-focus-visible:ring-offset-1 peer-focus-visible:ring-offset-surface">
+      <Icon size={13} aria-hidden="true" />
+      {shortLabel || label}
+      {checked && <span className="h-1 w-1 rounded-full bg-current" aria-hidden="true" />}
+    </span>
+  </label>
 }

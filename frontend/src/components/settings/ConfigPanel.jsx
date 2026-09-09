@@ -5,6 +5,7 @@ import {
 } from 'lucide-react'
 import { api } from '../../api/client'
 import { useStore } from '../../store/useStore'
+import SearchSettings from './SearchSettings'
 
 // Admin-only deployment configuration: a live overlay on backend/config.yml. Each section
 // (providers, pricing, runtime, sandbox) saves independently and applies without a restart.
@@ -43,11 +44,12 @@ export default function ConfigPanel() {
         <p className="text-xs text-muted">
           Deployment settings, editable live — changes apply without restarting the backend.
           These override <code className="rounded bg-surface-3 px-1">backend/config.yml</code>,
-          which remains the seed and the home of secrets, auth, and the vector store.
+          which remains the seed for providers and the home of bootstrap settings such as auth and the vector store.
         </p>
       </div>
 
       <ProvidersCard cfg={cfg} onSaved={onSaved} />
+      <SearchSettings config={cfg.web_search} onSaved={onSaved} />
       <PricingCard cfg={cfg} onSaved={onSaved} />
       <RuntimeCard cfg={cfg} onSaved={onSaved} />
       <SuggestionsCard cfg={cfg} onSaved={onSaved} />

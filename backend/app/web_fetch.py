@@ -254,12 +254,14 @@ class Page:
     http_status: int
 
 
-def fetch(url, cancel=None):
+def fetch(url, cancel=None, url_policy=None):
     current = normalize_url(url)
     with Deadline(cancel) as deadline:
         try:
             for hop in range(MAX_REDIRECTS + 1):
                 deadline.check()
+                if url_policy is not None and not url_policy(current):
+                    raise FetchError('scope_blocked', 'URL or redirect is outside the selected research domains.')
                 conn = connection(current, checked_addresses(current, deadline), deadline)
                 try:
                     parts = urlsplit(current)

@@ -3,8 +3,9 @@
 Reviewed **2026-09-07** against commit `e07ddc7d`. This is the active product and
 engineering plan. The [codebase review](CODEBASE_REVIEW.md) records evidence, limitations,
 and verification; the [original roadmap](ROADMAP_LEGACY.md) preserves the delivery history.
-**M1 is in progress:** [Waves 1–5](IMPLEMENTATION_WAVES.md) implement F01–F04, F06, and the bounded F07 delivery, permission
-defaults, and the initial F05 browser harness. See the wave log for current verification. M2–M5 remain proposed. Existing features and
+**M1 and M2 have delivered increments:** [Waves 1–9](IMPLEMENTATION_WAVES.md) deliver
+foundations, document/web evidence, and opt-in bounded Research with admin-managed search.
+The wave log records verification and remaining limits. M3–M5 remain proposed. Existing features and
 completed work are identified explicitly; unchecked entries do not yet ship.
 
 ## 1. Product direction
@@ -117,11 +118,11 @@ cards alongside the persistence work. Avoid a long stretch of backend-only chang
   tool output, image estimates, and reserved output tokens. Bound a single oversized turn;
   compaction must not silently return an over-budget request. Wave 3 uses a bounded
   heuristic with configurable profile caps; exact provider tokenizers remain future work. See **R5**.
-- [ ] Validate tool arguments against their schemas before dispatch. Return actionable
+- [x] Validate tool arguments against their schemas before dispatch. Return actionable
   errors for malformed calls; do not convert invalid JSON into a valid-looking empty call.
   Resolve missing preferences from the registered tool's default policy, and reject unknown
   tools. The permission-default/unknown-tool portion is complete in Wave 1; general schema
-  validation and malformed-call handling remain open.
+  validation and malformed-call handling are delivered in Wave 9.
 - [ ] Correct misleading operational and extension documentation. Several obvious stale
   passages are corrected with this plan; verify the remaining guides against actual startup.
 
@@ -264,17 +265,23 @@ selects sources and a time/token/cost budget; the agent proposes a short plan, g
 evidence, identifies gaps or disagreements, and writes a cited answer. A document-only
 scope must be a server-enforced constraint, including child tools and fallbacks.
 
-- [ ] Implement bounded search/read/synthesize passes through the existing harness.
+- [x] Implement bounded search/read/synthesize passes through the existing harness.
+  **Delivered in Wave 9:** explicit opt-in mode, planning, bounded gathering, reserved
+  synthesis, selected-document scope, domain restrictions, and DDG/Serper/SearXNG search.
   The seeded `deep-research` skill is useful guidance, not a substitute for this workflow.
 - [ ] Add source filters (selected documents, domains, date range), stronger page extraction,
   duplicate detection, fetch byte limits, and cancellation. Harden the fetch connection
   against DNS changes between validation and connection before increasing fetch concurrency.
   **Wave 8 delivers** bounded HTML/text extraction, duplicate passage identities, body/time
   limits, cancellation, and numeric-address pinning with HTTPS hostname verification.
-  Research-specific source filters and orchestration remain.
+  Wave 9 adds document/domain scope and sequential orchestration; date-range filtering remains.
 - [ ] Show progress as sources found/read, unresolved questions, and remaining budget.
+  **Wave 9 delivers** stages, a concise plan, source/search/read counts and available
+  usage; unanswered questions belong in the report, not a separate tracked task model.
   Show a concise work log, not a claim to expose the model's hidden reasoning.
 - [ ] Preserve evidence versus inference and identify disagreements with dated sources.
+  **Wave 9 provides** report instructions, inspectable citations, and partial-result
+  handling; semantic claim verification and live-model quality targets remain open.
   End with a useful partial result when the budget expires.
 
 **Acceptance:** a research run stays inside source and budget limits, produces a useful

@@ -137,11 +137,12 @@ def get_resilience_config() -> dict[str, Any]:
 
 
 def get_web_search_config() -> dict[str, Any]:
-    """Web search settings.
+    """Admin-managed search. Preserve legacy SearXNG seeds until an admin saves."""
+    from app import app_config
 
-    By default Phlox uses ddgs with no configuration. Set ``web_search.searxng_url`` in
-    config.yml, or the ``SEARXNG_URL`` environment variable, to use SearXNG instead.
-    """
+    override = app_config.get_section("web_search")
+    if override is not None:
+        return dict(override)
     cfg = dict(load_config().get("web_search", {}) or {})
     env_url = os.environ.get("SEARXNG_URL")
     if env_url:
@@ -149,6 +150,8 @@ def get_web_search_config() -> dict[str, Any]:
     elif cfg.get("SEARXNG_URL") and not cfg.get("searxng_url"):
         cfg["searxng_url"] = cfg["SEARXNG_URL"]
     cfg.setdefault("searxng_url", "")
+    cfg["engine"] = "searxng" if cfg["searxng_url"] else "ddg"
+    cfg["interval_seconds"] = 2.0
     return cfg
 
 

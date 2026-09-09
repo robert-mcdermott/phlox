@@ -171,7 +171,7 @@ class OpenAIProvider(LLMProvider):
                 try:
                     args = json.loads(slot["args"]) if slot["args"] else {}
                 except json.JSONDecodeError:
-                    args = {}
+                    args = None  # Invalid JSON must fail schema validation, never dispatch as {}.
                 calls.append(ToolCall(id=slot["id"] or slot["name"], name=slot["name"], arguments=args))
             yield StreamDelta(type="tool_calls", tool_calls=calls)
         else:

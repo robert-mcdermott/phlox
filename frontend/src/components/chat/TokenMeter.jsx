@@ -36,17 +36,27 @@ export default function TokenMeter() {
     (lastUsage ? `\nLast response: ${lastUsage.input} in / ${lastUsage.output} out.` : '')
 
   return (
-    <div className="flex items-center gap-1.5" title={title}>
-      <Gauge size={12} className={near ? 'text-hutch-gold' : ''} />
-      <div className="h-1.5 w-16 overflow-hidden rounded-full bg-surface-3">
-        <div className="h-full rounded-full" style={{ width: `${pct}%`, background: barColor }} />
+    <details className="relative" onKeyDown={e => {
+      if (e.key === 'Escape') {
+        e.currentTarget.open = false
+        e.currentTarget.querySelector('summary')?.focus()
+      }
+    }}>
+      <summary title={title} aria-label={`Token usage: approximately ${pct}% context used`}
+        className={`flex h-8 cursor-pointer list-none items-center gap-1.5 whitespace-nowrap rounded-lg px-2 hover:bg-surface-2 focus-visible:outline focus-visible:outline-accent [&::-webkit-details-marker]:hidden ${near ? 'text-accent' : 'text-muted'}`}>
+        <Gauge size={13} aria-hidden="true" />
+        <span>{pct}% context</span>
+      </summary>
+      <div className="absolute bottom-full right-0 z-20 mb-2 w-72 max-w-[calc(100vw-3rem)] rounded-xl border border-border bg-surface p-3 text-xs text-content shadow-lg">
+        <p className="font-medium">Estimated context usage</p>
+        <div className="my-2 h-1.5 overflow-hidden rounded-full bg-surface-3">
+          <div className="h-full rounded-full" style={{ width: `${pct}%`, background: barColor }} />
+        </div>
+        <p>~{ctx.toLocaleString()} / {maxContext.toLocaleString()} tokens</p>
+        <p className="mt-1 text-muted">Estimated from conversation text. Older turns are summarized when the context limit is reached.</p>
+        <p className="mt-2">Output limit: {maxOut.toLocaleString()} tokens per response.</p>
+        {lastUsage && <p className="mt-1 text-muted">Last response: {lastUsage.input.toLocaleString()} in / {lastUsage.output.toLocaleString()} out.</p>}
       </div>
-      <span className={near ? 'text-hutch-gold' : ''}>
-        {ctx.toLocaleString()}/{(maxContext / 1000).toFixed(0)}k ctx
-      </span>
-      {lastUsage && (
-        <span className="opacity-70">· {lastUsage.output.toLocaleString()}/{(maxOut / 1000).toFixed(0)}k out</span>
-      )}
-    </div>
+    </details>
   )
 }

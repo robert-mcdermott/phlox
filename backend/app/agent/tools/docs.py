@@ -39,6 +39,11 @@ class SearchDocuments(Tool):
         **_: Any,
     ) -> ToolResult:
         top_k = max(1, min(int(top_k or 5), 20))
+        if ctx.research:
+            selected = set(ctx.research.state['document_ids'])
+            document_ids = sorted(selected if document_ids is None else selected.intersection(document_ids))
+            if not document_ids:
+                return ToolResult(content='No selected research documents match this request.', is_error=True)
         hits = search_chunks(
             ctx.db, query, top_k=top_k,
             conversation_id=ctx.conversation_id, user_id=ctx.user_id,

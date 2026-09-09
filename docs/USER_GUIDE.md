@@ -263,7 +263,8 @@ admin panel for sections already managed there. Do not erase your database to re
 | `runs.enabled` | File | Restart required; default `false` |
 | `auth` / Entra settings | File; JWT secret via environment for production | Restart required |
 | `database.url`, `vector_store`, `embeddings` | File; `DATABASE_URL` can override database URL | Restart; index maintenance may be needed |
-| `web_search`, `web_fetch` | File; `SEARXNG_URL` can override search server | Restart for file changes |
+| Web search engine | Settings → Configuration → Web search; DDG default, Serper/SearXNG optional | Live |
+| `web_fetch` network policy | File | Restart for file changes |
 | `observability.request_logging`, `observability.otel` | File | Restart required |
 | `default_profile` | File | Initial/default selection; does not reset saved selections |
 | Active profile, generation, system prompt, theme | Settings → Model / Appearance; conversation controls | Saved user/chat preferences |
@@ -340,14 +341,19 @@ and download them. HTML/Markdown artifacts can open in the resizable canvas with
 and source views. Workspace checkpoints let you restore file snapshots; they do not undo
 external tool actions or replace an application backup.
 
-The composer has separate controls:
+The compact toolbar below the message field contains the **Chat / Research** selector
+and tool toggles. Enabled toggles are highlighted and marked with a dot:
 
 - **Agent mode:** off by default. Allows tools whose policy is `ask` for this turn; it does
   not enable denied tools or override an assistant's restrictions.
 - **Web search:** exposes live discovery for that prompt; leave off for offline use.
-- **Search documents:** exposes retrieval from uploaded documents. Explicit document
+- **Documents:** exposes retrieval from uploaded documents. Explicit document
   references also enable document grounding, subject to assistant capabilities.
 - **Skills:** controls automatic skill activation; explicit `/` invocations are separate.
+
+Select the **context percentage** to expand estimated token counts, the output limit, and
+the last response's usage when available. Press Escape to close the details. These controls
+wrap onto a second row on smaller screens.
 
 Review tool arguments in approval cards, then **Approve & run** or **Deny**. Pending approvals
 survive reload and expire 24 hours after each pause. Dismiss terminal/expired notices when
@@ -404,8 +410,11 @@ tool text and previously downloaded files may still quote the source. A valid la
 not proof of claim support. See [SOURCES.md](SOURCES.md) for the exact limits, cleanup,
 privacy, export, and deletion contract.
 
-Web search uses ddgs without a search API key by default; set `web_search.searxng_url` or
-`SEARXNG_URL` for your own SearXNG server with JSON search enabled. `web_fetch` can retrieve
+Web search uses DuckDuckGo without a key by default. Administrators can select Serper or
+a public JSON-enabled SearXNG instance under **Settings → Configuration → Web search**.
+DuckDuckGo remains the fallback on configured-engine errors. See [Research and search
+configuration](RESEARCH.md) for setup, pacing, credentials, public-instance limitations,
+and testing. `web_fetch` can retrieve
 pages but rejects private/loopback/link-local addresses by default. Configure an explicit
 `web_fetch.allowlist_hosts` for intended internal destinations instead of disabling the
 guard broadly. These tools require network access even when your model is local.
@@ -593,3 +602,13 @@ and a representative document question after setup.
 | Theme tokens and custom themes | [THEMING.md](THEMING.md) |
 | Development and extension | [DEVELOPMENT.md](DEVELOPMENT.md), [ARCHITECTURE.md](ARCHITECTURE.md), [ADDING_A_TOOL.md](ADDING_A_TOOL.md), [ADDING_A_PROVIDER.md](ADDING_A_PROVIDER.md), [AGENTS.md](../AGENTS.md) |
 | Plans and implementation history | [ROADMAP.md](ROADMAP.md), [IMPLEMENTATION_WAVES.md](IMPLEMENTATION_WAVES.md), [CODEBASE_REVIEW.md](CODEBASE_REVIEW.md), [archived roadmap](ROADMAP_LEGACY.md) |
+
+## Research mode and chat continuity
+
+**Chat is the default.** Change **Chat** to **Research** in the composer toolbar for a bounded
+plan/gather/report workflow over selected documents, the web, or both. This is separate
+from the deep-research skill and Agent mode. See [Research mode](RESEARCH.md).
+
+Unsent text drafts survive chat switches and refresh in the same browser tab; logout clears
+them. Attachments and mode selections are not restored. Scrolling upward during a reply
+pauses automatic following; use **Jump to latest** to return to new output.

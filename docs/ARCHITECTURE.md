@@ -510,6 +510,15 @@ prior chat history and memory injection. Document filters and redirect URL polic
 the selection at the read seams. Tool arguments are validated against registry schemas
 before approval/dispatch; malformed provider JSON remains invalid.
 
+`research_config.py` validates Brief/Standard/Thorough deployment presets, supplied through
+`config.get_research_config()` and the admin DB overlay. Read-only numerical presets are
+available at `/api/settings/research`; `/api/admin/config/research` requires admin access.
+New execution snapshots limits into Research state, and approval resumes intersect saved
+limits with current policy. Legacy approvals keep their old preset ceilings. Generic Model
+rounds and per-call context/output fitting remain independent. The harness checks remaining
+source-record capacity before gathering and each read so a full evidence store leads to
+synthesis rather than more uncapturable reads. Progress records expose both allowances.
+
 `app/search.py` routes search through the admin DB overlay: DDG, Serper, or SearXNG, with
 a bounded DDG fallback and process-local pacing/cooldown. No new tables or migration are
 required; provider keys use the existing protected-at-the-API, plaintext-at-rest overlay

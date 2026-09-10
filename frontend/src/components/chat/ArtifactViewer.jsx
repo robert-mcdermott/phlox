@@ -4,6 +4,7 @@ import { canvasKind } from '../../utils/canvas'
 import { useStore } from '../../store/useStore'
 import { api } from '../../api/client'
 import AuthenticatedImage from '../auth/AuthenticatedImage'
+import { uniqueArtifacts } from '../../utils/artifacts'
 
 const IMAGE_EXTS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg']
 
@@ -13,13 +14,16 @@ export default function ArtifactViewer({ artifacts, conversationId }) {
   if (!artifacts || artifacts.length === 0) return null
   return (
     <div className="mt-2 flex flex-wrap gap-3">
-      {artifacts.map((a, i) => {
+      {uniqueArtifacts(artifacts).map((a, i) => {
         const url = a.url || `/api/files/${conversationId}?path=${encodeURIComponent(a.path)}`
         const isImage = IMAGE_EXTS.includes((a.ext || '').toLowerCase())
         const viewable = !isImage && canvasKind(a.ext)
+        const unavailable = a.snapshot_status === 'unavailable'
         return (
           <div key={i} className="overflow-hidden rounded-lg border border-border bg-surface-2">
-            {isImage ? (
+            {unavailable ? (
+              <div className="flex items-center gap-2 px-3 py-4 text-muted"><FileText size={20} /><span className="text-sm">{a.name}</span></div>
+            ) : isImage ? (
               <button onClick={() => setLightbox({ url, name: a.name })} title="Click to enlarge">
                 <AuthenticatedImage url={url} alt={a.name} className="max-h-72 max-w-xs cursor-zoom-in object-contain" />
               </button>
@@ -38,11 +42,12 @@ export default function ArtifactViewer({ artifacts, conversationId }) {
                 <span className="text-sm text-content">{a.name}</span>
               </div>
             )}
-            <p className="px-2 py-1 text-[10px] text-muted">{a.snapshot_status === 'saved' ? 'Saved with this answer' : 'Current workspace file · no saved copy'}</p>
+            <p className="px-2 py-1 text-[10px] text-muted">{unavailable ? 'Unavailable when this answer was saved · no saved copy' : a.snapshot_status === 'saved' ? 'Saved with this answer' : 'Current workspace file · no saved copy'}</p>
             <button
               type="button"
+              disabled={unavailable}
               onClick={() => api.downloadFile(url, a.name)}
-              className="flex items-center gap-1 border-t border-border px-2 py-1 text-xs text-muted hover:text-accent"
+              className="flex items-center gap-1 border-t border-border px-2 py-1 text-xs text-muted enabled:hover:text-accent disabled:opacity-50"
             >
               {isImage ? <ImageIcon size={12} /> : <Download size={12} />} {a.name}
             </button>

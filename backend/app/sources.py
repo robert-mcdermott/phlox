@@ -106,6 +106,13 @@ def capture(db, *, conversation_id, user_id, turn_id, document_id, chunk_id=None
         return ref, f"[{ref['label']}] {row.title} ({location}chunk {chunk.ordinal + 1}):\n{text}{suffix}"
 
 
+def remaining_capacity(db, conversation_id, turn_id):
+    """Conservative room for new evidence, including failure and removed records."""
+    used = db.query(SourceUse).filter_by(turn_id=turn_id).count()
+    highest = db.query(func.max(Source.number)).filter_by(conversation_id=conversation_id).scalar() or 0
+    return max(0, min(MAX_TURN_SOURCES - used, MAX_CONVERSATION_SOURCES - highest))
+
+
 def capture_web(db, *, conversation_id, user_id, turn_id, url, title, text='', content_hash=None,
                 truncated=False, status='fetched', reason=None, http_status=None, cancel=None):
     """Register bounded fetched passages (or a failure record), never discovery snippets.

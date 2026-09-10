@@ -20,6 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from app import app_config, config, guardrails
 from app.auth.deps import require_admin
 from app.models import User
+from app.research_config import ResearchConfig
 from app.schemas import (
     ProfileIn,
     GenerationUpdate,
@@ -76,6 +77,7 @@ def _effective_config() -> dict:
         "suggestions": config.get_suggestions(),
         "guardrails": config.get_guardrails_config(),
         "web_search": _mask_search(config.get_web_search_config()),
+        "research": config.get_research_config(),
         # Read-only metadata for the guardrails UI: the built-in detectors' labels,
         # regexes (shown on the info tooltip), and replacement tokens.
         "guardrails_builtins": [
@@ -125,6 +127,12 @@ def update_web_search(body: WebSearchUpdate, user: User = Depends(require_admin)
     from app.search import reset_health
     app_config.set_section('web_search', _search_settings(body), user.id)
     reset_health()
+    return _effective_config()
+
+
+@router.put('/research')
+def update_research(body: ResearchConfig, user: User = Depends(require_admin)):
+    app_config.set_section('research', body.model_dump(), user.id)
     return _effective_config()
 
 

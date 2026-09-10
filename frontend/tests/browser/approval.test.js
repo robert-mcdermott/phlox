@@ -44,11 +44,16 @@ async function fixture(t, { approval = null, auth = false, durable = false } = {
     settings: { active_profile: 'test', model: 'test-model', theme: 'phlox-dark', max_tokens: 1000, max_tool_rounds: 3 },
     modelCatalog: { profile: 'test', models: ['test-model'] }, modelReads: 0,
     discoveryRequests: [], profileSaves: [],
-    searchSaves: [], searchTests: [], chatRequests: [], docs: [], retries: [], rebuilds: 0, index: { mode: 'keyword', rebuild_required: true, notice: 'Embedding model changed. Rebuild required.' },
+    searchSaves: [], searchTests: [], researchSaves: [], researchReadError: false, chatRequests: [], docs: [], retries: [], rebuilds: 0, index: { mode: 'keyword', rebuild_required: true, notice: 'Embedding model changed. Rebuild required.' },
     sources: {}, sourceReads: [], exportReads: 0, exportMarkdown: '',
     approval, decisions: [], reject: false, authenticated: false, setup: true,
     run: null, events: [], cursors: [], cancellations: 0, creates: [], loseAcceptance: false,
     config: { providers: [], pricing: {}, resilience: {}, generation: {}, suggestions: [],
+      research: {
+        brief: { rounds: 5, searches: 3, reads: 4, seconds: 120, tokens: 20000 },
+        standard: { rounds: 12, searches: 8, reads: 16, seconds: 900, tokens: 250000 },
+        thorough: { rounds: 24, searches: 24, reads: 48, seconds: 1800, tokens: 1000000 },
+      },
       sandbox: { runner: 'local', container: {} } },
     messages: [{ id: 'user-1', role: 'user', content: 'Save the plan', created_at: '2026-09-07T00:00:00Z' }],
   }
@@ -63,7 +68,7 @@ async function fixture(t, { approval = null, auth = false, durable = false } = {
     const path = new URL(route.request().url()).pathname
     const method = route.request().method()
     const json = (body, status = 200) => route.fulfill({ status, json: body })
-    if (path === '/api/files/alpha/saved/answer-old/0') {
+    if (/^\/api\/files\/alpha\/saved\/answer-old\/\d+$/.test(path)) {
       state.savedFileReads.push(path)
       return route.fulfill({ contentType: 'text/plain', body: '# Original retained report\n\nSaved bytes from the original answer.' })
     }
@@ -148,8 +153,14 @@ async function fixture(t, { approval = null, auth = false, durable = false } = {
     if (path === '/api/providers') return json({ profiles: [{ name: 'test', label: 'Test', model: 'test-model' }] })
     if (path === '/api/providers/test/models') { state.modelReads++; return json(state.modelCatalog) }
     if (path === '/api/settings/suggestions') return json({ suggestions: [] })
+    if (path === '/api/settings/research') return state.researchReadError ? json({ detail: 'Unavailable' }, 503) : json({ presets: state.config.research, source_limit: 64, conversation_source_limit: 512 })
     if (path === '/api/usage/budget') return json({ budgets: [] })
     if (path === '/api/admin/config') return json(state.config)
+    if (path === '/api/admin/config/research' && method === 'PUT') {
+      state.config.research = route.request().postDataJSON()
+      state.researchSaves.push(state.config.research)
+      return json(state.config)
+    }
     if (path === '/api/admin/config/profiles/discover') {
       state.discoveryRequests.push(route.request().postDataJSON())
       return json(state.modelCatalog)
@@ -993,14 +1004,52 @@ test('admin tests unsaved search, sees fallback, and saved keys are masked', asy
   await panel.getByRole('link', { name: 'searx.space', exact: true }).waitFor()
 })
 
+test('admin research allowances update the composer and preserve lower model settings', async (t) => {
+  const { page, state } = await fixture(t)
+  await page.getByText('Approval chat', { exact: true }).click()
+  await page.getByRole('combobox', { name: 'Chat mode', exact: true }).selectOption('research')
+  await page.getByRole('combobox', { name: 'Research depth' }).selectOption('thorough')
+  await page.getByText(/Your Model setting is 3 passes/).waitFor()
+  await page.getByTitle('Settings', { exact: true }).click()
+  await page.getByRole('button', { name: 'Configuration', exact: true }).click()
+  const form = page.getByRole('form', { name: 'Research allowances' })
+  await form.getByRole('spinbutton', { name: 'Thorough Page reads', exact: true }).fill('60')
+  await form.getByRole('spinbutton', { name: 'Thorough Reported token threshold', exact: true }).fill('1500000')
+  await form.getByRole('button', { name: 'Save research allowances' }).click()
+  await form.getByText(/Saved. New research uses these presets/).waitFor()
+  assert.equal(state.researchSaves[0].thorough.reads, 60)
+  assert.equal(state.researchSaves[0].thorough.tokens, 1500000)
+  assert.equal(state.settings.max_tool_rounds, 3)
+  await page.getByRole('heading', { name: 'Settings', exact: true }).locator('..').getByRole('button').click()
+  await page.getByText(/60 page reads · 30 minutes · 1,500,000 reported tokens/).waitFor()
+  await page.getByText(/Your Model setting is 3 passes/).waitFor()
+  assert.equal(state.chatRequests.length, 0)
+  await page.setViewportSize({ width: 390, height: 844 })
+  const bounds = await page.getByLabel('Research budget', { exact: true }).boundingBox()
+  assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= 390)
+})
+
+test('unavailable research settings never display guessed allowances', async (t) => {
+  const { page, state } = await fixture(t)
+  state.researchReadError = true
+  await page.getByText('Approval chat', { exact: true }).click()
+  await page.getByRole('combobox', { name: 'Chat mode', exact: true }).selectOption('research')
+  await page.getByText(/Research allowances could not be loaded/).waitFor()
+  assert.equal(await page.getByLabel('Research budget', { exact: true }).count(), 0)
+})
+
 test('research progress replays after reload with its plan and counters', async (t) => {
   const { page, state } = await fixture(t, { durable: true })
   state.run = { id: 'run-1', conversation_id: 'alpha', status: 'running' }
-  state.events = [{ type: 'research', phase: 'gather', started_at: Date.now()/1000, plan: 'Compare dates and policy allowances.', searches: 2, reads: 1, limits: { searches: 6, reads: 8 }, source_count: 3, usage: {} }]
+  state.events = [{ type: 'research', phase: 'gather', started_at: Date.now()/1000, plan: 'Compare dates and policy allowances.', searches: 2, reads: 1, limits: { searches: 6, reads: 8, tokens: 80000, seconds: 600 }, source_count: 3, source_capacity: 61, rounds_used: 4, effective_rounds: 8, model_round_limit: 12, limits_restricted: true, usage: { total: 0, unknown_usage_calls: 1 } }]
   await page.getByText('Approval chat', { exact: true }).click()
   await page.getByRole('region', { name: 'Research progress' }).getByText('Gathering evidence', { exact: true }).waitFor()
   await page.reload(); await page.getByText('Approval chat', { exact: true }).click()
   const progress = page.getByRole('region', { name: 'Research progress' })
+  await progress.getByText(/4 model passes used · 8 planned including report · 12 total pass ceiling/).waitFor()
+  await progress.getByText(/Stricter administrator limits applied/).waitFor()
+  await progress.getByText(/61 new source records available/).waitFor()
+  await progress.getByText(/Some model usage is unreported/).waitFor()
   await progress.waitFor()
   assert.equal(await progress.count(), 1)
   await progress.getByText('Research plan', { exact: true }).click()
@@ -1072,6 +1121,39 @@ test('editing preserves prompt alternatives and a failed retry leaves the old an
   await page.getByText('The original approach.', { exact: true }).waitFor()
 })
 
+
+test('repeated artifact events and historical file updates display one card per path', async t => {
+  const { page, state } = await fixture(t)
+  state.messages.push({ id: 'answer-old', role: 'assistant', content: 'Final files.', artifacts: [
+    ...Array.from({ length: 4 }, (_, i) => ({ name: 'report.md', path: 'report.md', ext: '.md', snapshot_status: 'saved', snapshot_index: i, url: `/api/files/alpha/saved/answer-old/${i}` })),
+    { name: 'report.md', path: 'other/report.md', ext: '.md', snapshot_status: 'saved', url: '/api/files/alpha/saved/answer-old/4' },
+    { name: 'removed.txt', path: 'removed.txt', ext: '.txt', snapshot_status: 'unavailable' },
+  ] })
+  await page.getByText('Approval chat', { exact: true }).click()
+  await page.getByText('Final files.', { exact: true }).waitFor()
+  assert.equal(await page.getByTitle('Open in canvas', { exact: true }).count(), 2)
+  assert.equal(await page.getByText('Saved with this answer', { exact: true }).count(), 2)
+  assert.equal(await page.getByRole('button', { name: 'removed.txt', exact: true }).isDisabled(), true)
+  await page.getByText('Unavailable when this answer was saved · no saved copy', { exact: true }).waitFor()
+  await page.getByTitle('Open in canvas', { exact: true }).first().click()
+  await page.getByRole('heading', { name: 'Original retained report', exact: true }).waitFor()
+  assert.ok(state.savedFileReads.includes('/api/files/alpha/saved/answer-old/3'))
+  await page.getByTitle('Close', { exact: true }).click()
+  await page.reload(); await page.getByText('Approval chat', { exact: true }).click()
+  await page.getByText('Final files.', { exact: true }).waitFor()
+  assert.equal(await page.getByTitle('Open in canvas', { exact: true }).count(), 2)
+  // Existing DB metadata and indices stay intact; rendering alone fixes old answers.
+  assert.equal(state.messages.at(-1).artifacts.length, 6)
+  const paths = await page.evaluate(async () => {
+    const { useStore } = await import('/src/store/useStore.js')
+    useStore.setState({ streaming: true, canvasEditing: true, live: { content: 'Live files', sources: [], toolCalls: [], artifacts: [], thinking: '' } })
+    for (const path of ['game.html', 'game.html', 'other/game.html', 'game.html']) {
+      useStore.getState()._onEvent({ type: 'artifact', name: path, path, ext: '.html' })
+    }
+    return useStore.getState().live.artifacts.map(a => a.path)
+  })
+  assert.deepEqual(paths, ['game.html', 'other/game.html'])
+})
 
 test('saved artifact canvas and download use answer bytes', async t => {
   const { page, state } = await fixture(t)

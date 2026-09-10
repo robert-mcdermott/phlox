@@ -6,6 +6,7 @@ import { runRequest, subscribeRun } from '../api/runs'
 import { setToken, authVersion } from '../api/token'
 import { applyTheme, initialTheme } from '../theme/presets'
 import { canvasKind } from '../utils/canvas'
+import { uniqueArtifacts } from '../utils/artifacts'
 
 // Shape of the in-progress assistant turn assembled from SSE events.
 function emptyLive() {
@@ -574,7 +575,7 @@ export const useStore = create((set, get) => ({
           live.status = ''
           break
         case 'artifact': {
-          live.artifacts = [...live.artifacts, { name: ev.name, path: ev.path, ext: ev.ext, url: ev.url }]
+          live.artifacts = uniqueArtifacts([...live.artifacts, { name: ev.name, path: ev.path, ext: ev.ext, url: ev.url }])
           // Auto-open the canvas the first time a viewable (html/markdown/text) artifact
           // shows up; if it's already open on this same file, bump nonce to re-fetch the
           // latest content (e.g. the agent iterated on the same file).

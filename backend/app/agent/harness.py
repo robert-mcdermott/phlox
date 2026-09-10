@@ -162,8 +162,17 @@ class AgentSession:
 
     def _research_event(self):
         from app.model_calls import turn_usage
+        self._refresh_research_budget()
         return events.sse("research", **self.research.progress(
             turn_usage(self.accounting), len(self._source_refs())))
+
+    def _refresh_research_budget(self):
+        self.research.state.update(
+            rounds_used=self.rounds_used,
+            effective_rounds=min(int(self.params.get('max_tool_rounds', 12)), self.research.limits['rounds']),
+            model_round_limit=int(self.params.get('max_tool_rounds', 12)),
+            source_capacity=sources.remaining_capacity(self.db, self.conversation.id, self.accounting.turn_id),
+        )
 
     def _has_research_evidence(self):
         from app.models import Source, SourceUse
@@ -260,6 +269,7 @@ class AgentSession:
                 return
             if self.research:
                 from app.model_calls import turn_usage
+                self._refresh_research_budget()
                 instruction = self.research.before_round(self.rounds_used, research_rounds,
                                                         turn_usage(self.accounting)['total'])
                 # Transient stage instructions are not persisted as user messages. End with
@@ -638,6 +648,7 @@ class AgentSession:
             if self._cancelled():
                 break
             if self.research:
+                self._refresh_research_budget()
                 denied = self.research.admit(call.name, call.arguments)
                 if denied:
                     yield from self._emit_result(call, ToolResult(content=denied, is_error=True),
@@ -801,9 +812,10 @@ class AgentSession:
         messages: list[dict],
     ) -> Iterator[str]:
         self._observe_child_tool("child_tool_result", call, content=result.content, is_error=result.is_error)
+        from app.artifact_snapshots import unique_artifacts
         for art in result.artifacts:
             url = f"/api/files/{self.conversation.id}?path={art['path']}"
-            all_artifacts.append({**art, "url": url})
+            all_artifacts[:] = unique_artifacts([*all_artifacts, {**art, "url": url}])
             yield events.artifact(art["name"], art["path"], art.get("ext", ""), url)
 
         yield events.tool_result(call.id, call.name, result.content, result.is_error, result.artifacts)
@@ -924,6 +936,7 @@ class AgentSession:
                               + '\n\nNo complete conclusion was reached. Continue in Chat to reuse the saved work.')
             self.research.state['phase'] = self.outcome
             self.research.state['finished_at'] = time.time()
+            self._refresh_research_budget()
             usage['research'] = self.research.progress(dict(usage), len(self._source_refs()))
             yield self._research_event()
 

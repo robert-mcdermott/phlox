@@ -455,7 +455,7 @@ version expiry remain outside this wave.
 
 ## Wave 14 — General reliability and task completion
 
-**Status:** in progress; first and second increments implemented 2026-09-09. **Scope:** application/session/run
+**Status:** in progress; first through third increments implemented 2026-09-09. **Scope:** application/session/run
 reliability across Chat and Research, M2.3 evidence quality and completion budgets, with a
 bounded bridge to M3 deliverables. Schedule ahead of output inspection and portable exports.
 The delivery record below distinguishes implemented changes from the remaining plan.
@@ -513,7 +513,7 @@ not tested; both launcher command selections are checked.
   origins, input fitting, stage and finish reason to each call. **Context record → Model calls**
   exposes these details without copying prompts or tool bodies. Provider-reported reasoning
   counts remain a subset of output, never an additional charge. No migration is required.
-- **Boundaries:** Research gathering presets are unchanged. Recovery may exceed their planned
+- **Boundaries at this increment:** Research gathering presets were unchanged. Recovery may exceed their planned
   pass count but never the effective generic round limit. Output guardrail rules disable
   automatic continuation because separately checked streams must not reconstruct sensitive
   text at their boundary; separate Chat turns retain the incomplete answer and evidence.
@@ -529,12 +529,60 @@ in old chats, stricter approval resumes, exhausted reads and reasoning accountin
 browser regression inspects saved outcomes and effective call limits. No live provider or
 long-form research evaluation was performed.
 
-**Still pending:** remaining W14.1/W14.5 calibration and recovery UX, W14.2–W14.4 and
+**Third increment — configurable Research allowances:**
+
+- **W14.5 further delivery:** Brief/Standard/Thorough presets now live behind a validated
+  admin configuration endpoint and form. The composer fetches current numerical presets,
+  identifies a lower Model setting, and explains gathering versus reporting allowances.
+  Progress/replay includes actual passes used, planned passes, the generic pass ceiling,
+  time/token thresholds, remaining source capacity and stricter policy applied on resume.
+- **Defaults:** Brief stays 5 passes/3 searches/4 reads/2 minutes/20,000 reported tokens.
+  Standard becomes 12/8/16/15 minutes/250,000; Thorough becomes
+  24/24/48/30 minutes/1,000,000. These enlarge gathering opportunity, not per-call
+  output/context, provider capacity or monthly spend policy. Lower effective Model rounds
+  still win; report writing/recovery can add time and usage. Search charges remain separate.
+- **Continuity:** new execution snapshots presets; active runs retain them. Approval resumes
+  take the minimum of saved/current limits without resetting attempts, elapsed time or usage.
+  Legacy approvals retain old preset ceilings. Regeneration starts a new attempt under
+  current policy. No schema change, automatic action replay or mode-default change.
+- **Source limits:** before each gathering operation, the harness checks room for new
+  records under the existing 64-per-turn/512-per-conversation ceilings, including failure
+  records. Full storage switches to synthesis; it does not cause additional uncapturable
+  fetches, including later reads in the same batch. This is conservative about possible reuse.
+- **Scripted comparison:** a synthetic 2020–2029 task with one unavailable year retained
+  only three years under the old Thorough preset (108,000 reported tokens), versus all nine
+  available years and an explicit gap with the new preset (234,000 reported tokens).
+  No page was fetched twice within either attempt, citations reference retained values,
+  and profile/output caps remain unchanged. These are controlled fixture measurements,
+  not live-model quality, latency or cost benchmarks. More context-efficient evidence
+  handling and model-aware stage allowances still need implementation and evaluation.
+
+**Third-increment verification:** backend lint and full suite (580 passed, 24 skipped),
+frontend production build and all 43 Chromium browser regressions. New coverage includes
+admin-only writes/public numerical reads, invalid-policy rejection, legacy/saved approval
+ceilings, queued versus in-flight policy changes, source capacity within a batch, lower
+generic round limits, the synthetic annual-data comparison, live composer updates and
+mobile budget layout. Provider usage gaps remain explicitly unknown. No live provider or
+real research session was executed, and the broader extraction/working-context work remains.
+
+**Artifact-card follow-up:** repeated writes/edits emitted multiple descriptors for the
+same path, which the answer displayed as separate files and snapshot capture copied again.
+Live aggregation, final snapshots and historical answer rendering now keep one descriptor
+per full path; individual tool steps remain intact. Snapshot sizes reflect the captured
+bytes and repeated entries no longer consume the answer's storage allowance repeatedly or
+create identical agent versions. Existing saved records/URLs are preserved. Files unavailable
+at final capture are clearly marked with preview/download disabled, including temporary
+files removed during a task. Regression coverage checks repeated writes, snapshot quotas,
+same-name files in different folders, old links, reload and live updates.
+Verified with backend lint, 582 backend tests (24 skipped), all 44 Chromium regressions,
+and the production frontend build.
+
+**Still pending:** remaining W14.1/W14.5 stage allowances, live calibration and recovery UX, W14.2–W14.4 and
 W14.6–W14.8 (extraction, working context and analysis/deliverables), plus full process-level signal/draining/deadline work in
 W14.11. A stalled tool or open event stream can still delay graceful shutdown. No automatic
 replay of uncertain actions, session refresh protocol, durable return hint or distributed
-worker has been introduced. The next increment should evaluate larger admin-configurable
-Research allowances alongside retained working context and evidence extraction.
+worker has been introduced. The next increment should improve retained working context
+and relevant evidence extraction before extending the research-to-analysis workflow.
 
 **Motivation:** a reviewed long-running research task exposed an empty synthesis saved as
 completed, exhausted search/read allowances, repeated context trimming, and useful financial
@@ -638,10 +686,10 @@ together rather than treating every cutoff as a request for a larger context win
   tool side effects. Bound continuation attempts, detect lack of progress and preserve
   citations without duplicate prose. If recovery requires a changed hard limit, offer a
   specific resume action instead of only telling the user to restart the request.
-- Test a candidate Thorough preset of 24 model passes, 24 searches, 48 fetch attempts and
-  larger token/time allowances against the existing preset. These are evaluation candidates,
-  not promised defaults or sufficient fixes by themselves. Account for the existing
-  64-source-per-turn ceiling and bounded event storage without relaxing transport safeguards.
+- The third increment delivers admin-configurable Thorough defaults of 24 model passes,
+  24 searches and 48 fetch attempts with larger token/time allowances after a controlled
+  fixture comparison. Further live-model calibration remains necessary. These limits are
+  not sufficient fixes by themselves. Preserve source/event storage and transport safeguards.
 - Measure completed useful reports, truncation/restart rate, evidence coverage, latency,
   repeated-input tokens and total reported usage/cost. A shorter run that produces no usable
   answer is not a budget-efficiency improvement.

@@ -1,7 +1,31 @@
+import { useEffect, useState } from 'react'
+import { api } from '../../api/client'
+import { useStore } from '../../store/useStore'
+
 const input = 'rounded-lg border-border bg-surface-2 py-1 text-xs text-content'
-const depths = { brief: 'Up to 3 searches, 4 page reads, 2 minutes of gathering.', standard: 'Up to 6 searches, 8 page reads, 5 minutes of gathering.', thorough: 'Up to 10 searches, 16 page reads, 10 minutes of gathering.' }
 
 export default function ResearchControls({ value, onChange, documents, selected, onSelect, webAllowed, docsAllowed, runsEnabled }) {
+  const [config, setConfig] = useState(null)
+  const [error, setError] = useState(false)
+  const roundLimit = useStore(s => s.settings?.max_tool_rounds)
+  useEffect(() => {
+    let active = true, revision = 0
+    const load = () => {
+      const request = ++revision
+      api.getResearchConfig().then(data => {
+        if (active && request === revision) { setConfig(data); setError(false) }
+      }).catch(() => { if (active && request === revision) { setConfig(null); setError(true) } })
+    }
+    load()
+    window.addEventListener('focus', load)
+    window.addEventListener('phlox:research-settings-changed', load)
+    return () => {
+      active = false
+      window.removeEventListener('focus', load)
+      window.removeEventListener('phlox:research-settings-changed', load)
+    }
+  }, [])
+  const limits = config?.presets?.[value.depth]
   return <div className="mb-3 rounded-lg border border-border bg-surface-2 p-3 text-xs text-content">
     <div className="flex flex-wrap gap-3">
       <label className="flex items-center gap-2">Sources
@@ -17,7 +41,11 @@ export default function ResearchControls({ value, onChange, documents, selected,
         </select>
       </label>
     </div>
-    <p className="mt-2 text-muted">{depths[value.depth]} Report writing follows. Stop ends further calls.</p>
+    {limits ? <div className="mt-2 text-muted" aria-label="Research budget">
+      <p>Up to {limits.searches} searches{value.scope !== 'documents' ? `, ${limits.reads} page reads` : ''} · {limits.seconds / 60} minutes · {limits.tokens.toLocaleString()} reported tokens before gathering stops.</p>
+      <p>{limits.rounds} planned model passes, including the report.{roundLimit < limits.rounds ? ` Your Model setting is ${roundLimit} passes; raise Max tool rounds to use the full preset.` : ''} Assistant and conversation overrides also apply.</p>
+      <p>Report writing and continuation can add time and tokens. Source storage holds up to {config.source_limit} records per turn; a page may use several. Stop ends further calls.</p>
+    </div> : <p role="status" className="mt-2 text-muted">{error ? 'Research allowances could not be loaded. The server will apply its current limits.' : 'Loading research allowances…'}</p>}
     {value.scope !== 'web' && <fieldset className="mt-3"><legend className="mb-1 font-medium">Choose documents</legend>
       <div className="max-h-32 overflow-y-auto space-y-1">
         {documents.filter(d => d.status === 'ready').map(doc => <label key={doc.id} className="flex items-center gap-2">

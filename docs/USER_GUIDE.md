@@ -277,6 +277,7 @@ admin panel for sections already managed there. Do not erase your database to re
 | `auth` / Entra settings | File; JWT secret via environment for production | Restart required |
 | `database.url`, `vector_store`, `embeddings` | File; `DATABASE_URL` can override database URL | Restart; index maintenance may be needed |
 | Web search engine | Settings → Configuration → Web search; DDG default, Serper/SearXNG optional | Live |
+| Research presets | Settings → Configuration → Research allowances | New execution snapshots limits; approval resumes may apply stricter limits |
 | `web_fetch` network policy | File | Restart for file changes |
 | `observability.request_logging`, `observability.otel` | File | Restart required |
 | `default_profile` | File | Initial/default selection; does not reset saved selections |
@@ -304,8 +305,13 @@ the partial answer marked incomplete so text cannot bypass checks across joined 
 
 Saved answers show whether completion recovered or remains incomplete. Open **Context record
 → Model calls** for effective output/context/round limits, their setting origins, trimming
-and provider finish reasons. Research's separate gathering presets are unchanged; increasing
-Max tool rounds does not enlarge search/read/time/token allowances. If a limit still prevents
+and provider finish reasons. Research's separate gathering presets are admin-editable under
+**Configuration → Research allowances**; increasing Max tool rounds does not enlarge
+search/read/time/token allowances. The composer shows the current presets and flags a lower
+Model setting. Thorough defaults to 24 planned passes, 24 searches, 48 page reads and
+30 minutes/1,000,000 reported tokens before gathering stops; a lower effective Model limit
+still wins. Report writing can add usage, and source storage bounds still apply. See the
+[Research guide](RESEARCH.md#depth-and-limits) for all presets and configuration ranges. If a limit still prevents
 completion, review the saved work and its diagnostic before changing that limit and continuing
 in Chat. A new Research request starts from its own question and selected sources.
 

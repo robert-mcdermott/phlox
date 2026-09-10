@@ -23,7 +23,9 @@ initial session/restart diagnostics: source reloads preserve the launcher signin
 temporary outages retain login, and same-owner reauthentication reopens saved work.
 The second increment adds bounded tool-free completion recovery, truthful incomplete
 outcomes, current generation settings for existing chats, and inspectable call limits/finish
-reasons. Larger research presets, evidence extraction and analysis improvements remain
+reasons. The third increment adds larger, admin-configurable Research presets, per-run
+snapshots with stricter approval resumes, visible gathering/pass limits and source-capacity
+admission checks. Working context, evidence extraction and analysis improvements remain
 planned; see the wave's
 delivery record for verification and remaining restart boundaries.
 The wave log records verification and remaining limits. M3 has an initial delivery; M4–M5 remain proposed. Existing features and
@@ -305,9 +307,10 @@ scope must be a server-enforced constraint, including child tools and fallbacks.
   handling; semantic claim verification and live-model quality targets remain open.
   End with a useful partial result when the budget expires.
 
-**Wave 14 in progress:** initial truthful synthesis completion/recovery and effective-setting
-diagnostics now ship; the remaining budget work audits
-output/reasoning limits alongside context, rounds and research allowances. Give substantial
+**Wave 14 in progress:** initial truthful synthesis completion/recovery, effective-setting
+diagnostics and larger admin-configurable presets now ship, including saved-limit continuity
+and source-capacity checks. Remaining budget work calibrates stage-specific output/reasoning
+allowances alongside working context. Give substantial
 tasks sufficient model-aware completion room, with bounded adaptive extensions and synthesis
 continuation that preserves evidence rather than restarting the investigation. Distinguish
 soft planning targets from explicit user/admin hard ceilings; honor Stop and actual provider

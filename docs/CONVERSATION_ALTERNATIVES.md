@@ -50,10 +50,16 @@ Newly completed answer artifacts have a bounded saved copy when the file is avai
   bytes, even if another attempt later overwrites that path in the workspace.
 - Snapshots capture files as they exist when the answer is finalized, including partial
   answers finalized after Stop. They do not preserve every intermediate tool write.
-- The limits are 32 MiB per file and 64 MiB per answer. Files over the limit, missing files,
-  and older artifacts show **Current workspace file · no saved copy**. Their links use the
+- Repeated tool updates to the same full file path produce one answer card and one final
+  snapshot/version. Individual writes remain in the tool history. Older answers with
+  duplicate entries also display one card per path without rewriting their saved records.
+- The limits are 32 MiB per file and 64 MiB per answer. Files over the limit
+  and older artifacts without snapshot metadata show **Current workspace file · no saved copy**. Their links use the
   current workspace and can fail if the file was removed. Historical bytes cannot be
   reconstructed from an old link alone.
+- Files missing or unreadable during snapshot capture show **Unavailable when this answer
+  was saved · no saved copy**, with preview/download disabled. Temporary files deleted by
+  the agent can appear this way; their existence earlier does not mean they remain in the workspace.
 - Workspace Files continues to show current files. A saved answer copy is separate from
   an editable workspace file. [Editable artifacts](ARTIFACTS.md) adds version history,
   selected-passage revision, comparison, and explicit workspace publication for text files.

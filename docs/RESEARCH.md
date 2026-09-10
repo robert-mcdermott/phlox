@@ -34,13 +34,20 @@ research workflow.
 
 ## Depth and limits
 
+These are the built-in defaults. Administrators can change each preset under
+**Settings → Configuration → Research allowances** without editing a file or restarting.
+The composer reads the current deployment presets; saved reports retain the limits used
+for that attempt. Larger allowances permit more work and may increase model/search costs.
+
 | Preset | Planned model passes | Search calls (web + documents) | Page fetch attempts | Gathering time | Reported-token threshold |
 |---|---:|---:|---:|---:|---:|
 | Brief | 5 | 3 | 4 | 2 minutes | 20,000 |
-| Standard | 8 | 6 | 8 | 5 minutes | 40,000 |
-| Thorough | 12 | 10 | 16 | 10 minutes | 80,000 |
+| Standard | 12 | 8 | 16 | 15 minutes | 250,000 |
+| Thorough | 24 | 24 | 48 | 30 minutes | 1,000,000 |
 
-A lower user round limit wins. The pass allowance includes planning and a reserved final
+A lower effective Model round limit wins. For example, Thorough still allows only 12
+passes when **Max tool rounds** resolves to 12; choose at least 24 to use its full planned
+allowance. Assistant and explicit conversation overrides also apply. The pass allowance includes planning and a reserved final
 synthesis pass. Duplicate tool requests are not repeated; failures consume attempts too.
 If synthesis is empty, truncated or ends without a completion signal, up to two tool-free
 recovery calls may continue it using existing evidence. They can exceed the preset's
@@ -54,6 +61,26 @@ are never executed. Search and page fetches also have their own transport limits
 Exhausted search/read tools are removed from the next advertised tool list, and gathering
 instructions report remaining allowances. Reported usage from the current model call is
 checked before admitting its requested reads, not only before the next model call.
+Source storage still permits at most **64 records per turn and 512 per conversation**.
+One long page can consume several records; failures also consume records. Once room for
+new records is exhausted, Research stops gathering and writes from retained evidence,
+including when a batch requests more reads than can be captured. This conservative check
+does not attempt to predict whether another page might reuse an existing record.
+
+Presets are saved as the `research` database configuration section. The admin form accepts
+3–100 planned passes, 1–100 searches, 1–100 page reads, 30–7,200 gathering seconds, and
+1,000–5,000,000 reported tokens. Ordinary users can read numerical presets through
+`GET /api/settings/research`; only administrators can replace them through
+`PUT /api/admin/config/research` (all three complete presets are required).
+These ranges bound configuration; they do not increase source, transport or model limits.
+
+New execution snapshots the effective preset. An in-flight run keeps that snapshot; a queued
+durable run resolves it when execution begins. Approval resumes apply the lower of each
+saved/current admin limit without resetting elapsed time, attempts or reported usage.
+Approvals created before this update retain the older preset ceilings. If a lowered planned
+pass allowance is already consumed, no pending gathering tools run and the harness attempts
+the final report within the remaining generic Model allowance. Regeneration is a new attempt
+using current settings, not a continuation of a saved budget.
 
 Time and reported-token thresholds are checked between operations. An in-flight provider
 request can take longer, and final synthesis/recovery add time/tokens. Unknown provider usage cannot
@@ -61,8 +88,10 @@ be treated as zero. These thresholds and the displayed model costs **are not a g
 invoice ceiling**. Search API credits are separate from model accounting. Provider retries
 and fallback behavior retain the [model-call accounting limits](MODEL_CALLS.md).
 
-The progress panel shows searches, page reads, captured source records, elapsed time, and
-available model usage. It exposes stages and a short plan, not private model reasoning.
+The progress panel shows searches, page reads, captured source records, remaining source
+capacity, model passes used, effective planned passes, the total Model pass ceiling,
+gathering thresholds, elapsed time, and available model usage. It identifies stricter limits
+applied on resume. It exposes stages and a short plan, not private model reasoning.
 Reports should distinguish evidence, inference, contradictory sources, and unanswered
 questions. A valid citation is not proof of semantic claim support; verify important claims.
 Search snippets alone are not fetched evidence. Reports with no source records are marked
@@ -81,8 +110,9 @@ continuation notice after successful recovery. **Context record → Model calls*
 actual per-call limits, trimming and finish reasons. Increasing Settings now applies to the
 next turn in existing chats too, subject to assistant/explicit conversation overrides.
 Continue in normal Chat to reuse saved conversation work; a new Research turn still starts
-from its current question and selected sources. Preset calibration and configurable larger
-investigation budgets remain planned; the preset numbers above have not been increased.
+from its current question and selected sources. Per-call output/context limits and provider
+capacity are unchanged by a larger preset. More efficient retention of working context,
+stage-specific output allowances and live-model quality calibration remain planned.
 
 With [reconnectable runs](RUNS.md) enabled, research events and approval state survive chat
 switches and refreshes. Without runs, keep the chat open: its existing request-bound
@@ -103,6 +133,23 @@ execution. In Research mode, explicitly selected `deep-research` guidance may ac
 research, but the server's scope, stages, stable citation labels, and budgets take precedence.
 Other skills are not loaded in Research mode. Fresh installations receive clarified built-in
 instructions; existing skill records are preserved, including user edits.
+
+## Verify budget configuration
+
+1. Open **Settings → Configuration → Research allowances** as an administrator and note
+   the current values. Temporarily set Brief's page reads to 1 and save.
+2. Select Research → Brief in the composer. Confirm it shows the saved value. Ask for a
+   comparison across several specified public pages; at most one page fetch should execute,
+   and the report should identify any evidence gaps. Source checks still apply to the page.
+3. Inspect the saved progress and **Context record → Model calls**. Preset allowances and
+   per-call output/context limits are separate. Stop a second attempt during gathering and
+   confirm no report or additional tool calls start afterward.
+4. Restore the prior admin values. Select Thorough and check the composer warning if your
+   Model round setting is below 24. Raise that setting only if you want the larger allowance;
+   assistant and conversation overrides may still affect the resolved limit.
+5. With reconnectable runs enabled, reload during gathering and confirm the same counters
+   and snapshotted limits return. Saving larger presets must not enlarge an already active
+   run or approval; stricter settings take effect when an approval resumes.
 
 ## Search engine administration
 

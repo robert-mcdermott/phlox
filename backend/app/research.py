@@ -6,11 +6,7 @@ import time
 from copy import deepcopy
 from urllib.parse import urlsplit
 
-PRESETS = {
-    'brief': {'rounds': 5, 'searches': 3, 'reads': 4, 'seconds': 120, 'tokens': 20000},
-    'standard': {'rounds': 8, 'searches': 6, 'reads': 8, 'seconds': 300, 'tokens': 40000},
-    'thorough': {'rounds': 12, 'searches': 10, 'reads': 16, 'seconds': 600, 'tokens': 80000},
-}
+from app.research_config import LEGACY_PRESETS
 READ_TOOLS = {'web_search', 'web_fetch', 'search_documents'}
 INSTRUCTIONS = """
 Research mode was explicitly selected. Research only the current question, using the
@@ -44,15 +40,25 @@ def normalize_domains(values):
 
 class Research:
     def __init__(self, options=None, document_ids=None, state=None):
+        from app.config import get_research_config
+
         self.state = deepcopy(state) if state else {
             'options': options, 'document_ids': list(document_ids or []), 'phase': 'plan',
             'started_at': time.time(), 'searches': 0, 'reads': 0, 'plan': '',
             'seen': [], 'reason': '',
         }
+        depth = self.state['options']['depth']
+        current = get_research_config()[depth]
+        # New turns snapshot policy. Resume cannot enlarge a saved allowance; legacy
+        # approvals retain their original built-in ceiling even after this upgrade.
+        saved = self.state.get('limits', LEGACY_PRESETS[depth]) if state else current
+        self.state['limits'] = {key: min(saved[key], current[key]) for key in current}
+        self.state['limits_restricted'] = self.state.get('limits_restricted', False) or any(
+            self.state['limits'][key] < saved[key] for key in current)
 
     @property
     def limits(self):
-        return PRESETS[self.state['options']['depth']]
+        return self.state['limits']
 
     @property
     def phase(self):
@@ -79,6 +85,8 @@ class Research:
 
     def exhausted(self, tokens=None):
         tokens = self.state.get('reported_tokens', 0) if tokens is None else tokens
+        if self.state.get('source_capacity', 1) <= 0:
+            return 'Source storage allowance reached; reporting the retained evidence. No further searches or reads.'
         if time.time() - self.state['started_at'] >= self.limits['seconds']:
             return 'Research time budget reached; reporting the available evidence.'
         if tokens >= self.limits['tokens']:
@@ -87,6 +95,8 @@ class Research:
 
     def before_round(self, rounds_used, max_rounds, tokens):
         self.state['reported_tokens'] = tokens
+        self.state['rounds_used'] = rounds_used
+        self.state['effective_rounds'] = max_rounds
         reason = self.exhausted(tokens)
         if self.phase == 'gather' and not self.available_tools():
             reason = reason or 'Research search/read allowances exhausted; reporting the available evidence.'
@@ -101,6 +111,9 @@ class Research:
                 f"Remaining: {max(0, self.limits['searches'] - self.state['searches'])} searches, "
                 f"{max(0, self.limits['reads'] - self.state['reads'])} page reads, "
                 f'{max(0, max_rounds - rounds_used - 1)} gathering passes before reserved synthesis. '
+                f"{max(0, self.limits['tokens'] - tokens):,} reported tokens and "
+                f"{max(0, int(self.limits['seconds'] - (time.time() - self.state['started_at'])))} seconds "
+                'until gathering stops; report writing follows. '
                 'When ready, give a short handoff for final synthesis.')
 
     def available_tools(self):
@@ -119,6 +132,8 @@ class Research:
     def admit(self, name, arguments):
         if self.phase != 'gather' or name not in self.allowed_tools():
             return 'Tool is outside this research stage or source scope. Not executed.'
+        if self.state.get('rounds_used', 0) >= self.state.get('effective_rounds', self.limits['rounds']):
+            return 'Research pass allowance reached. Use the retained evidence for the report.'
         if reason := self.exhausted():
             self.state['reason'] = reason
             return reason
@@ -140,4 +155,9 @@ class Research:
                 'scope': self.state['options']['scope'], 'depth': self.state['options']['depth'],
                 'finished_at': self.state.get('finished_at'),
                 'recovery_calls': self.state.get('recovery_calls', 0),
+                'rounds_used': self.state.get('rounds_used', 0),
+                'effective_rounds': self.state.get('effective_rounds', self.limits['rounds']),
+                'model_round_limit': self.state.get('model_round_limit'),
+                'limits_restricted': self.state.get('limits_restricted', False),
+                'source_capacity': self.state.get('source_capacity'),
                 'limits': self.limits, 'source_count': source_count, 'usage': usage or {}}

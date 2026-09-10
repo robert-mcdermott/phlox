@@ -116,6 +116,13 @@ Automatic continuation is disabled when output guardrail rules are active: joini
 separately checked streams could reconstruct sensitive text at their boundary. The partial
 answer remains explicitly incomplete and can be continued in a separate Chat turn.
 
+Research's admin-configurable gathering allowances are separate from these per-call
+settings. Larger Standard/Thorough defaults provide more cumulative room without enlarging
+the output reservation or profile context window. Effective Model rounds remain a ceiling,
+and synthesis/recovery still use normal context fitting and spend-policy checks. Research
+progress records the snapshotted preset and effective pass limits; approval resumes can
+only reduce saved allowances. See [Research limits](RESEARCH.md#depth-and-limits).
+
 For new calls, `UsageLedger.usage_details.call` stores metadata from the model-call seam:
 effective context/output/round limits, configured profile context cap, original/fitted input
 estimates, trimming, stage, setting origin and provider finish reason. No prompt, tool body

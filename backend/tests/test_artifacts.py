@@ -33,6 +33,46 @@ def save(client, url, row, content):
         'base_version_id': row['version']['id'], 'content': content})
 
 
+def test_repeated_file_updates_create_one_final_snapshot_and_version(client, db, setup):
+    from app.providers.base import ToolCall
+    _, _, _, provider = setup
+    provider.calls = [[ToolCall(str(i), 'write_file', {'path': 'game.html', 'content': f'Game revision {i}'})]
+                      for i in range(3)]
+    cid, events = send(client, auto_approve=True)
+    message = db.get(Message, client.get(f'/api/conversations/{cid}').json()['active_leaf_id'])
+    assert len([event for event in events if event['type'] == 'artifact']) == 3  # Preview refreshes remain live.
+    assert len(message.artifacts) == 1 and len(message.tool_calls) == 3
+    item = message.artifacts[0]
+    assert client.get(item['url']).content == b'Game revision 2'
+    assert all(step['artifacts'][0]['url'] == item['url'] for step in message.tool_calls)
+    assert db.query(ArtifactVersion).filter_by(source_message_id=message.id).count() == 1
+
+
+def test_legacy_pending_duplicates_do_not_consume_snapshot_budget_twice(client, db, setup, monkeypatch):
+    from app.config import ATTACHMENTS_DIR
+    cid, _ = send(client)
+    message = db.get(Message, client.get(f'/api/conversations/{cid}').json()['active_leaf_id'])
+    root = workspace_dir(cid)
+    (root / 'one').mkdir()
+    (root / 'two').mkdir()
+    for name in ['one/report.md', 'two/report.md']:
+        (root / name).write_text('final')
+    message.artifacts = [
+        {'path': 'one/report.md', 'name': 'report.md', 'ext': '.md', 'size': 1},
+        {'path': 'one/report.md', 'name': 'report.md', 'ext': '.md', 'size': 2},
+        {'path': 'two/report.md', 'name': 'report.md', 'ext': '.md'},
+        {'path': 'removed.txt', 'name': 'removed.txt', 'ext': '.txt'},
+    ]
+    monkeypatch.setattr(artifact_snapshots, 'MAX_TURN', 10)
+    artifact_snapshots.capture(message)
+    db.commit()
+    assert len(message.artifacts) == 3
+    assert [a['snapshot_status'] for a in message.artifacts] == ['saved', 'saved', 'unavailable']
+    assert [a['size'] for a in message.artifacts[:2]] == [5, 5]
+    assert len(list((ATTACHMENTS_DIR / message.id).iterdir())) == 2
+    assert db.query(ArtifactVersion).filter_by(source_message_id=message.id).count() == 2
+
+
 def publish(client, url, row, sha=None):
     return client.post(url + '/publish', json={'expected_head': row['head_version_id'],
         'version_id': row['version']['id'], 'expected_workspace_sha256': sha or row['workspace']['sha256']})

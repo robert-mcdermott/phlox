@@ -4,7 +4,7 @@ import { api } from '../../api/client'
 
 const fields = [
   ['rounds', 'Model passes', 3, 100], ['searches', 'Searches', 1, 100],
-  ['reads', 'Page reads', 1, 100], ['seconds', 'Gathering seconds', 30, 7200],
+  ['reads', 'Source reads', 1, 100], ['seconds', 'Gathering seconds', 30, 7200],
   ['tokens', 'Reported token threshold', 1000, 5000000],
 ]
 const depths = { brief: 'Brief', standard: 'Standard', thorough: 'Thorough' }

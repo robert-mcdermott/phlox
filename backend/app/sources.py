@@ -114,7 +114,8 @@ def remaining_capacity(db, conversation_id, turn_id):
 
 
 def capture_web(db, *, conversation_id, user_id, turn_id, url, title, text='', content_hash=None,
-                truncated=False, status='fetched', reason=None, http_status=None, cancel=None):
+                truncated=False, status='fetched', reason=None, http_status=None, cancel=None,
+                start_char=0, total_chars=None):
     """Register bounded fetched passages (or a failure record), never discovery snippets.
 
     Repeated page/offset/content reuses labels; revised content receives new identities.
@@ -132,8 +133,9 @@ def capture_web(db, *, conversation_id, user_id, turn_id, url, title, text='', c
         digest = content_hash or hashlib.sha256(text.encode()).hexdigest()
         blocks = []
         now = datetime.now(timezone.utc)
-        for start in range(0, max(1, len(text)), MAX_EXCERPT_CHARS):
-            excerpt = text[start:start + MAX_EXCERPT_CHARS]
+        for offset in range(0, max(1, len(text)), MAX_EXCERPT_CHARS):
+            start = start_char + offset
+            excerpt = text[offset:offset + MAX_EXCERPT_CHARS]
             evidence = ['web', url, digest, start, excerpt, status, http_status]
             fingerprint = hashlib.sha256(json.dumps(evidence).encode()).hexdigest()
             row = db.query(Source).filter_by(conversation_id=conv.id, fingerprint=fingerprint).first()
@@ -156,6 +158,8 @@ def capture_web(db, *, conversation_id, user_id, turn_id, url, title, text='', c
                 row.location = {'status': status, 'reason': (reason or '')[:500], 'http_status': http_status,
                                 'start': start, 'end': start + len(excerpt), 'truncated': truncated,
                                 'fetched_at': now.isoformat()}
+                if total_chars is not None:
+                    row.location = {**row.location, 'total_chars': total_chars}
             else:
                 row.location = {**row.location, 'fetched_at': now.isoformat()}
             row.expires_at = now + timedelta(days=RETENTION_DAYS)
@@ -172,6 +176,38 @@ def capture_web(db, *, conversation_id, user_id, turn_id, url, title, text='', c
             blocks.append('[Page extraction shortened; additional page text was not retained or supplied.]')
         db.commit()
         return blocks
+
+
+def read_web(db, *, conversation_id, user_id, turn_id, label, cancel=None, research=None):
+    """Reread an owned retained passage without fetching or extending its retention."""
+    if not isinstance(label, str) or not re.fullmatch(r'S[1-9][0-9]{0,5}', label):
+        return None
+    with LOCK:
+        conv = db.get(Conversation, conversation_id, populate_existing=True)
+        if not conv or conv.user_id != user_id or (cancel and cancel.is_set()):
+            return None
+        row = db.query(Source).filter_by(conversation_id=conv.id, number=int(label[1:]), kind='web').populate_existing().first()
+        if not row:
+            return None
+        use = db.get(SourceUse, (turn_id, row.id))
+        # Research starts with a fresh evidence scope; do not import another attempt's
+        # evidence by guessing its labels. Re-check domains after approval/resume.
+        if research and (not use or research.state['options']['scope'] == 'documents'
+                         or not row.url or not research.url_allowed(row.url)):
+            return None
+        details = inspect_source(db, conv, row.id)
+        if not details['available'] or (cancel and cancel.is_set()):
+            return None
+        if not use:
+            if db.query(SourceUse).filter_by(turn_id=turn_id).count() >= MAX_TURN_SOURCES:
+                return None
+            db.add(SourceUse(turn_id=turn_id, source_id=row.id, query=''))
+        location = row.location
+        block = (f'[{label}] {row.title}\nURL: {row.url}\n'
+                 f"Retained capture (not re-fetched): {location['fetched_at']}\n"
+                 f"Characters {location['start'] + 1}–{location['end']} of extracted page text:\n{row.excerpt}")
+        db.commit()
+        return block
 
 
 def catalog(db, turn_id, conversation_id):

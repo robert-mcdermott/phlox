@@ -308,7 +308,7 @@ Saved answers show whether completion recovered or remains incomplete. Open **Co
 and provider finish reasons. Research's separate gathering presets are admin-editable under
 **Configuration → Research allowances**; increasing Max tool rounds does not enlarge
 search/read/time/token allowances. The composer shows the current presets and flags a lower
-Model setting. Thorough defaults to 24 planned passes, 24 searches, 48 page reads and
+Model setting. Thorough defaults to 24 planned passes, 24 searches, 48 source reads and
 30 minutes/1,000,000 reported tokens before gathering stops; a lower effective Model limit
 still wins. Report writing can add usage, and source storage bounds still apply. See the
 [Research guide](RESEARCH.md#depth-and-limits) for all presets and configuration ranges. If a limit still prevents
@@ -444,7 +444,10 @@ are marked; invented references are unverified. Model-generated citations in old
 are not retroactively upgraded. This feature is always available in both chat modes, with
 no separate flag. It currently covers personal documents and assistant knowledge bases;
 successfully fetched HTML/text web pages also use the captured-evidence registry. Search
-snippets remain discovery leads until Phlox fetches their pages.
+snippets remain discovery leads until Phlox fetches their pages. For long pages, the agent
+can retrieve a passage matching keywords or read later sections by offset. It can also
+reread retained web citations without fetching again. See [focused reading and saved
+evidence](WEB_SOURCES.md#focused-reading-and-saved-evidence) for scope and limits.
 
 Access is rechecked on each source read/export. Source excerpts expire 30 days after last
 capture; deletion removes source snapshots and leaves unavailable labels. Historical answer/

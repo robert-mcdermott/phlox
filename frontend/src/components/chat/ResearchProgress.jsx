@@ -14,7 +14,7 @@ export default function ResearchProgress({ research }) {
   const usage = research.usage || {}
   return <section className="mb-2 rounded-lg border border-border bg-surface-2 p-3 text-xs text-content" aria-label="Research progress">
     <div role="status" className="font-semibold">{labels[research.phase] || 'Research'}</div>
-    <p className="mt-1 text-muted">{research.searches}/{research.limits.searches} searches · {research.reads}/{research.limits.reads} page reads · {research.source_count} source records · {Math.floor(elapsed / 60)}m {elapsed % 60}s</p>
+    <p className="mt-1 text-muted">{research.searches}/{research.limits.searches} searches · {research.reads}/{research.limits.reads} source reads · {research.source_count} source records · {Math.floor(elapsed / 60)}m {elapsed % 60}s</p>
     {research.effective_rounds != null && <p className="mt-1 text-muted">{research.rounds_used} model passes used · {research.effective_rounds} planned including report{research.model_round_limit != null ? ` · ${research.model_round_limit} total pass ceiling including continuation` : ''}{research.recovery_calls > 0 ? ` · ${research.recovery_calls} continuation calls` : ''}</p>}
     {research.limits.tokens != null && <p className="mt-1 text-muted">Gathering thresholds: {research.limits.tokens.toLocaleString()} reported tokens · {research.limits.seconds / 60} minutes. Report writing may add usage.{research.source_capacity != null ? ` ${research.source_capacity} new source records available.` : ''}</p>}
     {research.limits_restricted && <p className="mt-1 text-muted">Stricter administrator limits applied when this research resumed.</p>}

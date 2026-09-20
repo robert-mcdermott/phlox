@@ -455,7 +455,8 @@ version expiry remain outside this wave.
 
 ## Wave 14 — General reliability and task completion
 
-**Status:** in progress; first through third increments implemented 2026-09-09. **Scope:** application/session/run
+**Status:** in progress; first through third increments implemented 2026-09-09,
+fourth increment implemented 2026-09-20. **Scope:** application/session/run
 reliability across Chat and Research, M2.3 evidence quality and completion budgets, with a
 bounded bridge to M3 deliverables. Schedule ahead of output inspection and portable exports.
 The delivery record below distinguishes implemented changes from the remaining plan.
@@ -577,12 +578,43 @@ same-name files in different folders, old links, reload and live updates.
 Verified with backend lint, 582 backend tests (24 skipped), all 44 Chromium regressions,
 and the production frontend build.
 
-**Still pending:** remaining W14.1/W14.5 stage allowances, live calibration and recovery UX, W14.2–W14.4 and
+**Fourth increment — focused web evidence and retained passage reuse (2026-09-20):**
+
+- **W14.2 bounded delivery:** `web_fetch` accepts keyword queries and explicit character
+  offsets. Queries rank overlapping windows of the full extracted HTML/text within the
+  unchanged download/deadline bounds, returning at most 6,000 contiguous characters.
+  Sequential reads return up to 20,000 characters and expose the next offset. Captures use
+  absolute extracted-text positions and a whole-page content hash, preserving citation
+  inspection, identity and export. Navigation and site chrome are omitted while article
+  headings and table cell boundaries remain. A no-match or out-of-range selection publishes
+  no false evidence and no failure snapshot.
+- **W14.4 foundation:** `read_web_source` retrieves one saved web passage with no network
+  request, new snapshot, or retention extension. Ownership, cancellation, availability,
+  domain scope and turn source limits are checked at access. Research permits only its
+  current attempt's evidence; Chat may rebind accessible same-conversation evidence to the
+  current turn. Retained reads use the existing Research read allowance and normal tool
+  permissions; approval state and durable replay retain these boundaries.
+- **Limits:** lexical ranking is not semantic relevance verification. Each offset/query
+  fetch still downloads the current page; this introduces no whole-page cache. Source
+  numbers/storage limits remain unchanged. Research working notes, automatic context
+  consolidation and PDF/JSON/API acquisition are not delivered by this slice.
+
+**Fourth-increment verification:** backend lint and full suite (601 passed, 24 skipped),
+frontend production build and all 44 Chromium browser regressions. Real local HTTP fixtures
+cover evidence after character 20,000, keyword selection, exact offsets, pagination,
+no-match results and citation inspection/export. Retained-read tests cover no network
+access or renewed retention, source deletion/expiry, ownership, Research attempt/domain
+scope, and use through ordinary/durable chat and approval replay. Existing transport,
+source-limit and Stop regressions pass. Browser coverage verifies the renamed Source reads
+allowance in admin settings and the composer. No live-model or external-site evaluation
+was performed. No database migration or new configuration is required.
+
+**Still pending:** remaining W14.1/W14.5 stage allowances, live calibration and recovery UX, further W14.2 extraction quality, W14.3/W14.4 and
 W14.6–W14.8 (extraction, working context and analysis/deliverables), plus full process-level signal/draining/deadline work in
 W14.11. A stalled tool or open event stream can still delay graceful shutdown. No automatic
 replay of uncertain actions, session refresh protocol, durable return hint or distributed
-worker has been introduced. The next increment should improve retained working context
-and relevant evidence extraction before extending the research-to-analysis workflow.
+worker has been introduced. The next increment should consolidate research findings and
+unresolved questions in working context before extending the research-to-analysis workflow.
 
 **Motivation:** a reviewed long-running research task exposed an empty synthesis saved as
 completed, exhausted search/read allowances, repeated context trimming, and useful financial

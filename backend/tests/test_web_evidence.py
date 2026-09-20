@@ -13,7 +13,7 @@ import pytest
 
 from app import sources, web_fetch
 from app.agent.tools.base import ToolContext
-from app.agent.tools.web import WebFetch, WebSearch
+from app.agent.tools.web import ReadWebSource, WebFetch, WebSearch
 from app.models import Conversation, Message, Source, SourceUse
 
 
@@ -59,6 +59,13 @@ def pages(monkeypatch):
                 body = b'<script>document.write("not rendered")</script>'
             if self.path == '/long':
                 body = b'<p>' + b'fact ' * 6000 + b'</p>'
+            if self.path == '/annual':
+                body = ('<title>Annual report</title><nav>Navigation noise</nav>'
+                        '<header>Site banner</header><main><header><h1>Annual report</h1></header>'
+                        '<p>' + 'Earlier activities. ' * 2000 + '</p>'
+                        '<h2>Grant funding</h2><table><tr><th>Year</th><th>Amount</th></tr>'
+                        '<tr><td>2025</td><td>$45 million</td></tr></table>'
+                        '<p>Limitations: excludes private gifts.</p></main><footer>Site links</footer>').encode()
             self.send_response(status)
             self.send_header('Content-Type', 'application/pdf' if self.path == '/pdf' else 'text/html; charset=utf-8')
             if self.path == '/encoded':
@@ -134,6 +141,113 @@ def test_long_page_passages_are_bounded_deduplicated_and_limits_explicit(db, pag
     monkeypatch.setattr(sources, 'MAX_TURN_SOURCES', 4)
     limited = WebFetch().run(ctx, url=pages.url + '/article')
     assert 'limit reached' in limited.content and 'Meals cost' not in limited.content
+
+
+def test_targeted_evidence_beyond_old_cutoff_has_exact_offsets_and_exports(db, client, pages, web_context):
+    ctx, conv = web_context
+    initial = WebFetch().run(ctx, url=pages.url + '/annual')
+    assert '$45 million' not in initial.content and 'start_char=20000' in initial.content
+    focused = WebFetch().run(ctx, url=pages.url + '/annual', query='Grant funding')
+    assert not focused.is_error and '$45 million' in focused.content
+    assert '2025 | $45 million' in focused.content and 'excludes private gifts' in focused.content
+    assert 'Navigation noise' not in initial.content and 'Site banner' not in initial.content
+    row = db.query(Source).filter_by(conversation_id=conv.id).order_by(Source.number.desc()).first()
+    assert row.location['start'] > 20000 and len(row.excerpt) <= 6000
+    assert row.location['end'] - row.location['start'] == len(row.excerpt)
+    assert row.location['total_chars'] >= row.location['end']
+    replay = WebFetch().run(ctx, url=pages.url + '/annual', start_char=row.location['start'], max_chars=len(row.excerpt))
+    assert f'[S{row.number}]' in replay.content
+    assert db.query(Source).filter_by(conversation_id=conv.id).count() == 5
+    inspected = client.get(f'/api/conversations/{conv.id}/sources/{row.id}').json()
+    assert inspected['excerpt'] == row.excerpt and inspected['location']['start'] > 20000
+    db.add(Message(conversation_id=conv.id, role='assistant', content=f'Funding: $45 million [S{row.number}].',
+                   citations=[{'label': f'S{row.number}', 'source_id': row.id}]))
+    db.commit()
+    export = client.get(f'/api/conversations/{conv.id}/export').json()['markdown']
+    assert '$45 million' in export and str(row.location['start'] + 1) in export
+
+
+def test_pagination_covers_full_text_without_gaps(pages):
+    parts, start = [], 0
+    while True:
+        page = web_fetch.fetch(pages.url + '/long', start_char=start, max_chars=6000)
+        assert page.start_char == start
+        parts.append(page.text)
+        start += len(page.text)
+        if start == page.total_chars:
+            break
+    assert ''.join(parts) == ('fact ' * 6000).strip()
+    assert hashlib.sha256(''.join(parts).encode()).hexdigest() == page.content_hash
+
+
+@pytest.mark.parametrize('options', [{'query': 'missingword'}, {'start_char': 100000}])
+def test_empty_selection_does_not_create_false_evidence(db, pages, web_context, options):
+    ctx, conv = web_context
+    result = WebFetch().run(ctx, url=pages.url + '/annual', **options)
+    assert result.is_error and 'No new evidence' in result.content
+    assert db.query(Source).filter_by(conversation_id=conv.id).count() == 0
+
+
+@pytest.mark.parametrize('options', [{'query': 'x' * 201}, {'start_char': -1}, {'max_chars': 20001}, {'max_chars': True}])
+def test_invalid_selection_never_reaches_network(monkeypatch, options):
+    monkeypatch.setattr(web_fetch, 'checked_addresses', lambda *a: pytest.fail('Invalid selection reached DNS'))
+    with pytest.raises(web_fetch.FetchError, match='must be'):
+        web_fetch.fetch('https://example.org/', **options)
+
+
+def test_query_preserves_unicode_offsets_and_cancellation():
+    text = 'İ multilingual background. ' * 2000 + '\nFunding\n2025 | €45 million'
+    excerpt, start = web_fetch.select_passage(text, 'funding', 0, 6000, web_fetch.Deadline())
+    assert '€45 million' in excerpt and text[start:start + len(excerpt)] == excerpt
+    cancel = threading.Event()
+    cancel.set()
+    with pytest.raises(web_fetch.FetchError, match='stopped'):
+        web_fetch.select_passage(text, 'funding', 0, 6000, web_fetch.Deadline(cancel))
+
+
+def test_retained_read_uses_no_network_or_new_snapshot_and_does_not_extend_retention(db, pages, web_context, monkeypatch):
+    ctx, conv = web_context
+    WebFetch().run(ctx, url=pages.url + '/article')
+    row = db.query(Source).filter_by(conversation_id=conv.id).one()
+    expiry, fetched_at = row.expires_at, row.location['fetched_at']
+    monkeypatch.setattr(web_fetch, 'fetch', lambda *a, **kw: pytest.fail('Reread accessed the network'))
+    ctx.accounting = SimpleNamespace(turn_id='reread-' + conv.id)
+    result = ReadWebSource().run(ctx, label='S1')
+    assert not result.is_error and 'Meals cost $45.' in result.content and 'not re-fetched' in result.content
+    assert sources.catalog(db, ctx.accounting.turn_id, conv.id) == [{'label': 'S1', 'source_id': row.id}]
+    assert db.query(Source).filter_by(conversation_id=conv.id).count() == 1
+    db.refresh(row)
+    assert row.expires_at == expiry and row.location['fetched_at'] == fetched_at
+
+
+@pytest.mark.parametrize('condition', ['owner', 'conversation', 'expired', 'forgotten', 'failed', 'stopped', 'scope', 'other_attempt', 'documents'])
+def test_retained_read_reauthorizes_every_access(db, pages, web_context, condition):
+    from app.research import Research
+
+    ctx, conv = web_context
+    WebFetch().run(ctx, url=pages.url + '/article')
+    row = db.query(Source).filter_by(conversation_id=conv.id).one()
+    if condition == 'owner':
+        ctx.user_id = 'other'
+    elif condition == 'conversation':
+        ctx.conversation_id = 'unrelated'
+    elif condition == 'expired':
+        row.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+    elif condition == 'forgotten':
+        sources.forget_web(db, conv, row.id)
+    elif condition == 'failed':
+        row.location = {**row.location, 'status': 'http_error'}
+    elif condition == 'stopped':
+        ctx.cancel_event = threading.Event()
+        ctx.cancel_event.set()
+    else:
+        ctx.research = Research({'scope': 'documents' if condition == 'documents' else 'web', 'depth': 'brief',
+                                 'domains': ['example.org'] if condition == 'scope' else []})
+        if condition == 'other_attempt':
+            ctx.accounting = SimpleNamespace(turn_id='another-attempt')
+    db.commit()
+    result = ReadWebSource().run(ctx, label='S1')
+    assert result.is_error and 'Meals cost' not in result.content
 
 
 def test_cancel_during_read_returns_promptly_without_snapshot(db, pages, web_context):
@@ -237,8 +351,12 @@ def test_stop_does_not_wait_for_os_dns_resolution(monkeypatch):
 
 def test_page_parse_limits_and_hidden_text():
     parser = web_fetch.PageParser()
-    parser.feed('<h1>Budget</h1><table><tr><td>Meals</td><td>$45</td></tr></table><div aria-hidden="true">Private</div>')
+    parser.feed('<h1>Budget</h1><table><tr><td>Meals</td><td>$45</td></tr></table><div aria-hidden="true">Private</div>'
+                '<div role>Body text</div><div role="navigation">Site navigation</div>'
+                '<article><header>Article heading</header><footer>Article references</footer></article>')
     assert 'Meals | $45' in parser.text() and 'Private' not in parser.text()
+    assert 'Site navigation' not in parser.text() and 'Body text' in parser.text()
+    assert 'Article heading' in parser.text() and 'Article references' in parser.text()
     with pytest.raises(web_fetch.FetchError, match='nesting'):
         parser.feed('<div>' * 129)
 
@@ -309,6 +427,7 @@ def test_web_citations_survive_approval_and_run_replay(client, db, web_context, 
     _, conv = web_context
     registry = ToolRegistry()
     registry.register(WebFetch())
+    registry.register(ReadWebSource())
 
     class Pause(Tool):
         name = 'web_citation_pause'
@@ -324,8 +443,12 @@ def test_web_citations_survive_approval_and_run_replay(client, db, web_context, 
             count = sum(m['role'] == 'tool' for m in messages)
             yield StreamDelta(type='usage', usage={'input': 4, 'output': 3, 'total': 7})
             if count < 3:
-                url = 'https://example.com/' + ('policy' if count < 2 else 'other')
-                yield StreamDelta(type='tool_calls', tool_calls=[ToolCall(f'fetch-{count}', 'web_fetch', {'url': url})])
+                if count == 1:
+                    call = ToolCall('reread', 'read_web_source', {'label': 'S1'})
+                else:
+                    url = 'https://example.com/' + ('policy' if count == 0 else 'other')
+                    call = ToolCall(f'fetch-{count}', 'web_fetch', {'url': url})
+                yield StreamDelta(type='tool_calls', tool_calls=[call])
             elif count == 3:
                 yield StreamDelta(type='text', text='Found [S1] and [S2].')
                 yield StreamDelta(type='tool_calls', tool_calls=[ToolCall('pause', 'web_citation_pause', {})])

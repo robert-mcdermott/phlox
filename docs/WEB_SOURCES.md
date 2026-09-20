@@ -34,6 +34,44 @@ Changed content receives new labels. URL fragments and default ports are normali
 tracking parameters and unrelated URLs are not assumed equivalent. The content hash covers
 the extracted page text, not the original HTML bytes. Extraction can omit page layout.
 
+## Focused reading and saved evidence
+
+Phlox can now look beyond the first 20,000 characters of a page. Ask it to find a specific
+section or figure; `web_fetch` accepts optional `query` keywords and selects a contiguous
+passage of at most 6,000 characters from the extracted page. Matching is lexical, not a
+guarantee of relevance or completeness. No match is reported explicitly without creating
+a failed-page citation. Navigation elements and site headers/footers outside main/article
+content are omitted; article headings and table cell boundaries are preserved.
+
+For sequential reading, `start_char` selects a zero-based extracted-text offset and
+`max_chars` limits the response to 1–20,000 characters. Results identify the selected range,
+total extracted length, and the next offset when text follows. Only the supplied passages
+are captured; the rest is not stored. Every fetch still downloads the current page within
+the existing 2 MiB bound. Offsets can move if a site changes between calls, and changed
+content receives separate citation identities.
+
+`read_web_source` rereads a retained citation such as `S3` without contacting the website.
+It returns the original captured passage and date, keeps its label, and does not extend
+retention. Normal Chat can reuse accessible web evidence from the same conversation;
+Research can reread only evidence captured for its current attempt and allowed domains.
+Removed, expired, failed, foreign, and out-of-scope sources remain unavailable. Research
+counts these operations against its source-read allowance, just like page fetches.
+
+This is a foundation for evidence reuse, not an automatic research notebook or a full-page
+cache. Summarized findings and more efficient fitting of long research histories remain planned.
+
+To check the feature manually:
+
+1. Give Phlox a long public HTML report and ask it to find a specific table using a
+   keyword-focused fetch. Inspect the tool arguments and citation panel for the selected
+   passage and its character range; the range can now begin beyond character 20,000.
+2. Ask it to read the following section using the returned next offset. Export the answer
+   and confirm the citations include the selected passages and their original locations.
+3. In normal Chat, ask it to use only `read_web_source` to reread one of those labels.
+   The tool result should identify the retained capture date, with no new page fetch.
+4. Remove that snapshot in the citation panel and repeat the retained-only read. The tool
+   must report it unavailable. A new explicit fetch is needed to capture it again.
+
 ## Failures, Stop, and recovery
 
 HTTP errors, failed connections, denied private targets, oversized downloads, unsupported
@@ -109,11 +147,12 @@ their existing separate implementation; this transport governs `web_fetch` only.
 | Fetch deadline / socket operation timeout | 30 seconds / 3 seconds |
 | Concurrent unfinished OS DNS lookups | 4; additional lookups report busy |
 | HTML nesting | 128 elements |
-| Extracted text supplied per page | First 20,000 characters; truncation is explicit |
-| Retained passage | 6,000 characters; up to four passages for one page |
+| Extracted text supplied per fetch | Up to 20,000 characters from the requested offset; default starts at zero |
+| Keyword-focused selection | Up to 6,000 contiguous characters; query up to 200 characters |
+| Retained passage | 6,000 characters; up to four passages per fetch |
 | Shared source bounds | 64 per turn; 512 identities per conversation |
 
 Limits are code constants, not new configuration settings. This is bounded HTML/text
-extraction, not a browser renderer or semantic claim verifier. Research planning, source
-filters, scheduled research, authenticated sites, and artifact-version citations remain
-future waves.
+extraction, not a browser renderer or semantic claim verifier. Opt-in Research and domain/
+document selection are available; see [RESEARCH.md](RESEARCH.md). Scheduled research,
+authenticated sites, and artifact-version citations remain future work.

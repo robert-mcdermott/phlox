@@ -19,7 +19,7 @@ replace ordinary chat, the Web search checkbox, Agent mode, or skills.
 
 Research uses a model with tool calling enabled and at least three allowed model passes
 (**Settings → Model → Max tool rounds**). Assistant restrictions and tool permissions still
-apply. Only `web_search`, `web_fetch`, and `search_documents` are eligible; Research does
+apply. Only `web_search`, `web_fetch`, `read_web_source`, and `search_documents` are eligible; Research does
 not enable shell/code execution, MCP, file mutation, memory tools, or child agents.
 Approvals still appear when the effective permission for an eligible read tool is Ask.
 
@@ -39,7 +39,7 @@ These are the built-in defaults. Administrators can change each preset under
 The composer reads the current deployment presets; saved reports retain the limits used
 for that attempt. Larger allowances permit more work and may increase model/search costs.
 
-| Preset | Planned model passes | Search calls (web + documents) | Page fetch attempts | Gathering time | Reported-token threshold |
+| Preset | Planned model passes | Search calls (web + documents) | Source reads (fetches + retained passages) | Gathering time | Reported-token threshold |
 |---|---:|---:|---:|---:|---:|
 | Brief | 5 | 3 | 4 | 2 minutes | 20,000 |
 | Standard | 12 | 8 | 16 | 15 minutes | 250,000 |
@@ -68,7 +68,7 @@ including when a batch requests more reads than can be captured. This conservati
 does not attempt to predict whether another page might reuse an existing record.
 
 Presets are saved as the `research` database configuration section. The admin form accepts
-3–100 planned passes, 1–100 searches, 1–100 page reads, 30–7,200 gathering seconds, and
+3–100 planned passes, 1–100 searches, 1–100 source reads, 30–7,200 gathering seconds, and
 1,000–5,000,000 reported tokens. Ordinary users can read numerical presets through
 `GET /api/settings/research`; only administrators can replace them through
 `PUT /api/admin/config/research` (all three complete presets are required).
@@ -88,7 +88,7 @@ be treated as zero. These thresholds and the displayed model costs **are not a g
 invoice ceiling**. Search API credits are separate from model accounting. Provider retries
 and fallback behavior retain the [model-call accounting limits](MODEL_CALLS.md).
 
-The progress panel shows searches, page reads, captured source records, remaining source
+The progress panel shows searches, source reads, captured source records, remaining source
 capacity, model passes used, effective planned passes, the total Model pass ceiling,
 gathering thresholds, elapsed time, and available model usage. It identifies stricter limits
 applied on resume. It exposes stages and a short plan, not private model reasoning.
@@ -96,6 +96,14 @@ Reports should distinguish evidence, inference, contradictory sources, and unans
 questions. A valid citation is not proof of semantic claim support; verify important claims.
 Search snippets alone are not fetched evidence. Reports with no source records are marked
 unverified; unavailable sources remain explicitly unavailable in the source drawer.
+
+Long-page reading supports keyword-focused passages and explicit character-offset pagination.
+The agent can revisit a retained web citation with `read_web_source` when earlier output
+was trimmed, without a new HTTP request or renewed retention. Both fetches and retained
+reads consume the read allowance; repeated retained reads are allowed within that budget.
+Research rereads are limited to this attempt's captured sources and current domain scope,
+including after approval/resume. New Research attempts do not import earlier evidence by
+label. See [focused web reading](WEB_SOURCES.md#focused-reading-and-saved-evidence).
 
 ## Stop, reload, and recovery
 
@@ -137,7 +145,7 @@ instructions; existing skill records are preserved, including user edits.
 ## Verify budget configuration
 
 1. Open **Settings → Configuration → Research allowances** as an administrator and note
-   the current values. Temporarily set Brief's page reads to 1 and save.
+   the current values. Temporarily set Brief's source reads to 1 and save.
 2. Select Research → Brief in the composer. Confirm it shows the saved value. Ask for a
    comparison across several specified public pages; at most one page fetch should execute,
    and the report should identify any evidence gaps. Source checks still apply to the page.

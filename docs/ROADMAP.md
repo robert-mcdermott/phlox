@@ -25,8 +25,9 @@ The second increment adds bounded tool-free completion recovery, truthful incomp
 outcomes, current generation settings for existing chats, and inspectable call limits/finish
 reasons. The third increment adds larger, admin-configurable Research presets, per-run
 snapshots with stricter approval resumes, visible gathering/pass limits and source-capacity
-admission checks. Working context, evidence extraction and analysis improvements remain
-planned; see the wave's
+admission checks. The fourth increment adds focused HTML/text passage retrieval beyond the
+initial cutoff, offset pagination, navigation removal and reauthorized retained web reads.
+Research working notes, PDF/JSON extraction and analysis improvements remain planned; see the wave's
 delivery record for verification and remaining restart boundaries.
 The wave log records verification and remaining limits. M3 has an initial delivery; M4–M5 remain proposed. Existing features and
 completed work are identified explicitly; unchecked entries do not yet ship.
@@ -309,13 +310,14 @@ scope must be a server-enforced constraint, including child tools and fallbacks.
 
 **Wave 14 in progress:** initial truthful synthesis completion/recovery, effective-setting
 diagnostics and larger admin-configurable presets now ship, including saved-limit continuity
-and source-capacity checks. Remaining budget work calibrates stage-specific output/reasoning
+and source-capacity checks. Focused page retrieval and retained web passage rereading now ship;
+the full working-context notebook remains planned. Remaining budget work calibrates stage-specific output/reasoning
 allowances alongside working context. Give substantial
 tasks sufficient model-aware completion room, with bounded adaptive extensions and synthesis
 continuation that preserves evidence rather than restarting the investigation. Distinguish
 soft planning targets from explicit user/admin hard ceilings; honor Stop and actual provider
-capacity. Improve passages beyond the initial HTML cutoff, bounded PDF/JSON evidence and
-working-context consolidation. Measure successful completion and avoided restarts, not only
+capacity. Further improve extraction quality, bounded PDF/JSON evidence and working-context
+consolidation. Measure successful completion and avoided restarts, not only
 tokens consumed per attempt. Audit effective settings across the generic harness, research,
 existing chats and recovery, with per-call limit/finish diagnostics. Route explicitly
 requested API acquisition and analysis through a permission-controlled workflow that

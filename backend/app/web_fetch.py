@@ -22,6 +22,7 @@ from app.config import get_web_fetch_config
 
 MAX_BYTES = 2 * 1024 * 1024
 MAX_CHARS = 20_000
+FOCUSED_CHARS = 6_000
 MAX_REDIRECTS = 5
 MAX_SECONDS = 30
 MAX_URL_CHARS = 2048
@@ -202,7 +203,7 @@ def connection(url, addresses, deadline):
 
 class PageParser(HTMLParser):
     """Extract readable text and headings while dropping executable/hidden page content."""
-    SKIP = {'script', 'style', 'noscript', 'template', 'svg'}
+    SKIP = {'script', 'style', 'noscript', 'template', 'svg', 'nav'}
     BLOCK = {'p', 'div', 'br', 'li', 'tr', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'section', 'article'}
     VOID = {'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr'}
 
@@ -214,6 +215,9 @@ class PageParser(HTMLParser):
     def handle_starttag(self, tag, attrs):
         attrs = dict(attrs)
         hidden = tag in self.SKIP or 'hidden' in attrs or attrs.get('aria-hidden') == 'true'
+        hidden |= (attrs.get('role') or '').lower() in {'navigation', 'banner', 'contentinfo'}
+        # Keep article headers/footers (headings, bylines, references), but omit site chrome.
+        hidden |= tag in {'header', 'footer'} and not any(t in {'article', 'main'} for t, _ in self.stack)
         if tag not in self.VOID:
             self.stack.append((tag, hidden))
             if len(self.stack) > 128:
@@ -258,9 +262,49 @@ class Page:
     content_hash: str
     truncated: bool
     http_status: int
+    start_char: int = 0
+    total_chars: int | None = None
 
 
-def fetch(url, cancel=None, url_policy=None):
+def validate_selection(query, start_char, max_chars):
+    if not isinstance(query, str) or len(query) > 200:
+        raise FetchError('invalid_selection', 'query must be text of at most 200 characters.')
+    if type(start_char) is not int or not 0 <= start_char <= MAX_BYTES:
+        raise FetchError('invalid_selection', 'start_char must be a nonnegative character offset within the download bound.')
+    if type(max_chars) is not int or not 1 <= max_chars <= MAX_CHARS:
+        raise FetchError('invalid_selection', f'max_chars must be between 1 and {MAX_CHARS}.')
+
+
+def select_passage(text, query, start_char, max_chars, deadline):
+    """Rank bounded, contiguous windows; return original text and absolute offsets.
+
+    Lexical matching is a navigation aid, not semantic evidence verification. Never join
+    disjoint matches into a passage or change offsets through case folding/normalization.
+    """
+    if start_char >= len(text):
+        raise FetchError('selection_empty', f'No text at start_char={start_char}; extracted page has {len(text)} characters.')
+    if query.strip():
+        terms = list(dict.fromkeys(re.findall(r'\w+', query.lower())))[:20]
+        if not terms:
+            raise FetchError('invalid_selection', 'query must contain a word or number.')
+        patterns = [re.compile(r'(?<!\w)' + re.escape(term) + r'(?!\w)', re.I) for term in terms]
+        width = min(max_chars, FOCUSED_CHARS)
+        best, best_score = start_char, (0, 0)
+        # Half-window overlap reduces the chance of separating a heading from its table.
+        for offset in range(start_char, len(text), max(1, width // 2)):
+            deadline.check()
+            window = text[offset:offset + width]
+            score = (int(query.lower() in window.lower()), sum(bool(p.search(window)) for p in patterns))
+            if score > best_score:
+                best, best_score = offset, score
+        if best_score == (0, 0):
+            raise FetchError('selection_empty', 'No matching passage found in extracted text. Try different keywords or use start_char pagination.')
+        start_char, max_chars = best, width
+    return text[start_char:start_char + max_chars], start_char
+
+
+def fetch(url, cancel=None, url_policy=None, *, query='', start_char=0, max_chars=MAX_CHARS):
+    validate_selection(query, start_char, max_chars)
     current = normalize_url(url)
     with Deadline(cancel) as deadline:
         try:
@@ -320,8 +364,11 @@ def fetch(url, cancel=None, url_policy=None):
                     if not text or '\x00' in text:
                         raise FetchError('empty', 'No readable page text. Browser-rendered or binary pages are unsupported.', resp.status)
                     deadline.check()
-                    return Page(current, re.sub(r'\s+', ' ', title)[:500], text[:MAX_CHARS],
-                                hashlib.sha256(text.encode()).hexdigest(), len(text) > MAX_CHARS, resp.status)
+                    excerpt, start = select_passage(text, query, start_char, max_chars, deadline)
+                    deadline.check()
+                    return Page(current, re.sub(r'\s+', ' ', title)[:500], excerpt,
+                                hashlib.sha256(text.encode()).hexdigest(), len(excerpt) < len(text), resp.status,
+                                start, len(text))
                 finally:
                     conn.close()
         except (OSError, http.client.HTTPException):

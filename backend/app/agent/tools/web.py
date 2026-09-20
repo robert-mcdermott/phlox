@@ -60,41 +60,92 @@ def _bounded_max_results(value: Any) -> int:
 
 class WebFetch(Tool):
     name = "web_fetch"
-    description = "Fetch an HTTP(S) HTML/text page and return captured passages with stable citation labels. Search snippets are discovery only."
+    description = (
+        "Fetch an HTTP(S) HTML/text page with stable citation labels. Use query keywords to locate "
+        "a relevant passage anywhere in the page, or start_char to read later text. "
+        "Use read_web_source to revisit a captured citation without another fetch."
+    )
     category = "web"
     default_permission = "auto"
     parameters: dict[str, Any] = {
         "type": "object",
-        "properties": {"url": {"type": "string", "description": "The http(s) URL to fetch"}},
+        "properties": {
+            "url": {"type": "string", "description": "The http(s) URL to fetch"},
+            "query": {"type": "string", "maxLength": 200,
+                      "description": "Optional keywords to select one relevant passage (up to 6,000 characters)."},
+            "start_char": {"type": "integer", "minimum": 0, "maximum": web_fetch.MAX_BYTES,
+                           "description": "Zero-based offset in extracted text; use next_start_char from an earlier fetch."},
+            "max_chars": {"type": "integer", "minimum": 1, "maximum": web_fetch.MAX_CHARS,
+                          "description": "Maximum text returned, default 20,000; prefer 6,000 for focused reads."},
+        },
         "required": ["url"],
     }
 
-    def run(self, ctx: ToolContext, url: str = "", **_: Any) -> ToolResult:
+    def run(self, ctx: ToolContext, url: str = "", query: str = "", start_char: int = 0,
+            max_chars: int = web_fetch.MAX_CHARS, **_: Any) -> ToolResult:
         from app import sources
         import uuid
 
         try:
+            web_fetch.validate_selection(query, start_char, max_chars)
             url = web_fetch.normalize_url(url)
         except web_fetch.FetchError as exc:
             return ToolResult(content=str(exc), is_error=True)
         turn_id = ctx.accounting.turn_id if ctx.accounting else uuid.uuid4().hex
         try:
-            page = (web_fetch.fetch(url, ctx.cancel_event, url_policy=ctx.research.url_allowed)
-                    if ctx.research else web_fetch.fetch(url, ctx.cancel_event))
+            options = {}
+            if query or start_char or max_chars != web_fetch.MAX_CHARS:
+                options.update(query=query, start_char=start_char, max_chars=max_chars)
+            if ctx.research:
+                options['url_policy'] = ctx.research.url_allowed
+            page = web_fetch.fetch(url, ctx.cancel_event, **options)
             captures = sources.capture_web(ctx.db, conversation_id=ctx.conversation_id,
                 user_id=ctx.user_id, turn_id=turn_id, url=page.url, title=page.title,
                 text=page.text, content_hash=page.content_hash, truncated=page.truncated,
-                http_status=page.http_status, cancel=ctx.cancel_event)
+                http_status=page.http_status, cancel=ctx.cancel_event,
+                start_char=page.start_char, total_chars=page.total_chars)
             if not captures:
                 return ToolResult(content='Web evidence omitted: conversation unavailable, fetch stopped, or source limit reached.', is_error=True)
-            return ToolResult(content=sources.INSTRUCTIONS + '\n\n' + '\n\n'.join(captures))
+            navigation = ''
+            if page.total_chars is not None:
+                end = page.start_char + len(page.text)
+                navigation = (f'\nSelected extracted-text range [{page.start_char}, {end}) of {page.total_chars} characters. '
+                              'Offsets are zero-based; other text is omitted from this selection. '
+                              + (f'For following text, use start_char={end} (next_start_char). ' if end < page.total_chars else 'End of page. ')
+                              + 'Each fetch reads the current page; offsets may move if it changes.\n')
+            return ToolResult(content=sources.INSTRUCTIONS + navigation + '\n\n' + '\n\n'.join(captures))
         except web_fetch.FetchError as exc:
+            if exc.status in {'invalid_selection', 'selection_empty'}:
+                return ToolResult(content=str(exc) + ' No new evidence was captured.', is_error=True)
             if exc.status == 'cancelled' or (ctx.cancel_event and ctx.cancel_event.is_set()):
                 return ToolResult(content='Fetch stopped. No new evidence was captured.', is_error=True)
             captures = sources.capture_web(ctx.db, conversation_id=ctx.conversation_id,
                 user_id=ctx.user_id, turn_id=turn_id, url=url, title='Unavailable web page',
                 status=exc.status, reason=str(exc), http_status=exc.http_status, cancel=ctx.cancel_event)
             return ToolResult(content='\n\n'.join(captures) if captures else str(exc), is_error=True)
+
+
+class ReadWebSource(Tool):
+    name = 'read_web_source'
+    description = ('Read one retained web citation, such as S3, from this conversation without a network request. '
+                   'Use when its original tool output is no longer in context. Research can revisit only this attempt\'s sources.')
+    category = 'web'
+    default_permission = 'auto'
+    parameters = {'type': 'object', 'properties': {
+        'label': {'type': 'string', 'pattern': '^S[1-9][0-9]{0,5}$', 'description': 'Citation label without brackets, e.g. S3.'},
+    }, 'required': ['label']}
+
+    def run(self, ctx: ToolContext, label: str = '', **_: Any) -> ToolResult:
+        import uuid
+        from app import sources
+
+        block = sources.read_web(ctx.db, conversation_id=ctx.conversation_id, user_id=ctx.user_id,
+            turn_id=ctx.accounting.turn_id if ctx.accounting else uuid.uuid4().hex,
+            label=label, cancel=ctx.cancel_event, research=ctx.research)
+        if not block:
+            return ToolResult('Retained web passage unavailable: check the label, current source scope, retention, or source allowance.',
+                              is_error=True)
+        return ToolResult(sources.INSTRUCTIONS + '\n' + block)
 
 
 class WebSearch(Tool):

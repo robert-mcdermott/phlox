@@ -858,6 +858,27 @@ test('failed web citations show an unavailable fetch without an evidence passage
   assert.equal(await page.getByRole('dialog').locator('blockquote').count(), 0)
 })
 
+test('PDF and JSON web citations show page and record provenance after reload', async t => {
+  const { page, state } = await fixture(t)
+  state.sources['source-1'] = { ...webSourceFixture(), location: { ...webSourceFixture().location,
+    format: 'pdf', page: 12, page_count: 40 } }
+  state.messages.push({ id: 'format-cited', role: 'assistant', content: 'Funding [S1].', citations: [sourceRef] })
+  await page.getByText('Approval chat', { exact: true }).click()
+  await page.getByRole('button', { name: 'View source S1', exact: true }).click()
+  await page.getByRole('dialog').getByText('Page 12', { exact: true }).waitFor()
+  await page.getByRole('dialog').getByText(/Verify complex tables/).waitFor()
+  await page.keyboard.press('Escape')
+  state.sources['source-1'] = { ...webSourceFixture(), excerpt: '[{"amount":45,"categories":["research"]}]',
+    location: { ...webSourceFixture().location, format: 'json', json_pointer: '/results', item_start: 5, item_end: 6, total_items: 100 } }
+  await page.reload()
+  await page.getByText('Approval chat', { exact: true }).click()
+  await page.getByRole('button', { name: 'View source S1', exact: true }).click()
+  const dialog = page.getByRole('dialog')
+  await dialog.getByText('JSON pointer: /results', { exact: true }).waitFor()
+  await dialog.getByText(/Array items \[5, 6\) of 100/).waitFor()
+  await dialog.getByText(state.sources['source-1'].excerpt, { exact: true }).waitFor()
+})
+
 test('saved citations inspect exact evidence, preserve code, reload and recheck revoked access', async (t) => {
   const { page, state } = await fixture(t)
   state.sources['source-1'] = sourceFixture()

@@ -456,7 +456,7 @@ version expiry remain outside this wave.
 ## Wave 14 — General reliability and task completion
 
 **Status:** in progress; first through third increments implemented 2026-09-09,
-fourth and fifth increments implemented 2026-09-20. **Scope:** application/session/run
+fourth through sixth increments implemented 2026-09-20. **Scope:** application/session/run
 reliability across Chat and Research, M2.3 evidence quality and completion budgets, with a
 bounded bridge to M3 deliverables. Schedule ahead of output inspection and portable exports.
 The delivery record below distinguishes implemented changes from the remaining plan.
@@ -647,12 +647,45 @@ restoration, provider context caps/explicit omissions, expiry/deletion/scope/own
 checks, output policy, same-batch unseen reads through approval resume, request-bound and durable execution, and Stop after
 a notebook update. No live-provider quality evaluation was performed.
 
-**Still pending:** remaining W14.1/W14.5 stage allowances, live calibration and recovery UX, further W14.2 extraction quality, W14.3 and broader W14.4 quality evaluation, and
+**Sixth increment — public PDF and JSON evidence (2026-09-20):**
+
+- **W14.3 bounded delivery:** `web_fetch` accepts PDF and JSON media types over the existing
+  bounded GET transport. PDF layout text preserves basic columns/line breaks, supports
+  whole-document keyword/offset selection or an explicit page, and captures passages with
+  page-local offsets. JSON selections preserve complete values/records, nested fields and
+  original numeric spellings. RFC 6901 pointers and array start/limit select data within
+  one response; oversized objects offer a bounded, non-evidence structure preview.
+- **Source continuity:** existing web-source locations and identities include format/page
+  or pointer/item-range provenance. Citation inspection, retained reads, Markdown exports
+  and notebook synthesis preserve those locations. The source panel shows PDF pages and
+  JSON record ranges. Only excerpts are saved; no raw-response files or ingestion jobs.
+- **Reliability:** parser subprocesses share the fetch deadline and Stop, with two slots,
+  bounded output, PDF expansion limits, and OS CPU/address-space limits where supported.
+  External PDF image decoders and JSON schema reference resolution are disabled. Malformed,
+  encrypted, image-only, excessively nested and oversized inputs have explicit outcomes.
+  DNS pinning, domain/redirect policy, permissions, private source ownership and existing
+  source/read allowances remain in effect. The pypdf minimum now matches the existing
+  locked 6.13.2 version for its decoder limits; no resolved package version changed.
+- **Limits:** no OCR, reliable complex-table reconstruction, authenticated fetching,
+  compressed HTTP responses, POST queries or API pagination. Each selection refetches the
+  current response. JSON selection does not validate server filters or statistical
+  completeness. Large datasets and analysis/deliverables remain later work. See
+  [PDF and JSON sources](WEB_SOURCES.md#pdf-and-json-sources) for bounds and manual checks.
+
+**Sixth-increment verification:** full backend suite (640 passed, 24 skipped), lint, production frontend build and
+45 Chromium regressions. Local HTTP/parser fixtures cover late-page PDF facts, page
+selection and identity, JSON paths/array windows/schema data, numeric precision, rejected
+inputs, expansion/selection limits, deadline/Stop termination, source access/expiry/removal,
+and a scripted HTML/PDF/JSON research task with notebook restoration. Browser coverage
+verifies page and JSON record provenance after reload. No live-provider or external-site
+quality evaluation was performed. No database migration or new configuration is required.
+
+**Still pending:** remaining W14.1/W14.5 stage allowances, live calibration and recovery UX, further W14.2 extraction quality, W14.3 controlled POST/API pagination and broader W14.4 quality evaluation, and
 W14.6–W14.8 (extraction, working context and analysis/deliverables), plus full process-level signal/draining/deadline work in
 W14.11. A stalled tool or open event stream can still delay graceful shutdown. No automatic
 replay of uncertain actions, session refresh protocol, durable return hint or distributed
-worker has been introduced. The next increment should address bounded PDF/JSON acquisition
-before extending the research-to-analysis workflow.
+worker has been introduced. The next increment should address controlled read-query API
+adapters and pagination before extending the research-to-analysis workflow.
 
 **Motivation:** a reviewed long-running research task exposed an empty synthesis saved as
 completed, exhausted search/read allowances, repeated context trimming, and useful financial

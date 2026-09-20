@@ -118,7 +118,7 @@ def test_real_fetch_redirect_extract_capture_and_export(db, client, pages, web_c
 
 
 @pytest.mark.parametrize('path,status', [('/denied', 'http_error'), ('/paywall', 'access_limited'),
-    ('/empty', 'empty'), ('/pdf', 'unsupported_type'), ('/encoded', 'unsupported_encoding'),
+    ('/empty', 'empty'), ('/pdf', 'malformed_pdf'), ('/encoded', 'unsupported_encoding'),
     ('/large', 'too_large'), ('/short', 'incomplete'), ('/private-redirect', 'blocked')])
 def test_failed_fetch_is_a_record_not_evidence(db, client, pages, web_context, path, status):
     ctx, conv = web_context

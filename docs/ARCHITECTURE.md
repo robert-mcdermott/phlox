@@ -134,6 +134,19 @@ See [ARTIFACTS.md](ARTIFACTS.md) for data flow, storage and preview boundaries.
 
 ### Evidence seam
 
+`web_fetch.py` performs the same DNS-pinned, bounded GET for HTML/text, PDF and JSON.
+PDF/JSON bytes are passed to `web_formats.py`, which admits at most two cancellable parser
+subprocesses sharing the fetch deadline. `web_extract_worker.py` has no application config,
+database or network calls. PDF layout extraction uses the existing pypdf dependency with
+decoder/cumulative expansion bounds and no external image decoder; OS CPU limits apply
+where supported and an address-space limit additionally applies on Linux. JSON selection
+uses strict decoding, depth limits, exact numeric spellings and bounded complete-value
+rendering. It never resolves schema references or API pagination. Source snapshots stay
+`kind=web`; their existing location JSON adds PDF page/count or JSON pointer/array ranges.
+Those fields participate in source identity and survive inspection, rereads, exports,
+approvals, and Research notebook restoration. No schema change or ingestion side effect
+is required; original binaries/raw responses are not saved. See [web sources](WEB_SOURCES.md).
+
 `projects.py` resolves the conversation's pinned project, selected library documents,
 per-turn context options and history compatibility key. `routers/projects.py` exposes
 creator-only CRUD, a read-only preview and reauthorized context-record reads. Project

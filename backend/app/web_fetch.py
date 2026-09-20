@@ -264,6 +264,8 @@ class Page:
     http_status: int
     start_char: int = 0
     total_chars: int | None = None
+    passages: list | None = None
+    notice: str = ''
 
 
 def validate_selection(query, start_char, max_chars):
@@ -303,8 +305,11 @@ def select_passage(text, query, start_char, max_chars, deadline):
     return text[start_char:start_char + max_chars], start_char
 
 
-def fetch(url, cancel=None, url_policy=None, *, query='', start_char=0, max_chars=MAX_CHARS):
+def fetch(url, cancel=None, url_policy=None, *, query='', start_char=0, max_chars=MAX_CHARS,
+          pdf_page=None, json_pointer='', json_start=0, json_limit=20):
+    from app import web_formats
     validate_selection(query, start_char, max_chars)
+    web_formats.validate(pdf_page, json_pointer, json_start, json_limit)
     current = normalize_url(url)
     with Deadline(cancel) as deadline:
         try:
@@ -330,8 +335,10 @@ def fetch(url, cancel=None, url_policy=None, *, query='', start_char=0, max_char
                         label = 'Access denied or payment/login required.' if resp.status in {401, 402, 403} else 'Page request failed.'
                         raise FetchError('http_error', f'HTTP {resp.status}: {label} No page evidence captured.', resp.status)
                     ctype = resp.headers.get_content_type()
-                    if ctype not in {'text/html', 'text/plain', 'text/markdown', 'application/xhtml+xml'}:
-                        raise FetchError('unsupported_type', 'Unsupported page type. Fetch HTML or text; upload PDF/DOCX through Documents.', resp.status)
+                    format = 'pdf' if ctype == 'application/pdf' else 'json' if (
+                        ctype == 'application/json' or (ctype.startswith('application/') and ctype.endswith('+json'))) else None
+                    if not format and ctype not in {'text/html', 'text/plain', 'text/markdown', 'application/xhtml+xml'}:
+                        raise FetchError('unsupported_type', 'Unsupported source type. Use HTML, text, PDF or JSON.', resp.status)
                     if resp.getheader('Content-Encoding', 'identity').lower() != 'identity':
                         raise FetchError('unsupported_encoding', 'Server returned compressed content despite an identity request.', resp.status)
                     length = resp.getheader('Content-Length')
@@ -349,6 +356,12 @@ def fetch(url, cancel=None, url_policy=None, *, query='', start_char=0, max_char
                     deadline.check()
                     if length and len(body) != int(length):
                         raise FetchError('incomplete', 'Page download ended before its declared length. No evidence captured.', resp.status)
+                    if format:
+                        return web_formats.page(bytes(body), format, current, resp.status, deadline,
+                            query=query, start_char=start_char, max_chars=max_chars, pdf_page=pdf_page,
+                            json_pointer=json_pointer, json_start=json_start, json_limit=json_limit)
+                    if pdf_page is not None or json_pointer or json_start or json_limit != 20:
+                        raise FetchError('invalid_selection', 'PDF/JSON selectors do not apply to this HTML/text response.')
                     try:
                         text = body.decode(resp.headers.get_content_charset() or 'utf-8', errors='replace')
                     except LookupError:

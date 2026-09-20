@@ -18,7 +18,7 @@ depends on your assistant's capabilities and Tool Manager permissions. For examp
 > actually read. Say when a page could not be fetched.
 
 Search results contain titles, URLs, and snippets marked **discovery**. They are not
-registered page evidence. `web_fetch` reads HTML/text and returns captured passages with
+registered page evidence. `web_fetch` reads HTML/text, public PDFs, and JSON responses, returning captured passages with
 stable labels such as **[S1]**. The model chooses which passages to cite; a valid label
 does not establish that the passage supports the claim.
 
@@ -77,6 +77,53 @@ To check the feature manually:
 4. Remove that snapshot in the citation panel and repeat the retained-only read. The tool
    must report it unavailable. A new explicit fetch is needed to capture it again.
 
+## PDF and JSON sources
+
+Public PDFs with a text layer work through the same `web_fetch` tool. Ask for a report or
+table and its page citations. The model can search extracted text with `query`, page
+through it with `start_char`, or select one **`pdf_page`** (one-based). With `pdf_page`,
+query/offset selection is within that page. Without it, offsets refer to the concatenated
+nonempty page text. Each retained passage stays within one PDF page, and the source panel,
+saved rereads, and Markdown export identify the page and its local character offsets.
+Layout extraction preserves basic columns and line breaks; complex tables, charts, rotated
+text and reading order still need verification against the original. Pages without
+extractable text are listed; there is no OCR or external image-decoder execution.
+
+For JSON, Phlox retains **complete values or complete array records** rather than chopping
+text at an arbitrary character. Nested fields, arrays, null/boolean values and original
+number spellings are preserved. Use **`json_pointer`** to select a value, such as `/results`
+or `/results/0/amount`. An empty pointer selects the root. In keys, escape `~` as `~0` and
+`/` as `~1`. A selected array supports **`json_start`** (zero-based, default 0) and
+**`json_limit`** (default 20, maximum 50). The complete selection must fit within 6,000
+characters or the smaller requested `max_chars`. The result gives the retained index
+range, total array length and next index when more items remain.
+
+If a whole object or one array record is too large, the model receives an explicit
+selection error, with a bounded field/type preview for objects, and can request a smaller
+JSON path. That preview is navigation data, not captured evidence. JSON does not use
+`query`, `start_char`, or `pdf_page`. Duplicate object keys, nonstandard constants, malformed
+JSON and excessive nesting are rejected. JSON schema responses are readable as data;
+external `$ref` links are never followed automatically.
+
+Array selection operates on **one downloaded response**. It does not follow API pagination,
+submit POST bodies, supply credentials, prove that server-side filters were honored, or
+infer that omitted records are absent. Each subsequent selection downloads the current
+response again, so records/indices can change between reads. Large API datasets and
+POST-based queries remain work for a later increment.
+
+PDF and JSON passages use the existing web-source permissions, ownership, retention and
+source limits. Research notebook findings can reference their citations; final synthesis
+restores their complete retained excerpts and provenance without another HTTP request.
+Only passages are saved, not the original PDF/JSON file. Removing a snapshot or its expiry
+prevents future retained reads, as for HTML evidence.
+
+To test manually, supply a public PDF URL and a public JSON URL in a Research request.
+Ask it to quote a figure from a specific PDF page and extract a small range of JSON records,
+update the notebook, and produce a cited comparison. Open each citation to verify the
+page or JSON pointer/index range. Refresh the chat and inspect it again. Try an encrypted
+or scanned PDF separately: the response should explain the limitation rather than claim
+it captured usable evidence. No new admin configuration or database migration is needed.
+
 ## Failures, Stop, and recovery
 
 HTTP errors, failed connections, denied private targets, oversized downloads, unsupported
@@ -88,8 +135,10 @@ Invalid URLs containing credentials are rejected without creating a source recor
 Some access barriers return HTTP 200. Phlox detects an explicit paywall marker and a small
 set of common short login/subscription/challenge messages, reporting a **possible** barrier.
 This is heuristic; it cannot identify every paywall or certify that extraction is complete.
-There is no paywall bypass, authenticated browsing, JavaScript execution, or OCR. PDF/DOCX
-URLs are rejected by web fetch; download and upload those files through Documents instead.
+There is no paywall bypass, authenticated browsing, JavaScript execution, or OCR. Public
+PDF URLs with a text layer are supported. DOCX URLs remain unsupported; upload those files
+through Documents instead. Encrypted PDFs and scanned pages without extractable text are
+reported explicitly, without inventing evidence from a successful HTTP status.
 
 Chat **Stop** interrupts an active fetch and prevents new evidence publication after
 cancellation is observed. Network reads/connections have short timeouts and an overall
@@ -125,7 +174,8 @@ Page fetching and the Serper/SearXNG search clients use a fixed desktop Chrome U
 matching Collomia. Its shared value is maintained in `backend/app/web_fetch.py`.
 Page requests also match Collomia's weighted `Accept` header and `Accept-Language:
 en-US,en;q=0.9` for compatibility with sites that reject minimal request headers. The
-fetcher still validates the returned content type and only extracts supported HTML/text.
+fetcher validates the returned content type: supported HTML/text, `application/pdf`,
+`application/json`, and `application/*+json` (including JSON schemas).
 DuckDuckGo requests use the `ddgs` library's own browser identity handling. A browser
 User-Agent can improve compatibility, but does not execute JavaScript or provide a logged-in
 browser session; sites may still return HTTP 403.
@@ -154,10 +204,15 @@ their existing separate implementation; this transport governs `web_fetch` only.
 | HTML nesting | 128 elements |
 | Extracted text supplied per fetch | Up to 20,000 characters from the requested offset; default starts at zero |
 | Keyword-focused selection | Up to 6,000 contiguous characters; query up to 200 characters |
-| Retained passage | 6,000 characters; up to four passages per fetch |
+| Retained passage | 6,000 characters; HTML/text uses up to four per fetch; PDF page boundaries can create more |
+| PDF extraction | Scan up to 200 pages, or select one `pdf_page` (1–10,000); up to 500,000 extracted characters |
+| PDF stream expansion | 8 MiB per bounded decoder/stream, 32 MiB cumulative decoded streams |
+| PDF/JSON parsing | Two concurrent subprocesses; shared 30-second fetch deadline and cancellation; 10 CPU seconds where supported, 512 MiB address space on Linux |
+| JSON selection | One complete value or array slice, up to 6,000 characters; `json_limit` 1–50 items, default 20 |
+| JSON structure | Depth 64; pointer up to 512 characters; duplicate keys and nonstandard constants rejected |
 | Shared source bounds | 64 per turn; 512 identities per conversation |
 
-Limits are code constants, not new configuration settings. This is bounded HTML/text
+Limits are code constants, not new configuration settings. This is bounded source
 extraction, not a browser renderer or semantic claim verifier. Opt-in Research and domain/
 document selection are available; see [RESEARCH.md](RESEARCH.md). Scheduled research,
 authenticated sites, and artifact-version citations remain future work.

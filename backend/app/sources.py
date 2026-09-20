@@ -115,7 +115,7 @@ def remaining_capacity(db, conversation_id, turn_id):
 
 def capture_web(db, *, conversation_id, user_id, turn_id, url, title, text='', content_hash=None,
                 truncated=False, status='fetched', reason=None, http_status=None, cancel=None,
-                start_char=0, total_chars=None):
+                start_char=0, total_chars=None, provenance=None):
     """Register bounded fetched passages (or a failure record), never discovery snippets.
 
     Repeated page/offset/content reuses labels; revised content receives new identities.
@@ -137,6 +137,8 @@ def capture_web(db, *, conversation_id, user_id, turn_id, url, title, text='', c
             start = start_char + offset
             excerpt = text[offset:offset + MAX_EXCERPT_CHARS]
             evidence = ['web', url, digest, start, excerpt, status, http_status]
+            if provenance:
+                evidence.append(provenance)
             fingerprint = hashlib.sha256(json.dumps(evidence).encode()).hexdigest()
             row = db.query(Source).filter_by(conversation_id=conv.id, fingerprint=fingerprint).first()
             use = db.get(SourceUse, (turn_id, row.id)) if row else None
@@ -160,6 +162,8 @@ def capture_web(db, *, conversation_id, user_id, turn_id, url, title, text='', c
                                 'fetched_at': now.isoformat()}
                 if total_chars is not None:
                     row.location = {**row.location, 'total_chars': total_chars}
+                if provenance:
+                    row.location = {**provenance, **row.location}
             else:
                 row.location = {**row.location, 'fetched_at': now.isoformat()}
             row.expires_at = now + timedelta(days=RETENTION_DAYS)
@@ -167,7 +171,7 @@ def capture_web(db, *, conversation_id, user_id, turn_id, url, title, text='', c
                 db.add(SourceUse(turn_id=turn_id, source_id=row.id, query=''))
             ref = f'[S{row.number}]'
             if status == 'fetched':
-                blocks.append(f'{ref} {row.title}\nURL: {url}\nFetched: {now.isoformat()}\n'
+                blocks.append(f'{ref} {row.title}\nURL: {url}\nFetched: {now.isoformat()}\n' + web_locator(row.location) +
                               f'Characters {start + 1}–{start + len(excerpt)} of extracted page text:\n{excerpt}')
             else:
                 blocks.append(f'{ref} Fetch unavailable: {reason}\nURL: {url}\n'
@@ -176,6 +180,17 @@ def capture_web(db, *, conversation_id, user_id, turn_id, url, title, text='', c
             blocks.append('[Page extraction shortened; additional page text was not retained or supplied.]')
         db.commit()
         return blocks
+
+
+def web_locator(location):
+    if location.get('format') == 'pdf':
+        return f"PDF page {location['page']} of {location['page_count']}; character offsets within this page.\n"
+    if location.get('format') == 'json':
+        text = 'JSON pointer: ' + json.dumps(location.get('json_pointer', '')) + ' (empty = root). '
+        if 'item_start' in location:
+            text += f"Array items [{location['item_start']}, {location['item_end']}) of {location['total_items']}. "
+        return text + 'Character offsets within the rendered JSON selection.\n'
+    return ''
 
 
 def read_web(db, *, conversation_id, user_id, turn_id, label, cancel=None, research=None):
@@ -205,7 +220,7 @@ def read_web(db, *, conversation_id, user_id, turn_id, label, cancel=None, resea
         location = row.location
         block = (f'[{label}] {row.title}\nURL: {row.url}\n'
                  f"Retained capture (not re-fetched): {location['fetched_at']}\n"
-                 f"Characters {location['start'] + 1}–{location['end']} of extracted page text:\n{row.excerpt}")
+                 + web_locator(location) + f"Characters {location['start'] + 1}–{location['end']} of extracted page text:\n{row.excerpt}")
         db.commit()
         return block
 
@@ -316,6 +331,8 @@ def export_markdown(db, conv):
             # Normalization percent-encodes markup delimiters before Markdown autolinking.
             blocks.append(f"[{label}] {title} — web page; URL: <{source['url']}>; fetched {location['fetched_at']}; "
                           f"characters {location['start'] + 1}–{location['end']}.")
+            if location.get('format'):
+                blocks.append(html.escape(web_locator(location)))
         else:
             blocks.append(f"[{label}] {title} — {locator}chunk {location['chunk'] + 1}; captured {source['captured_at'].isoformat()}.")
         if source['changed']:

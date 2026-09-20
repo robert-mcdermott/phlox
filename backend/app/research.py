@@ -20,6 +20,12 @@ Search snippets are discovery leads, not evidence. Fetch web pages before citing
 For long pages, use web_fetch query keywords for focused evidence or start_char to page
 through later text. Revisit captured [S#] passages with read_web_source instead of fetching
 again when earlier output was trimmed. Revisited passages retain their original capture date.
+web_fetch also reads public PDFs with page citations and JSON values/array records. Use
+pdf_page for a specific PDF page. For JSON, follow structure previews with json_pointer
+and json_start/json_limit; array selection is within one response, not API pagination.
+Do not guess that omitted records are absent or that requested API filters were honored.
+Scanned PDFs need OCR; complex table extraction needs verification. POST APIs are not yet
+supported by this research workflow. Report these capability gaps instead of retrying guessed GET URLs.
 When update_research_notebook is available, maintain concise source-linked findings,
 disagreements and unresolved questions after every few reads and before the final handoff.
 Supply the full notebook, preserving still-relevant findings. Batch an update with your next

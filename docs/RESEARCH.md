@@ -105,6 +105,16 @@ Research rereads are limited to this attempt's captured sources and current doma
 including after approval/resume. New Research attempts do not import earlier evidence by
 label. See [focused web reading](WEB_SOURCES.md#focused-reading-and-saved-evidence).
 
+## PDF and JSON evidence
+
+Research also reads public **PDF and JSON sources** through `web_fetch`. PDF citations
+retain page numbers, and JSON citations retain the selected path and array index range.
+Ask for a specific page or set of records when a response is large; the model can use
+`pdf_page`, `json_pointer`, `json_start` and `json_limit`. Complete retained passages can
+support notebook findings and final writing. Scanned PDFs require OCR, complex PDF tables
+need verification, and POST queries/API pagination remain unsupported. See
+[PDF and JSON sources](WEB_SOURCES.md#pdf-and-json-sources) for limits and manual checks.
+
 ## Research notebook and working context
 
 During gathering, the model can maintain a **Research notebook** containing concise

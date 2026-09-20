@@ -1291,7 +1291,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.10.0" },
     { name = "pydantic-settings", specifier = ">=2.7.0" },
     { name = "pyjwt", specifier = ">=2.10.0" },
-    { name = "pypdf", specifier = ">=5.1.0" },
+    { name = "pypdf", specifier = ">=6.13.2" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=6.0.0" },
     { name = "python-docx", specifier = ">=1.1.2" },

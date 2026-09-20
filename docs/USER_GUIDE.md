@@ -443,11 +443,14 @@ excerpt, filename, available PDF page or section/table location, chunk range, an
 are marked; invented references are unverified. Model-generated citations in older messages
 are not retroactively upgraded. This feature is always available in both chat modes, with
 no separate flag. It currently covers personal documents and assistant knowledge bases;
-successfully fetched HTML/text web pages also use the captured-evidence registry. Search
+successfully fetched HTML/text, PDF and JSON web sources also use the captured-evidence registry. Search
 snippets remain discovery leads until Phlox fetches their pages. For long pages, the agent
 can retrieve a passage matching keywords or read later sections by offset. It can also
 reread retained web citations without fetching again. See [focused reading and saved
 evidence](WEB_SOURCES.md#focused-reading-and-saved-evidence) for scope and limits.
+Public PDFs retain page citations; JSON values and array selections retain field paths
+and record ranges without splitting records or rounding numeric text. See
+[PDF and JSON reading](WEB_SOURCES.md#pdf-and-json-sources) for examples and bounds.
 
 Access is rechecked on each source read/export. Source excerpts expire 30 days after last
 capture; deletion removes source snapshots and leaves unavailable labels. Historical answer/

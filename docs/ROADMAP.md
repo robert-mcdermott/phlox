@@ -29,7 +29,9 @@ admission checks. The fourth increment adds focused HTML/text passage retrieval 
 initial cutoff, offset pagination, navigation removal and reauthorized retained web reads.
 The fifth increment adds an inspectable, source-linked Research notebook, transient
 consolidation of covered tool exchanges, and reauthorized original passages for synthesis.
-PDF/JSON extraction, broader context quality evaluation and analysis improvements remain planned; see the wave's
+The sixth increment adds bounded public PDF layout-text extraction with page citations,
+complete JSON value/record selections, and notebook restoration with their provenance.
+POST-based API queries, pagination, broader context quality evaluation and analysis improvements remain planned; see the wave's
 delivery record for verification and remaining restart boundaries.
 The wave log records verification and remaining limits. M3 has an initial delivery; M4–M5 remain proposed. Existing features and
 completed work are identified explicitly; unchecked entries do not yet ship.
@@ -319,7 +321,8 @@ stage-specific output/reasoning allowances alongside live-model notebook quality
 tasks sufficient model-aware completion room, with bounded adaptive extensions and synthesis
 continuation that preserves evidence rather than restarting the investigation. Distinguish
 soft planning targets from explicit user/admin hard ceilings; honor Stop and actual provider
-capacity. Further improve extraction quality, bounded PDF/JSON evidence and working-context
+capacity. Public PDF/JSON evidence now ships with explicit extraction/selection bounds.
+Further improve extraction quality, controlled API queries and working-context
 consolidation. Measure successful completion and avoided restarts, not only
 tokens consumed per attempt. Audit effective settings across the generic harness, research,
 existing chats and recovery, with per-call limit/finish diagnostics. Route explicitly

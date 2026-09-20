@@ -62,6 +62,12 @@ export default function SourcePanel({ conversationId, reference, onClose }) {
       {source?.available && <>
         <h3 className="break-words font-semibold">{source.title}</h3>
         {source.location.page && <p className="text-muted">Page {source.location.page}</p>}
+        {source.location.format === 'pdf' && <p className="text-muted">PDF layout text · offsets within this page. Verify complex tables against the original PDF.</p>}
+        {source.location.format === 'json' && <>
+          <p className="break-all text-muted">JSON pointer: {source.location.json_pointer || '(root)'}</p>
+          {source.location.item_start != null && <p className="text-muted">Array items [{source.location.item_start}, {source.location.item_end}) of {source.location.total_items} · zero-based indices</p>}
+          <p className="text-muted">Complete JSON selection · offsets within its rendered text</p>
+        </>}
         {source.location.section && <p className="text-muted">Section: {source.location.section}</p>}
         {source.location.table_row && <p className="text-muted">Table {source.location.table || ''} row {source.location.table_row}</p>}
         <p className="text-muted">{source.kind !== 'web' && <>Chunk {source.location.chunk + 1} · </>}Characters {source.location.start + 1}–{source.location.end}</p>

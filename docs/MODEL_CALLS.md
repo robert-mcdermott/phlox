@@ -1,5 +1,15 @@
 # Model-call accounting and context fit
 
+Research can reduce repeated tool input using its
+[working notebook](RESEARCH.md#research-notebook-and-working-context). This projection
+runs before the normal input guardrails, context fitting and call accounting. It preserves
+the canonical transcript and restores complete, currently authorized cited passages for
+final synthesis within the configured/provider context window minus the output reservation
+and framing headroom. Omitted passages are explicit. Preparation makes no model calls;
+model-generated notebook updates consume the usual passes and reported tokens. Notebook
+projection estimates are not provider-reported or billable usage. Context records still
+identify the complete passages present after guardrails and fitting.
+
 [User Guide](USER_GUIDE.md) · [Project overview](../README.md)
 
 Delivered in [Wave 3](IMPLEMENTATION_WAVES.md). The shared seam is

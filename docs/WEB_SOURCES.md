@@ -57,8 +57,13 @@ Research can reread only evidence captured for its current attempt and allowed d
 Removed, expired, failed, foreign, and out-of-scope sources remain unavailable. Research
 counts these operations against its source-read allowance, just like page fetches.
 
-This is a foundation for evidence reuse, not an automatic research notebook or a full-page
-cache. Summarized findings and more efficient fitting of long research histories remain planned.
+Research also has a [working notebook](RESEARCH.md#research-notebook-and-working-context).
+Accepted source-linked notes allow earlier tool exchanges to be condensed in model input.
+For final writing, Phlox restores the original referenced passages that are still accessible
+and fit the context allowance. This preparation makes no additional read tool calls or
+network requests, creates no sources, and never renews retention. Missing/omitted passages
+are explicit. Models must update the notebook to use this reduction; no full-page cache
+is introduced.
 
 To check the feature manually:
 

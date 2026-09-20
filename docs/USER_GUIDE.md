@@ -657,7 +657,13 @@ and a representative document question after setup.
 
 **Chat is the default.** Change **Chat** to **Research** in the composer toolbar for a bounded
 plan/gather/report workflow over selected documents, the web, or both. This is separate
-from the deep-research skill and Agent mode. See [Research mode](RESEARCH.md).
+from the deep-research skill and Agent mode. During longer investigations, expand
+**Research notebook** in the progress panel to inspect source-linked findings, disagreements,
+and open questions. Accepted notes let Phlox condense earlier tool output in model input;
+final writing restores the original cited passages that fit. The full transcript remains
+saved, and the panel identifies unavailable or omitted evidence. Notebook use depends on
+the model. See [Research mode](RESEARCH.md) and its
+[notebook guide](RESEARCH.md#research-notebook-and-working-context).
 
 Unsent text drafts survive chat switches and refresh in the same browser tab; logout clears
 them. Attachments and mode selections are not restored. Scrolling upward during a reply

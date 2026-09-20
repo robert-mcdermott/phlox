@@ -502,6 +502,21 @@ Quick end-to-end checks that the foundation passed (reproduce any of these):
 
 ## Research and search configuration
 
+`research_notebook.py` holds the turn-local notebook contract and transient provider-input
+projection. The Research-only `update_research_notebook` registry tool validates bounded
+notes against current-attempt sources and applies output rules to visible note text.
+An accepted revision records server-observed call IDs completed before the model response
+that authored the update (not unseen sibling results, even across approvals); normal consolidation
+omits only complete covered exchanges, preserving tool-call/result pairing. Revoked
+notebook evidence also withdraws older complete exchanges and paraphrases. Gathering keeps its last
+two reading results; synthesis restores original cited excerpts within the effective
+context allowance. Source access is rechecked under the existing mutation lock. Notes
+and source text enter as untrusted data, before the usual input guardrail/accounting seam.
+The full canonical messages/tool steps remain saved. Notebook state travels in existing
+approval snapshots, Research events and answer usage; no schema migration or separate
+worker is involved. New attempts do not inherit old notebooks. See the
+[notebook contract and limitations](RESEARCH.md#research-notebook-and-working-context).
+
 [Research mode](RESEARCH.md) is an explicit `ChatRequest.research` option; null preserves
 normal chat. `app/research.py` owns scope, stage, and budget state; `AgentSession` applies
 it to planning/gathering/synthesis and persists it in approvals and message usage metadata.

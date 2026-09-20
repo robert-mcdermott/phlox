@@ -27,7 +27,9 @@ reasons. The third increment adds larger, admin-configurable Research presets, p
 snapshots with stricter approval resumes, visible gathering/pass limits and source-capacity
 admission checks. The fourth increment adds focused HTML/text passage retrieval beyond the
 initial cutoff, offset pagination, navigation removal and reauthorized retained web reads.
-Research working notes, PDF/JSON extraction and analysis improvements remain planned; see the wave's
+The fifth increment adds an inspectable, source-linked Research notebook, transient
+consolidation of covered tool exchanges, and reauthorized original passages for synthesis.
+PDF/JSON extraction, broader context quality evaluation and analysis improvements remain planned; see the wave's
 delivery record for verification and remaining restart boundaries.
 The wave log records verification and remaining limits. M3 has an initial delivery; M4–M5 remain proposed. Existing features and
 completed work are identified explicitly; unchecked entries do not yet ship.
@@ -310,9 +312,10 @@ scope must be a server-enforced constraint, including child tools and fallbacks.
 
 **Wave 14 in progress:** initial truthful synthesis completion/recovery, effective-setting
 diagnostics and larger admin-configurable presets now ship, including saved-limit continuity
-and source-capacity checks. Focused page retrieval and retained web passage rereading now ship;
-the full working-context notebook remains planned. Remaining budget work calibrates stage-specific output/reasoning
-allowances alongside working context. Give substantial
+and source-capacity checks. Focused page retrieval, retained web passage rereading, and an
+inspectable Research notebook now ship. Accepted notes reduce repeated tool input, and
+synthesis restores authorized original passages that fit. Remaining budget work calibrates
+stage-specific output/reasoning allowances alongside live-model notebook quality. Give substantial
 tasks sufficient model-aware completion room, with bounded adaptive extensions and synthesis
 continuation that preserves evidence rather than restarting the investigation. Distinguish
 soft planning targets from explicit user/admin hard ceilings; honor Stop and actual provider

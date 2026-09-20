@@ -1042,8 +1042,15 @@ test('research progress replays after reload with its plan and counters', async 
   const { page, state } = await fixture(t, { durable: true })
   state.run = { id: 'run-1', conversation_id: 'alpha', status: 'running' }
   state.events = [{ type: 'research', phase: 'gather', started_at: Date.now()/1000, plan: 'Compare dates and policy allowances.', searches: 2, reads: 1, limits: { searches: 6, reads: 8, tokens: 80000, seconds: 600 }, source_count: 3, source_capacity: 61, rounds_used: 4, effective_rounds: 8, model_round_limit: 12, limits_restricted: true, usage: { total: 0, unknown_usage_calls: 1 } }]
+  state.events[0].notebook = { revision: 2,
+    findings: [{ text: 'The allowance is $45.', sources: ['S1'] }],
+    disagreements: [{ text: 'The older report uses a different period.', sources: ['S1', 'S2'] }],
+    questions: ['Which period applies?'], unavailable_sources: ['S3'],
+    context: { condensed_exchanges: 4, restored_sources: ['S1'], omitted_sources: ['S2'] } }
   await page.getByText('Approval chat', { exact: true }).click()
   await page.getByRole('region', { name: 'Research progress' }).getByText('Gathering evidence', { exact: true }).waitFor()
+  await page.getByText('Research notebook · revision 2', { exact: true }).click()
+  await page.getByText('Which period applies?', { exact: true }).waitFor()
   await page.reload(); await page.getByText('Approval chat', { exact: true }).click()
   const progress = page.getByRole('region', { name: 'Research progress' })
   await progress.getByText(/4 model passes used · 8 planned including report · 12 total pass ceiling/).waitFor()
@@ -1055,6 +1062,16 @@ test('research progress replays after reload with its plan and counters', async 
   await progress.getByText('Research plan', { exact: true }).click()
   await progress.getByText('Compare dates and policy allowances.', { exact: true }).waitFor()
   assert.match(await progress.textContent(), /2\/6 searches/)
+  await progress.getByText('Research notebook · revision 2', { exact: true }).click()
+  await progress.getByText('Which period applies?', { exact: true }).waitFor()
+  assert.match(await progress.textContent(), /The allowance is \$45\. \[S1\]/)
+  assert.match(await progress.textContent(), /Notes withheld because their sources are unavailable: S3/)
+  assert.match(await progress.textContent(), /Original passages restored: S1/)
+  assert.match(await progress.textContent(), /context limits: S2/)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.getByTitle('Toggle sidebar', { exact: true }).click()
+  const layout = await progress.evaluate(el => ({ width: el.clientWidth, scroll: el.scrollWidth }))
+  assert.ok(layout.width >= 200 && layout.scroll <= layout.width + 1, JSON.stringify(layout))
 })
 
 test('streaming respects reading position and Jump to latest restores following', async (t) => {

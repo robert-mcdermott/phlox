@@ -105,6 +105,61 @@ Research rereads are limited to this attempt's captured sources and current doma
 including after approval/resume. New Research attempts do not import earlier evidence by
 label. See [focused web reading](WEB_SOURCES.md#focused-reading-and-saved-evidence).
 
+## Research notebook and working context
+
+During gathering, the model can maintain a **Research notebook** containing concise
+findings, source-linked disagreements, and open questions. Expand it in the research
+progress panel to inspect the latest revision, including on a saved answer or after a
+reconnectable run replays. These are factual working notes, not private model reasoning.
+The notebook is specific to this attempt: a new Research request starts fresh.
+
+The `update_research_notebook` tool replaces the complete notebook. Each update must
+preserve still-relevant findings and reference accessible **[S#]** passages from this
+attempt. It accepts up to 12 findings, four disagreements, and eight open questions;
+each finding/disagreement has at most 500 characters and four source labels, and each
+question at most 200 characters. Notes cannot cite failed fetches, search snippets, or
+invented labels. Checking a source reference does **not** verify that the note is correct
+or that its passage supports the claim. Inspect important citations in the report.
+
+After an accepted update, Phlox can omit older, completed tool exchanges from subsequent
+model input. It retains the latest two reading results while gathering and keeps exchanges
+whose results were not available when the model wrote the notes, including sibling reads
+in the same batch. Before synthesis, covered exchanges can all be replaced by
+the notebook and the complete retained passages cited by its findings and disagreements.
+The original user request and full saved tool transcript remain intact; this changes only
+the copy sent to the provider. This avoids repeatedly resending bulky results while giving
+the report writer original evidence rather than relying on summaries alone.
+
+Restoration rechecks ownership, current document/domain scope, deletion, expiry, and the
+attempt's source usage. It performs no network requests and does not extend retention.
+Only whole passages that fit alongside the output reservation are added. The panel reports
+condensed exchanges, restored labels, and passages omitted for context limits. An omission
+is also sent to the model with instructions to acknowledge the gap. The usual guardrails,
+context fitting, model accounting and administrator limits still apply. **Context record →
+Model calls** remains the record of actual fitted input and provider usage; notebook
+preparation is not a separate model call.
+
+If a notebook source becomes unavailable, its dependent notes and unlinked questions are
+withheld from the next model input. Phlox also conservatively withdraws earlier complete
+tool exchanges and assistant paraphrases for that attempt, rebuilding from accessible
+notebook evidence. Saved messages, tool arguments, earlier progress events, and backups
+are not retroactively erased by this check; removing a snapshot is not conversation erasure.
+
+Updates use ordinary tool permissions and model pass/token allowances, without consuming a
+search or source-read attempt. They add no hidden summarization call. The tool is advertised
+only during Research gathering and can be disabled in the tool manager. A model that does
+not update the notebook keeps the existing context-fitting behavior; savings and note
+quality depend on the model. This does not increase hard limits or guarantee completion.
+Approval snapshots preserve notebook state, and resumes reauthorize evidence before reuse.
+
+To try it, choose **Standard** or **Thorough** Research and ask for a comparison across
+several substantial sources, with this extra instruction: “Keep the research notebook
+updated with findings, disagreements, and open questions as you read. Cite original
+passages in the final report.” Expand **Research notebook** to follow its revisions. On a
+long enough investigation, the final panel should report condensed exchanges and restored
+passages. Open the final citations to verify their supporting text. With reconnectable runs
+enabled, refreshing should recover the same progress without repeating completed searches.
+
 ## Stop, reload, and recovery
 
 **Stop** requests cancellation and prevents subsequent tool/model calls, including synthesis.

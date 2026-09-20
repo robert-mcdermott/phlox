@@ -230,6 +230,8 @@ class AgentSession:
         max_rounds = int(self.params.get("max_tool_rounds", 12))
         research_rounds = min(max_rounds, self.research.limits['rounds']) if self.research else max_rounds
         enabled = self.allowed_tools if self.allowed_tools is not None else self.gate.enabled_names()
+        if not self.research:
+            enabled = enabled - {'update_research_notebook'}
         tools = self.registry.specs(enabled_names=enabled)
 
         # Guardrails (see app/guardrails.py): input rules scrub the outbound message
@@ -278,7 +280,6 @@ class AgentSession:
                 round_messages[0]['content'] += '\n\nCurrent research stage: ' + instruction
                 round_messages.append({'role': 'user', 'content': 'Proceed with the current research stage.'})
                 round_tools = [t for t in tools if t.name in self.research.available_tools()] if self.research.phase == 'gather' else []
-                yield self._research_event()
             else:
                 round_messages, round_tools = messages, tools
             final_reserve = not self.research and max_rounds > 1 and self.rounds_used >= max_rounds - 1
@@ -309,11 +310,20 @@ class AgentSession:
                     # Text and reasoning stream independently, so each needs its own.
                     redactor = StreamRedactor(guardrails_out)
                     thinking_redactor = StreamRedactor(guardrails_out)
-                provider_messages = (
-                    scrub_messages(round_messages, guardrails_in)[0] if guardrails_in else round_messages
-                )
                 try:
                     from app.model_calls import stream_model
+
+                    provider_messages = round_messages
+                    if self.research:
+                        from app.research_notebook import prepare
+                        # A notebook written in this model response cannot summarize results
+                        # from sibling tools that have not run yet (including approval resumes).
+                        self.research.state['notebook_eligible_calls'] = list(
+                            self.research.state.get('completed_calls', []))
+                        provider_messages = prepare(self.ctx, round_messages, round_tools, call_params, self.provider)
+                        yield self._research_event()
+                    if guardrails_in:
+                        provider_messages = scrub_messages(provider_messages, guardrails_in)[0]
 
                     model_stream = stream_model(
                         self.provider, provider_messages, round_tools, call_params,
@@ -812,6 +822,13 @@ class AgentSession:
         messages: list[dict],
     ) -> Iterator[str]:
         self._observe_child_tool("child_tool_result", call, content=result.content, is_error=result.is_error)
+        if self.research:
+            completed = self.research.state.setdefault('completed_calls', [])
+            completed.append(call.id)
+            del completed[:-1600]
+            if call.name == 'update_research_notebook' and not result.is_error:
+                self.research.state['notebook']['covered_calls'].append(call.id)
+                yield self._research_event()
         from app.artifact_snapshots import unique_artifacts
         for art in result.artifacts:
             url = f"/api/files/{self.conversation.id}?path={art['path']}"

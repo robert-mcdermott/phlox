@@ -456,7 +456,7 @@ version expiry remain outside this wave.
 ## Wave 14 — General reliability and task completion
 
 **Status:** in progress; first through third increments implemented 2026-09-09,
-fourth increment implemented 2026-09-20. **Scope:** application/session/run
+fourth and fifth increments implemented 2026-09-20. **Scope:** application/session/run
 reliability across Chat and Research, M2.3 evidence quality and completion budgets, with a
 bounded bridge to M3 deliverables. Schedule ahead of output inspection and portable exports.
 The delivery record below distinguishes implemented changes from the remaining plan.
@@ -609,12 +609,50 @@ source-limit and Stop regressions pass. Browser coverage verifies the renamed So
 allowance in admin settings and the composer. No live-model or external-site evaluation
 was performed. No database migration or new configuration is required.
 
-**Still pending:** remaining W14.1/W14.5 stage allowances, live calibration and recovery UX, further W14.2 extraction quality, W14.3/W14.4 and
+**Fifth increment — research notebook and evidence-aware context (2026-09-20):**
+
+- **W14.4 bounded delivery:** a Research-only registry tool saves complete, bounded
+  revisions of source-linked findings, disagreements and open questions. The progress
+  panel exposes these working notes and their revision during execution and in saved
+  answers/replayed runs. Notes are derived data, never independent evidence or private
+  reasoning; accepted references establish access, not semantic support for a claim.
+- **Context reduction:** accepted revisions cover server-observed tool calls completed
+  before the model composed the update, never unseen sibling read results in its batch.
+  Provider-bound copies omit complete covered exchanges while retaining the two most
+  recent reading results during gathering. Synthesis can replace all covered exchanges
+  with notes and whole referenced excerpts within the effective context/output allowance.
+  Uncovered exchanges, the original objective, and canonical transcripts are preserved.
+  The six-source fixture reduces gathering input by more than half without changing saved
+  tool output. Actual quality/cost savings require live-model evaluation.
+- **Evidence and continuity:** restoration rechecks current-attempt usage, ownership,
+  document/domain scope and snapshot availability. Revoked evidence withdraws dependent
+  notes/questions and conservatively discards earlier complete exchanges/paraphrases from
+  the next input. Available originals are restored for synthesis; oversized passages are
+  explicitly omitted. No network access, retention renewal, hidden summarization call or
+  larger hard allowance is introduced. Normal guardrails, context/accounting, permissions
+  and Stop still apply. Approval state, saved-answer usage and durable events carry the
+  notebook using existing storage, with no migration/configuration required.
+- **Limits:** models must call the tool for notebook-driven reduction; disabled/unused
+  notebooks retain ordinary context fitting. Updates consume model passes/tokens and
+  replace the full notebook, so models must preserve relevant findings. Old transcripts,
+  events and backups are not erased by source reauthorization. New Research attempts
+  start fresh; cross-turn notebook inheritance, semantic claim verification, PDF/JSON/API
+  extraction and analysis execution remain outside this increment. See the
+  [notebook guide](RESEARCH.md#research-notebook-and-working-context).
+
+**Fifth-increment verification:** backend lint and full suite (618 passed, 24 skipped),
+frontend production build and all 44 Chromium regressions, including notebook revision/content replay and
+narrow-screen layout. Offline fixtures cover input reduction, complete original-passage
+restoration, provider context caps/explicit omissions, expiry/deletion/scope/owner/attempt
+checks, output policy, same-batch unseen reads through approval resume, request-bound and durable execution, and Stop after
+a notebook update. No live-provider quality evaluation was performed.
+
+**Still pending:** remaining W14.1/W14.5 stage allowances, live calibration and recovery UX, further W14.2 extraction quality, W14.3 and broader W14.4 quality evaluation, and
 W14.6–W14.8 (extraction, working context and analysis/deliverables), plus full process-level signal/draining/deadline work in
 W14.11. A stalled tool or open event stream can still delay graceful shutdown. No automatic
 replay of uncertain actions, session refresh protocol, durable return hint or distributed
-worker has been introduced. The next increment should consolidate research findings and
-unresolved questions in working context before extending the research-to-analysis workflow.
+worker has been introduced. The next increment should address bounded PDF/JSON acquisition
+before extending the research-to-analysis workflow.
 
 **Motivation:** a reviewed long-running research task exposed an empty synthesis saved as
 completed, exhausted search/read allowances, repeated context trimming, and useful financial
@@ -676,7 +714,7 @@ the logs; those exporter errors alone are not evidence of an application crash.
 **Implementation order:** fix generated-file reloads and establish lifecycle/session
 diagnostics first, alongside truthful completion/recovery and effective-budget diagnostics.
 Then harden reauthentication/shutdown recovery, early capability routing and extraction;
-follow with PDF/JSON/POST-query support, working context, measured budget calibration,
+follow with PDF/JSON/POST-query support, further working-context evaluation, measured budget calibration,
 validated acquisition and the analysis/delivery path. Keep normal Chat the default,
 Research opt-in, the deep-research skill as optional guidance,
 and DuckDuckGo as the default/fallback search provider.

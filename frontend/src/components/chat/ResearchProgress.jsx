@@ -12,7 +12,7 @@ export default function ResearchProgress({ research }) {
   if (!research) return null
   const elapsed = Math.max(0, Math.round((research.finished_at || Date.now() / 1000) - research.started_at))
   const usage = research.usage || {}
-  return <section className="mb-2 rounded-lg border border-border bg-surface-2 p-3 text-xs text-content" aria-label="Research progress">
+  return <section className="mb-2 break-words rounded-lg border border-border bg-surface-2 p-3 text-xs text-content" aria-label="Research progress">
     <div role="status" className="font-semibold">{labels[research.phase] || 'Research'}</div>
     <p className="mt-1 text-muted">{research.searches}/{research.limits.searches} searches · {research.reads}/{research.limits.reads} source reads · {research.source_count} source records · {Math.floor(elapsed / 60)}m {elapsed % 60}s</p>
     {research.effective_rounds != null && <p className="mt-1 text-muted">{research.rounds_used} model passes used · {research.effective_rounds} planned including report{research.model_round_limit != null ? ` · ${research.model_round_limit} total pass ceiling including continuation` : ''}{research.recovery_calls > 0 ? ` · ${research.recovery_calls} continuation calls` : ''}</p>}
@@ -22,5 +22,25 @@ export default function ResearchProgress({ research }) {
     {usage.unknown_usage_calls > 0 && <p className="mt-1 text-muted">Some model usage is unreported. The token threshold cannot measure all usage; missing counts are not zero.</p>}
     {research.reason && <p className="mt-2">{research.reason}</p>}
     {research.plan && <details className="mt-2"><summary className="cursor-pointer text-accent">Research plan</summary><p className="mt-1 whitespace-pre-wrap">{research.plan}</p></details>}
+    {research.notebook && <details className="mt-2" aria-label="Research notebook">
+      <summary className="cursor-pointer text-accent">Research notebook · revision {research.notebook.revision}</summary>
+      <p className="mt-2 text-muted">Working notes derived from sources, not independently verified evidence. Inspect the cited passages before relying on a finding.</p>
+      {['findings', 'disagreements'].map(section => research.notebook[section]?.length > 0 && <div key={section} className="mt-2">
+        <div className="font-semibold">{section === 'findings' ? 'Findings' : 'Disagreements'}</div>
+        <ul className="list-disc space-y-1 pl-4">{research.notebook[section].map((item, index) => <li key={index} className="break-words">
+          {item.text} <span className="text-muted">{item.sources.map(label => `[${label}]`).join(' ')}</span>
+        </li>)}</ul>
+      </div>)}
+      {research.notebook.questions?.length > 0 && <div className="mt-2">
+        <div className="font-semibold">Open questions</div>
+        <ul className="list-disc space-y-1 pl-4">{research.notebook.questions.map((question, index) => <li key={index} className="break-words">{question}</li>)}</ul>
+      </div>}
+      {research.notebook.unavailable_sources?.length > 0 && <p className="mt-2 text-muted">Notes withheld because their sources are unavailable: {research.notebook.unavailable_sources.join(', ')}.</p>}
+      {research.notebook.context && <p className="mt-2 text-muted">
+        {research.notebook.context.condensed_exchanges} earlier tool exchanges condensed for the latest model input. The full transcript remains saved.
+        {research.notebook.context.restored_sources?.length > 0 && ` Original passages restored: ${research.notebook.context.restored_sources.join(', ')}.`}
+        {research.notebook.context.omitted_sources?.length > 0 && ` Full passages omitted from the final evidence packet because of context limits: ${research.notebook.context.omitted_sources.join(', ')}.`}
+      </p>}
+    </details>}
   </section>
 }

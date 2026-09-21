@@ -452,15 +452,18 @@ Public PDFs retain page citations; JSON values and array selections retain field
 and record ranges without splitting records or rounding numeric text. See
 [PDF and JSON reading](WEB_SOURCES.md#pdf-and-json-sources) for examples and bounds.
 For structured data, the [public API query tool](PUBLIC_API.md) can read NIH RePORTER
-projects by organization/year or PubMed publication metadata by search expression, with
+projects by organization/year, PubMed publications or ClinicalTrials.gov studies, with
 validated, cited pagination. Selected PubMed records can then supply cited abstracts and
-author affiliations; full article text remains outside this workflow. It preserves
+author affiliations. ClinicalTrials.gov supports condition/status/sponsor/location searches
+and cited study sections covering eligibility, interventions, sponsors, sites and posted results.
+Full article text remains outside this workflow. It preserves
 the query for inspection; sampled NIH pages are not complete annual funding totals.
 When downloadable data is requested, [dataset export](API_DATASETS.md) creates CSV/JSON
 records, an adapter-specific summary and a retrieval manifest from retained API pages. File
 creation uses normal approvals, and incomplete coverage and missing values stay explicit.
-Optional detail exports preserve captured abstract/affiliation selections separately. See
-the [Fred Hutch demo](PUBLIC_API.md#manual-verification-fred-hutch-demo).
+Optional detail exports preserve captured article/study selections separately. See
+the [PubMed demo](PUBLIC_API.md#manual-verification-fred-hutch-demo) and
+[ClinicalTrials.gov demo](PUBLIC_API.md#manual-verification-clinicaltrialsgov-demo).
 
 Access is rechecked on each source read/export. Source excerpts expire 30 days after last
 capture; deletion removes source snapshots and leaves unavailable labels. Historical answer/

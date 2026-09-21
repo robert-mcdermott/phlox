@@ -456,7 +456,7 @@ version expiry remain outside this wave.
 ## Wave 14 — General reliability and task completion
 
 **Status:** in progress; first through third increments implemented 2026-09-09,
-fourth through tenth increments implemented 2026-09-20. **Scope:** application/session/run
+fourth through eleventh increments implemented 2026-09-20. **Scope:** application/session/run
 reliability across Chat and Research, M2.3 evidence quality and completion budgets, with a
 bounded bridge to M3 deliverables. Schedule ahead of output inspection and portable exports.
 The delivery record below distinguishes implemented changes from the remaining plan.
@@ -824,6 +824,61 @@ calls or user-data writes were involved. See [manual verification](PUBLIC_API.md
 Full backend suite: 813 passed, 24 skipped. Lint, frontend production build and all
 45 Chromium regressions passed; existing deprecation and bundle-size warnings remain.
 
+**Eleventh increment — ClinicalTrials.gov study evidence (2026-09-20):**
+
+- **W14.3/W14.7 delivery:** `query_public_api` adds `adapter=clinical_trials` with a
+  required condition and optional other terms, overall recruitment statuses, sponsor/
+  collaborator and location expressions. Small study projections retain NCT IDs, titles,
+  lead sponsors, phases, registry update dates and separate recruitment/results fields.
+  Institutional keyword matches require sponsor/site evidence rather than an inferred
+  affiliation. No API key, configuration, dependency or schema migration is introduced.
+- **Cursor continuity:** saved-source continuation reuses opaque v2 page tokens and
+  filters. ClinicalTrials.gov reports totals only on the first page, so later citations
+  carry the original count with that limitation explicit. Empty pages and a terminal
+  empty page after the reported count are supported. Repeated adjacent tokens/IDs,
+  contradictory counts, malformed records and status-filter mismatches fail before
+  capture. Exports retain per-page tokens in provenance while excluding them from query
+  identity; missing coverage remains partial.
+- **Study details and delivery:** overview, eligibility, interventions, locations and
+  posted results use the shared record reader with bounded JSON text passages. Missing
+  sections remain explicit. Full-record hashes detect changes when chaining passages or
+  sections; mixed versions cannot be exported together. Sponsor/site status must be read
+  independently of overall recruitment and results availability. Optional detail exports
+  retain section selections and provenance. Normal ownership, expiry, Research scope,
+  Stop, file approval and saved-answer download rules remain in force.
+- **Transport reliability:** live testing exposed HTTP 403 responses from the existing
+  manually wrapped TLS connection. Matching Python's standard HTTPS negotiation (HTTP/1.1
+  ALPN and TLS 1.3 post-handshake-auth capability where supported) resolved the public API
+  failure. DNS pinning, hostname/certificate verification, private-address checks,
+  cancellation and no-proxy/no-cookie/no-redirect rules remain unchanged.
+- **Parser reliability:** PDF regressions exposed an existing incomplete-input stall
+  when a parser took longer than the first polling interval to start reading. The
+  subprocess now receives its entire payload through one communication call in a bounded
+  exchange thread; the caller polls Stop/deadlines and kills/reaps the child and joins the
+  exchange on exit. A delayed-reader regression failed before the correction and now
+  checks a payload larger than the pipe buffer. No timeout or size limit was increased.
+- **Boundaries:** one study request per detail read, process-wide 0.5-second request
+  pacing, 2 MiB responses, 500,000-character sections and 6,000-character serialized
+  selections. Passages may split JSON text and omit essential outcome context; this is
+  registry evidence, not independent study verification or patient-matching advice.
+  Full articles, bulk acquisition, automatic retry/backoff and general API discovery
+  remain future work. The next reliability slices should return to shared retry/backoff,
+  bounded data acquisition and completion-aware budgets rather than adding more services.
+
+**Eleventh-increment verification:** local HTTP fixtures cover cursor reuse, first-page-only
+counts, empty pages, duplicate/status/type failures, missing results, partial passages,
+record versions, expiry/ownership/Research scope, cancellation and exports. Scripted normal
+and durable Research runs complete search → study inspection → five-file export. Chromium
+verifies retained study citations after reload. A live two-page Fred Hutch ovarian-cancer
+query and one study response exercised all five section parsers without model calls or
+saving user data. Shared TLS tests preserve the pinned peer and hostname and cover optional
+post-handshake-auth support. See the [manual study demo](PUBLIC_API.md#manual-verification-clinicaltrialsgov-demo).
+Final verification after the transport/parser corrections: **858 backend tests passed,
+24 skipped**; all **45 Chromium regressions**, lint, frontend production build and diff
+checks passed. Existing deprecation and bundle-size warnings remain. The earlier PDF
+timeout failures led to the reproduced input-handoff fix described above; the final full
+suite passes with the original deadlines and a blocked-input cancellation regression.
+
 **Still pending:** remaining W14.1/W14.5 stage allowances, live calibration and recovery UX, further W14.2 extraction quality, broader W14.3 API coverage and W14.4 quality evaluation, and
 W14.6–W14.8 (extraction, working context and analysis/deliverables), plus full process-level signal/draining/deadline work in
 W14.11. A stalled tool or open event stream can still delay graceful shutdown. No automatic
@@ -831,13 +886,11 @@ replay of uncertain actions, session refresh protocol, durable return hint or di
 worker has been introduced. Future increments should address bounded bulk acquisition
 and broader research-to-analysis execution/deliverable verification (W14.6–W14.8).
 
-**Planned public API expansion (W14.3/W14.7):** add ClinicalTrials.gov studies, eligibility,
-recruitment status and available reported results through the shared search/detail/export
-contracts. PubMed bibliographic search, available abstracts and author affiliations now
-ship. Full article text, general API discovery, retry/backoff and bounded bulk retrieval
-remain open. Verify official documentation, access requirements and limits before each
-addition; test common components against NIH, PubMed and eventually ClinicalTrials.gov.
-This does not promise arbitrary public API access.
+**Remaining public API work (W14.3/W14.7):** NIH RePORTER, PubMed bibliography/article
+details and ClinicalTrials.gov study search/details now use shared source and export
+contracts. Full article text, general API discovery, retry/backoff and bounded bulk
+retrieval remain open. Continue testing common components against all three adapters;
+this does not promise arbitrary public API access.
 
 **Motivation:** a reviewed long-running research task exposed an empty synthesis saved as
 completed, exhausted search/read allowances, repeated context trimming, and useful financial

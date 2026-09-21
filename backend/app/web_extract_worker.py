@@ -459,6 +459,120 @@ def pubmed_detail(body, request):
     return {'text': rendered, 'record_hash': version, 'selection': result['selection']}
 
 
+def trial_record(study):
+    """Small explicit projection; absent registry fields stay unknown, never false/zero."""
+    protocol = study['protocolSection']
+    identifier = protocol['identificationModule']['nctId']
+    status = protocol.get('statusModule', {})
+    return {'nct_id': identifier, 'title': protocol['identificationModule']['briefTitle'],
+            'overall_status': status.get('overallStatus'), 'has_results': study.get('hasResults'),
+            'last_update_posted': status.get('lastUpdatePostDateStruct', {}).get('date'),
+            'lead_sponsor': protocol.get('sponsorCollaboratorsModule', {}).get('leadSponsor', {}).get('name'),
+            'phases': protocol.get('designModule', {}).get('phases'),
+            'url': 'https://clinicaltrials.gov/study/' + identifier}
+
+
+def trial_records(body, request, previous=None):
+    import re
+    value = decode_json(body)
+    meta, records = value['meta'], value['results']
+    total, offset, limit = (pubmed_integer(meta[k]) for k in ('total', 'offset', 'limit'))
+    token = meta.get('next_page_token')
+    if token is not None and (type(token) is not str or not token or len(token) > 2048
+                               or any(ord(c) < 33 for c in token) or token == request.get('page_token')):
+        api_fail('Invalid or repeated ClinicalTrials.gov page token.')
+    if (not isinstance(records, list) or offset != request['offset'] or limit != request['limit']
+            or offset > total or len(records) > min(limit, total - offset)):
+        api_fail('ClinicalTrials.gov record count or pagination is inconsistent.')
+    if previous and total != previous['total']:
+        api_fail('ClinicalTrials.gov match count changed; restart the query.')
+    ids = []
+    for record in records:
+        identifier = record.get('nct_id')
+        if type(identifier) is not str or not re.fullmatch(r'NCT\d{8}', identifier):
+            api_fail('Invalid ClinicalTrials.gov study ID.')
+        if identifier in ids or (previous and identifier in previous['ids']):
+            api_fail('Duplicate study or repeated adjacent page detected.')
+        if type(record.get('title')) is not str or not record['title'].strip():
+            api_fail('Missing study title.')
+        for field in ('overall_status', 'last_update_posted', 'lead_sponsor'):
+            if record.get(field) is not None and type(record[field]) is not str:
+                api_fail('Invalid study metadata.')
+        if record.get('has_results') is not None and type(record['has_results']) is not bool:
+            api_fail('Invalid study results availability.')
+        phases = record.get('phases')
+        if phases is not None and (not isinstance(phases, list) or any(type(v) is not str for v in phases)):
+            api_fail('Invalid study phases.')
+        if request.get('statuses') and record.get('overall_status') not in request['statuses']:
+            api_fail('Returned study does not match the requested recruitment status.')
+        if record.get('url') != 'https://clinicaltrials.gov/study/' + identifier:
+            api_fail('Study link does not match its ID.')
+        ids.append(identifier)
+    text = ''.join(encode_json(value))
+    if len(text) > 6000:
+        api_fail('ClinicalTrials.gov page exceeds 6,000 characters. Start a query with a smaller limit.')
+    end = offset + len(records)
+    return {'text': text, 'ids': ids, 'total': total, 'offset': offset, 'end': end,
+            'next_offset': end if token is not None else None, 'next_page_token': token, 'window_exhausted': False}
+
+
+def trial_search(body, request, previous=None):
+    value = decode_json(body)
+    # The v2 API reports totalCount only on the first page, even with countTotal=true.
+    # Carry that captured count forward; never invent a refreshed total. Empty pages
+    # and terminal empty cursor pages are valid according to the official contract.
+    studies = value['studies']
+    if not isinstance(studies, list):
+        api_fail('Expected ClinicalTrials.gov studies.')
+    total = value.get('totalCount', previous['total'] if previous else None)
+    normalized = {'meta': {'total': total, 'total_reported_on': 'first_page', 'offset': request['offset'],
+                           'limit': request['limit'], 'next_page_token': value.get('nextPageToken')},
+                  'results': [trial_record(study) for study in studies]}
+    return trial_records(''.join(encode_json(normalized)).encode(), request, previous)
+
+
+def trial_detail(body, request):
+    import hashlib
+    value = decode_json(body)
+    record = trial_record(value)
+    if record['nct_id'] != request['record_id']:
+        api_fail('Study ID does not match the requested record.')
+    # Validate the same metadata contract as search without claiming current status
+    # must match an older search: study updates are retained as a new detail version.
+    trial_records(''.join(encode_json({'meta': {'total': 1, 'offset': 0, 'limit': 1},
+                                      'results': [record]})).encode(), {'offset': 0, 'limit': 1})
+    protocol = value['protocolSection']
+    section = request['section']
+    sections = {
+        'overview': {key: protocol.get(key) for key in ('identificationModule', 'statusModule',
+            'sponsorCollaboratorsModule', 'conditionsModule', 'designModule', 'descriptionModule')},
+        'eligibility': protocol.get('eligibilityModule'),
+        'interventions': protocol.get('armsInterventionsModule'),
+        'locations': protocol.get('contactsLocationsModule'),
+        'results': value.get('resultsSection'),
+    }
+    selected = sections[section]
+    if selected is not None and not isinstance(selected, dict):
+        api_fail('Invalid study detail section.')
+    text = ''.join(encode_json(selected)) if selected is not None else ''
+    if len(text) > MAX_TEXT:
+        api_fail('Study section exceeds 500,000 characters; no evidence captured.')
+    start = request['start']
+    if start > len(text) or (start and start == len(text)):
+        api_fail('Study section character offset is out of range.')
+    end = min(len(text), start + request['max_chars'])
+    selection = {'start': start, 'end': end, 'total': len(text), 'next_start': end if end < len(text) else None,
+                 'unit': 'characters'}
+    digest = hashlib.sha256(''.join(encode_json(value)).encode()).hexdigest()
+    result = {**record, 'record_id': record['nct_id'], 'section': section, 'record_hash': digest,
+              'full_text_retrieved': False, 'section_status': 'missing' if selected is None else 'available',
+              'text': text[start:end], 'selection': selection}
+    encoded = ''.join(encode_json(result))
+    if len(encoded) > 6000:
+        api_fail('Study detail exceeds 6,000 serialized characters. Reduce max_chars.')
+    return {'text': encoded, 'selection': selection, 'record_hash': digest}
+
+
 def main():
     # Hard CPU/address-space bounds where supported; the parent enforces wall time and Stop.
     try:
@@ -478,6 +592,10 @@ def main():
             result = nih_projects(body, request['request'], request.get('previous'))
         elif request['format'] == 'pubmed_detail':
             result = pubmed_detail(body, request['request'])
+        elif request['format'] == 'clinical_trials_search':
+            result = trial_search(body, request['request'], request.get('previous'))
+        elif request['format'] == 'clinical_trials_detail':
+            result = trial_detail(body, request['request'])
         elif request['format'] == 'pubmed_search':
             result = pubmed_search(body, request['request'], request.get('previous'))
         elif request['format'] == 'pubmed_summary':

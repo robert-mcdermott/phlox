@@ -187,7 +187,8 @@ def web_locator(location):
         selection = location['selection']
         return (f"API record detail: {location['adapter']} {location['record_id']} ({location['method']}); "
                 f"{location['section']} [{selection['start']}, {selection['end']}) of {selection['total']} {selection['unit']}. "
-                'Selected evidence only; full article text was not retrieved.\n'
+                + ('Selected study evidence only; recruitment and posted results are separate.\n'
+                   if location['adapter'] == 'clinical_trials' else 'Selected evidence only; full article text was not retrieved.\n') +
                 'Request: ' + json.dumps(location['request'], ensure_ascii=False, sort_keys=True) + '\n'
                 f"Record SHA-256: {location['record_hash']}\n")
     if location.get('format') == 'api':

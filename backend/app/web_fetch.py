@@ -186,8 +186,14 @@ def connection(url, addresses, deadline):
             if ipaddress.ip_address(sock.getpeername()[0]) != ipaddress.ip_address(address[0]):
                 raise FetchError('blocked', 'Connected peer did not match the validated address.')
             if parts.scheme == 'https':
-                sock = ssl.create_default_context().wrap_socket(sock, server_hostname=parts.hostname,
-                                                               do_handshake_on_connect=False)
+                tls = ssl.create_default_context()
+                # Match Python's standard HTTPS client negotiation while retaining
+                # the already validated numeric peer. Some public APIs reject the
+                # incomplete TLS profile (e.g. ClinicalTrials.gov returned HTTP 403).
+                tls.set_alpn_protocols(['http/1.1'])
+                if tls.post_handshake_auth is not None:
+                    tls.post_handshake_auth = True
+                sock = tls.wrap_socket(sock, server_hostname=parts.hostname, do_handshake_on_connect=False)
                 deadline.attach(sock)
                 sock.do_handshake()
             conn = http.client.HTTPConnection(parts.hostname, port=port, timeout=3)

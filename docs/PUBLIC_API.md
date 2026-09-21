@@ -2,7 +2,7 @@
 
 [User Guide](USER_GUIDE.md) · [Research](RESEARCH.md) · [Captured sources](WEB_SOURCES.md)
 
-`query_public_api` reads **NIH RePORTER projects** and **PubMed publication metadata**.
+`query_public_api` reads **NIH RePORTER projects**, **PubMed publications**, and **ClinicalTrials.gov studies**.
 It works in ordinary Chat with **Web search enabled** and in opt-in Research with Web
 or mixed sources, subject to assistant tool access and Tool Manager policy. No API key,
 configuration change, database migration or separate service is required.
@@ -33,8 +33,7 @@ search expresses your intended inclusion criteria.
 Search-page fields are PMID, title, author names, journal, publication date, volume, issue,
 pages, DOI/PMC identifiers when returned, and the PubMed record link. These search records
 support bibliographic claims, not study findings. Read selected abstracts and author
-affiliations separately as described below. Full article text and ClinicalTrials.gov
-integration remain planned.
+affiliations separately as described below. Full article text remains planned; ClinicalTrials.gov study reading is described below.
 
 ## Read abstracts and author affiliations
 
@@ -100,6 +99,79 @@ manifest's `record_detail_sources`. Reload and verify saved downloads and citati
 work. With Agent mode off, file creation asks for permission; reading uses normal query-tool
 policy. The exact live publications, abstracts and match counts can change.
 
+## Try ClinicalTrials.gov
+
+Use `adapter: "clinical_trials"` with `condition: "ovarian cancer"`. Optional filters are
+`statuses: ["RECRUITING"]`, `sponsor` (sponsor/collaborator expression), `location` (location
+expression), and `query` (other terms, such as `"Fred Hutch"`). These use the service's
+search semantics rather than exact institution matching. ID-only expressions are rejected
+because the API can ignore filters for those queries. `limit` defaults to 2 (maximum 20).
+
+Search pages retain NCT IDs, titles, overall recruitment status, posted-results availability,
+lead sponsor, phases, last-update-posted dates, and study links. Missing values stay null.
+Studies are ordered by last-update-posted date, most recent first. `continue_from: "S1"`
+reuses the saved filters and opaque API page token; users/models do not supply tokens.
+The API reports the match count on the first page only; later pages retain that original
+count and cannot independently detect every upstream change. Duplicate adjacent records, repeated
+page tokens, malformed records and mismatched recruitment statuses fail before capture.
+Pagination is not a frozen snapshot; a contradictory total or excess records require a fresh search. Empty pages
+can still carry a next token. If the service ends before all reported matches are captured,
+the tool and export explicitly report partial coverage.
+
+To read a study returned on a query page, supply `record_from`, its `record_id` (the
+`NCT########` identifier), and one of these sections:
+
+| Section | Returned evidence |
+|---|---|
+| `overview` (default) | Identifiers, sponsors/collaborators, status and registry dates, conditions, design/phases, and description |
+| `eligibility` | Eligibility criteria, age, sex and other supplied eligibility fields |
+| `interventions` | Arms, intervention names, types, descriptions and mappings |
+| `locations` | Returned facilities, site recruitment statuses and contacts |
+| `results` | Posted results modules when returned; explicitly missing otherwise |
+
+Each section is rendered as JSON text and read in character passages: `start` defaults to
+0 and `max_chars` to 3,000 (500–4,000 allowed). The response retains section status, the
+selection range, `next_start`, study metadata and a hash of the full returned study record.
+Follow `next_start` using the latest detail citation as `record_from`, with the same section,
+to detect record changes between passages. Switching sections can use the same detail citation.
+Partial JSON text can omit groups, denominators, units or qualifying text; read the complete
+relevant context before summarizing results. Missing results are not evidence of failure.
+The shared 2 MiB response, 500,000-character section and 6,000-character serialized evidence
+bounds apply. Oversized selections fail explicitly; reduce `max_chars` where applicable.
+
+Each detail call refetches one study from the fixed public v2 endpoint and counts as one
+Research read. Retained citations can be reread without network access. Downloads, Stop,
+ownership, source expiry, Research scope and optional detail exports follow the same rules
+as PubMed. No API key or new configuration is needed. There are no automatic retries or
+bulk downloads in this slice.
+
+**Interpretation:** overall `RECRUITING` does not mean every site is recruiting.
+`has_results` describes posted results independently of recruitment. Dates are registry
+values, not fetch timestamps. Keyword matches do not prove Fred Hutch sponsorship or a
+Fred Hutch site: inspect the returned sponsor/site fields and cite that specific evidence.
+Registry records are supplied reports, not independent verification or patient eligibility
+assessments. Missing fields remain unknown.
+
+### Manual verification: ClinicalTrials.gov demo
+
+Choose **Research → Web → Standard** or normal Chat with **Web search enabled**:
+
+> Use query_public_api with adapter clinical_trials to find recruiting ovarian cancer
+> studies matching Fred Hutch. Retrieve exactly two pages with two records per page,
+> using continue_from for the second page if available. State the reported match count
+> and whether more pages remain. For the first two studies, read overview, eligibility,
+> interventions and locations; continue any needed passages. Identify the Fred Hutch
+> connection only where sponsor or site fields support it. Distinguish overall recruitment
+> from site status and posted-results availability. Cite the detail evidence and export
+> the search pages plus captured study sections. Report missing or unread information.
+
+Inspect a detail citation: it should show the NCT ID, section and passage range. Check
+sponsors/site statuses against the captured text, not just the search phrase. The export
+should contain the four base files plus `record_details.json`; its manifest keeps query
+coverage separate from detail selection coverage. Reload and verify saved downloads and
+citations still work. An optional follow-up can inspect a `results` section; the response
+must distinguish missing results from available evidence. Live counts and records change.
+
 ## Try NIH RePORTER
 
 > Use the NIH RePORTER public API tool to inspect projects matching Johns Hopkins for
@@ -122,14 +194,14 @@ matching, fiscal-year completeness and monetary definitions still require analys
 
 ## Pagination, citations and exports
 
-For either adapter, continue with **only `continue_from: "S1"`**, substituting the previous
+For any adapter, continue with **only `continue_from: "S1"`**, substituting the previous
 page's citation label. An optional adapter must match that source. Phlox reuses the retained
 query, sort and page size; the model cannot change them or supply arbitrary offsets,
 endpoints, headers, credentials or POST bodies. Continuation rechecks retained content and
 pagination provenance, ownership, expiry and the current Research attempt/domain scope.
 Deleted/expired citations cannot authorize requests. A new Research attempt needs a fresh query.
 
-Both adapters accept 1–20 records per page. The complete selected fields must fit one
+All adapters accept 1–20 records per page. The complete selected fields must fit one
 6,000-character passage; oversized pages fail and require a smaller limit. Records are
 never silently dropped to fit. PubMed exposes at most its first 10,000 matching records;
 NIH continuation uses its supported offset window of 14,999. Window exhaustion is explicitly
@@ -143,7 +215,7 @@ inspection, rereads and Markdown exports do not contact the API again.
 
 When files are requested, [dataset export](API_DATASETS.md) creates records CSV/JSON,
 an adapter-specific summary and a provenance manifest from available source labels.
-Optional `detail_labels` add the captured abstract/author selections in `record_details.json`.
+Optional `detail_labels` add the captured article/study selections in `record_details.json`.
 Export one query at a time. Partial data remains labelled partial; no bulk download or
 unrequested calculation is performed by the query tool.
 
@@ -153,26 +225,27 @@ The registered read tool defaults to automatic permission; Tool Manager can requ
 approval or disable it. Dataset file creation separately defaults to **Ask**. Research
 stays opt-in. Domain restrictions must allow `api.reporter.nih.gov` for NIH, or
 `eutils.ncbi.nlm.nih.gov` for PubMed. Allowing only `pubmed.ncbi.nlm.nih.gov` is insufficient:
-that is the public website, not the API host.
+that is the public website, not the API host. ClinicalTrials.gov requires
+`clinicaltrials.gov` in a restricted-domain Research request.
 
 Every attempted page consumes one Research read, including failed pages. A PubMed page's
-two requests share that read and the same 30-second deadline. Each selected-article
+two requests share that read and the same 30-second deadline. Each selected article/study
 detail request is another read with its own shared transport/parser deadline. Source capacity is checked
 before dispatch. Counters and current-policy checks survive approvals and durable replay.
 
-Both adapters use DNS-pinned connections, the private-network policy, no cookies/credentials
+All adapters use DNS-pinned connections, the private-network policy, no cookies/credentials
 or environment proxies, and a 2 MiB limit per response. The deadline covers pacing,
 network reads and isolated parsing; Stop interrupts these operations. NIH requests start
 at most once per second; PubMed starts are spaced by at least 0.4 seconds within Phlox's
-single process. Other applications sharing the same public IP may also consume NCBI's
+single process. ClinicalTrials.gov requests are spaced by at least 0.5 seconds. Other applications sharing the same public IP may also consume NCBI's
 rate allowance. There is no API-key configuration or automatic retry in this slice.
-Compression and redirects are rejected; search responses must be JSON and article
-detail responses must be XML; failures reveal no response bodies
+Compression and redirects are rejected; search responses must be JSON;
+detail responses are PubMed XML or ClinicalTrials.gov JSON; failures reveal no response bodies
 and create no usable evidence/cursor.
 
 These are reviewed adapters, not arbitrary public API access. New adapters must define
 endpoints, request policy, validation, pagination and export fields. Generic `web_fetch`
-remains GET-only. ClinicalTrials.gov, full article text, bulk acquisition, configurable
+remains GET-only. Full article text, bulk acquisition, configurable
 retry/backoff and general API discovery remain backlog work.
 
 References: [NIH RePORTER API](https://api.reporter.nih.gov/),
@@ -180,3 +253,5 @@ References: [NIH RePORTER API](https://api.reporter.nih.gov/),
 [PubMed ESearch window](https://www.nlm.nih.gov/pubs/techbull/so22/so22_updated_pubmed_e_utilities.html),
 [NLM structured abstract definition](https://dtd.nlm.nih.gov/ncbi/pubmed/doc/out/250101/el-AbstractText.html),
 [NLM EFetch XML examples for author affiliations](https://www.nlm.nih.gov/dataguide/classes/edirect-for-pubmed/samplecode2.html).
+
+ClinicalTrials.gov references: [official v2 OpenAPI specification](https://clinicaltrials.gov/api/oas/v2), [API reference](https://clinicaltrials.gov/data-api/api), [study data structure](https://clinicaltrials.gov/data-api/about-api/study-data-structure).

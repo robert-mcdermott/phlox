@@ -3,6 +3,7 @@ import base64
 import hashlib
 import json
 from pathlib import Path
+import queue
 import re
 import subprocess
 import sys
@@ -30,18 +31,35 @@ def extract(body, format, deadline, **options):
     deadline.check()
     if not _SLOTS.acquire(blocking=False):
         raise FetchError('extractor_busy', 'PDF/JSON extractors are busy. Try again later.')
-    process = None
+    process, exchange = None, None
     try:
         payload = json.dumps({'body': base64.b64encode(body).decode(), 'format': format, **options}).encode()
         process = subprocess.Popen([sys.executable, str(Path(__file__).with_name('web_extract_worker.py'))],
                                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        replies = queue.Queue(maxsize=1)
+
+        def transfer():
+            try:
+                replies.put((process.communicate(input=payload)[0], None))
+            except Exception as exc:
+                replies.put((None, exc))
+
+        # One communicate call must own the whole transfer. Retrying with input=None
+        # after a timeout can leave an incompletely written stdin pipe unregistered
+        # on supported Python versions, starving a slow-starting parser forever.
+        # At most two exchanges exist (the parser slots); the caller still polls Stop
+        # and kills/reaps the process before releasing its slot on every exit path.
+        exchange = threading.Thread(target=transfer, name='phlox-parser-io', daemon=True)
+        exchange.start()
         while True:
             deadline.check()
             try:
-                output, _ = process.communicate(input=payload, timeout=0.1)
+                output, error = replies.get(timeout=0.1)
+                if error is not None:
+                    raise error
                 break
-            except subprocess.TimeoutExpired:
-                payload = None
+            except queue.Empty:
+                pass
         deadline.check()
         if process.returncode or len(output) > 4 * 1024 * 1024:
             raise FetchError('extraction_limit', 'PDF/JSON extraction failed or exceeded process resource limits. No evidence captured.')
@@ -55,7 +73,10 @@ def extract(body, format, deadline, **options):
         if process:
             if process.poll() is None:
                 process.kill()
-            process.communicate()
+            if exchange and exchange.ident is not None:
+                exchange.join()
+            else:
+                process.communicate()
         _SLOTS.release()
 
 

@@ -1,7 +1,6 @@
 """Read selected API records through adapter-owned endpoints and retained evidence."""
 import hashlib
 import json
-from urllib.parse import urlencode
 
 from app import public_api_adapters as adapters, sources, web_fetch, web_formats
 from app.models import Conversation, Source, SourceUse
@@ -35,7 +34,7 @@ def load_source(ctx, label, turn_id):
 
 def snapshot(row):
     adapter = adapters.ADAPTERS.get(row.location.get('adapter'))
-    if (not adapter or not adapter.detail_endpoint or row.url != adapter.detail_endpoint
+    if (not adapter or not adapter.detail_endpoint or row.url != adapter.record_endpoint(row.location.get('record_id', ''))
             or row.location.get('format') != 'api_record'):
         fail('Source is not a supported API record-detail capture.')
     value = json.loads(row.excerpt)
@@ -80,22 +79,26 @@ def read(ctx, arguments, turn_id):
         fail('Article details are outside the selected research domains.')
     if arguments.get('adapter', adapter.name) != adapter.name:
         fail('Adapter does not match the selected record source.')
-    section = arguments.get('section', 'abstract')
+    is_trial = adapter.name == 'clinical_trials'
+    section = arguments.get('section', 'overview' if is_trial else 'abstract')
+    allowed = public_api.TRIAL_SECTIONS if is_trial else ['abstract', 'authors']
+    if section not in allowed or (is_trial and ('limit' in arguments or 'affiliation' in arguments)):
+        fail('Section or selectors are not supported by this record adapter.')
     request = {'record_id': identifier, 'section': section, 'start': arguments.get('start', 0)}
-    if section == 'abstract':
-        request['max_chars'] = arguments.get('max_chars', 4000)
+    if section != 'authors':
+        request['max_chars'] = arguments.get('max_chars', 3000 if is_trial else 4000)
     else:
         request.update(limit=arguments.get('limit', 5), affiliation=arguments.get('affiliation', '').strip())
     payload = json.dumps(request, sort_keys=True, separators=(',', ':'), ensure_ascii=False).encode()
     with web_fetch.Deadline(ctx.cancel_event) as deadline:
         public_api.pace(deadline, adapter.name)
         # Adapter owns the wire request; neither arbitrary URLs nor raw bodies are accepted.
-        url = adapter.detail_endpoint + '?' + urlencode(adapter.detail_parameters(identifier))
+        url = adapter.record_url(identifier)
         body, status = web_fetch.read_api_query(url, deadline, policy, response_format=adapter.detail_response_format)
         result = web_formats.extract(body, adapter.detail_format, deadline, request=request)
         deadline.check()
     if expected_version and result['record_hash'] != expected_version:
-        fail('Article details changed since the selected capture. Start again from the query page; do not combine versions.')
+        fail('Article/study details changed since the selected capture. Start again from the query page; do not combine versions.')
     with sources.LOCK:
         # Removal/expiry during the network request must not authorize new evidence.
         _, current, _ = selected_record(ctx, label, identifier, turn_id)
@@ -106,7 +109,7 @@ def read(ctx, arguments, turn_id):
                     'request': request, 'request_hash': hashlib.sha256(payload).hexdigest(),
                     'selection': result['selection'], 'selected_from_source_id': source_id}
         captures = sources.capture_web(ctx.db, conversation_id=ctx.conversation_id, user_id=ctx.user_id,
-            turn_id=turn_id, url=adapter.detail_endpoint, title=f'{adapter.name} {identifier}: {section}',
+            turn_id=turn_id, url=adapter.record_endpoint(identifier), title=f'{adapter.name} {identifier}: {section}',
             text=result['text'], content_hash=hashlib.sha256(result['text'].encode()).hexdigest(),
             http_status=status, cancel=ctx.cancel_event, provenance=location)
     if not captures or not captures[0].startswith('[S'):
@@ -115,4 +118,7 @@ def read(ctx, arguments, turn_id):
     guidance = (f' More of this selection remains: use this detail citation as record_from with start={next_start}, '
                 'the same record_id, section and affiliation filter.' if next_start is not None else
                 ' End of this selected section/filter; this does not imply complete article content.')
-    return sources.INSTRUCTIONS + '\n' + NOTICE + guidance + '\n\n' + '\n\n'.join(captures)
+    if is_trial:
+        guidance = (f' More of this section remains: use this detail citation as record_from, the same record_id and section, '
+                    f'and start={next_start}.' if next_start is not None else ' End of this selected section, not the entire study record.')
+    return sources.INSTRUCTIONS + '\n' + (adapter.detail_notice or NOTICE) + guidance + '\n\n' + '\n\n'.join(captures)

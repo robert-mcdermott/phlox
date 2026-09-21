@@ -914,6 +914,18 @@ test('PDF, JSON and public API citations show provenance after reload', async t 
   await dialog.getByText(/More of this selection remains/).waitFor()
   await dialog.getByText('Record retrieval', { exact: true }).click()
   await dialog.locator('pre').filter({ hasText: 'max_chars' }).waitFor()
+  await page.keyboard.press('Escape')
+  state.sources['source-1'] = { ...webSourceFixture(), excerpt: '{"has_results":false,"section_status":"missing"}',
+    location: { ...webSourceFixture().location, format: 'api_record', adapter: 'clinical_trials', method: 'GET',
+      record_id: 'NCT00000001', section: 'results', selection: { start: 0, end: 0, total: 0, next_start: null, unit: 'characters' },
+      request: { record_id: 'NCT00000001', section: 'results', start: 0, max_chars: 3000 } } }
+  await page.reload()
+  await page.getByText('Approval chat', { exact: true }).click()
+  await page.getByRole('button', { name: 'View source S1', exact: true }).click()
+  await dialog.getByText('API record · clinical_trials · NCT00000001', { exact: true }).waitFor()
+  await dialog.getByText(/Overall recruitment can differ from site status; posted results are separate/).waitFor()
+  assert.equal(await dialog.getByText(/Full article text was not retrieved/).count(), 0)
+  await dialog.getByText(state.sources['source-1'].excerpt, { exact: true }).waitFor()
 })
 
 test('saved citations inspect exact evidence, preserve code, reload and recheck revoked access', async (t) => {

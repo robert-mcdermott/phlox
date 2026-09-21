@@ -29,6 +29,10 @@ and json_start/json_limit; array selection is within one response, not API pagin
 Do not guess that omitted records are absent or that requested API filters were honored.
 Scanned PDFs need OCR; complex table extraction needs verification. query_public_api supports
 NIH RePORTER projects by organization/year and PubMed bibliographic search (adapter=pubmed, query).
+For ClinicalTrials.gov use adapter=clinical_trials with condition, optional query, statuses,
+sponsor or location. Read overview, eligibility, interventions, locations or results via
+record_from/record_id. Verify institutional matches in sponsor/site fields; distinguish
+overall recruitment, site status and posted results. Missing fields remain unknown.
 Start with a small page. Continue with its S-label to reuse the saved recipe; each page is
 one source read (PubMed uses ESearch plus ESummary). PubMed search records are metadata only.
 Use query_public_api record_from and record_id with section=abstract or authors for evidence.

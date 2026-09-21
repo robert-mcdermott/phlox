@@ -3,14 +3,14 @@
 [Public API queries](PUBLIC_API.md) · [Research](RESEARCH.md) · [User Guide](USER_GUIDE.md)
 
 When a task asks for downloadable data, `export_api_dataset` can turn retained NIH
-RePORTER or PubMed query pages into four base files in a new conversation workspace folder:
+RePORTER, PubMed or ClinicalTrials.gov query pages into four base files in a new conversation workspace folder:
 
 | File | Contents |
 |---|---|
-| `records.csv` | NIH project fields, or PubMed PMIDs, titles, authors, journals, dates and identifiers |
+| `records.csv` | NIH project fields; PubMed bibliography; or ClinicalTrials.gov study IDs, titles, recruitment status, results availability, sponsors, phases and dates |
 | `records.json` | All fields retained by the API adapter, including nested data and original numeric spellings |
-| `summary.csv` | Dataset coverage, NIH counts/known award sums/missing amounts grouped by organization and fiscal year; PubMed captured and reported record counts |
-| `record_details.json` (optional) | Captured abstract/author selections, with record IDs, versions, filters and ranges; only when `detail_labels` are supplied |
+| `summary.csv` | Dataset coverage, NIH counts/known award sums/missing amounts grouped by organization and fiscal year; PubMed/ClinicalTrials.gov captured and reported record counts |
+| `record_details.json` (optional) | Captured article/study section selections, with record IDs, versions, filters and ranges; only when `detail_labels` are supplied |
 | `manifest.json` | Query recipe, source references/capture times, coverage and gaps, duplicate counts, and data-file hashes |
 
 The tool reads existing source snapshots. It makes no network requests, installs nothing,
@@ -53,6 +53,12 @@ with semicolons in CSV. Search-page records do not include abstracts. Use `detai
 abstract/author selections separately. Full article text is not retrieved.
 The publication dates remain source strings; no publication-year aggregation is inferred.
 
+For ClinicalTrials.gov, use the [study demo](PUBLIC_API.md#manual-verification-clinicaltrialsgov-demo).
+Search records keep overall recruitment status separate from posted-results availability.
+Optional details retain sponsor/site/eligibility/intervention/results passages; a captured
+section may be partial. The manifest preserves page tokens in per-source requests, while
+the common query identity excludes pagination tokens. Registry dates remain source strings.
+
 ## Validation and limits
 
 The agent supplies 1–64 distinct query source `labels`, plus optional `detail_labels`, with
@@ -60,7 +66,7 @@ at most 64 distinct labels combined. It supplies no file contents or model-autho
 Detail IDs must occur in the selected query pages and use the same adapter. Mixed detail
 versions of a record are rejected. Detail selections stay separate from query records and
 do not change the query coverage statistics; absence from the detail file means unread,
-not that an abstract/affiliation does not exist. Each selection retains its own provenance.
+not that an article/study section does not exist. Each selection retains its own provenance.
 All pages must be available, owned by the same conversation and from one query of one supported API.
 Research additionally requires the current attempt and allowed domains. Normal Chat can
 export retained pages from an earlier turn in the same conversation. Access and expiry

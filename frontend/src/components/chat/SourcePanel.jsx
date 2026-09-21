@@ -82,7 +82,7 @@ export default function SourcePanel({ conversationId, reference, onClose }) {
         {source.location.format === 'api_record' && <>
           <p className="text-muted">API record · {source.location.adapter} · {source.location.record_id}</p>
           <p className="text-muted">Selection [{source.location.selection.start}, {source.location.selection.end}) of {source.location.selection.total} {source.location.selection.unit}</p>
-          <p className="text-muted">{source.location.selection.next_start != null ? 'More of this selection remains.' : 'End of this selection.'} Full article text was not retrieved. Missing affiliations are unknown.</p>
+          <p className="text-muted">{source.location.selection.next_start != null ? 'More of this selection remains.' : 'End of this selection.'} {source.location.adapter === 'clinical_trials' ? 'Selected study evidence only. Overall recruitment can differ from site status; posted results are separate. Missing fields are unknown.' : 'Full article text was not retrieved. Missing affiliations are unknown.'}</p>
           <details className="rounded border border-border p-2">
             <summary className="cursor-pointer">Record retrieval</summary>
             <pre className="whitespace-pre-wrap break-all text-xs">{JSON.stringify(source.location.request, null, 2)}</pre>

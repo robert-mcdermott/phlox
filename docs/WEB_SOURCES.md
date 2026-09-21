@@ -180,6 +180,10 @@ fetcher validates the returned content type: supported HTML/text, `application/p
 DuckDuckGo requests use the `ddgs` library's own browser identity handling. A browser
 User-Agent can improve compatibility, but does not execute JavaScript or provide a logged-in
 browser session; sites may still return HTTP 403.
+HTTPS negotiation matches Python's standard HTTPS client (HTTP/1.1 ALPN and TLS 1.3
+post-handshake-auth capability where supported). This corrected a reproducible
+ClinicalTrials.gov API rejection while preserving certificate and hostname checks;
+it does not guarantee access to sites that restrict automation.
 
 Existing file-only `web_fetch.allow_private_networks` and `web_fetch.allowlist_hosts`
 settings remain in effect. By default, every resolved address must be public. Each redirect
@@ -193,7 +197,9 @@ Fetch sends no login cookies or Authorization header, rejects embedded URL crede
 ignores environment proxies, and requests uncompressed content. A server that insists on
 compression is rejected. Enterprise proxy-only networks need a future controlled proxy
 integration; do not disable address checks as a workaround. Search-provider requests keep
-their existing separate implementation; this transport governs `web_fetch` only.
+their existing separate implementation. The reviewed [public API adapters](PUBLIC_API.md)
+reuse the same connection checks and download bounds, with fixed request contracts and
+no redirects.
 
 | Bound | Value |
 |---|---|

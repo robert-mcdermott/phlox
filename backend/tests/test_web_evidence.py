@@ -280,8 +280,9 @@ def test_invalid_urls_never_resolve(monkeypatch, url):
         web_fetch.fetch(url)
 
 
-def test_connection_pins_ip_and_preserves_tls_hostname(monkeypatch):
-    connected, names = [], []
+@pytest.mark.parametrize('pha', [None, False])
+def test_connection_pins_ip_and_preserves_tls_hostname(monkeypatch, pha):
+    connected, names, protocols = [], [], []
     class Sock:
         def settimeout(self, value):
             pass
@@ -299,10 +300,13 @@ def test_connection_pins_ip_and_preserves_tls_hostname(monkeypatch):
         names.append(server_hostname)
         assert do_handshake_on_connect is False
         return sock
-    monkeypatch.setattr(web_fetch.ssl, 'create_default_context', lambda: SimpleNamespace(wrap_socket=wrap))
+    tls = SimpleNamespace(wrap_socket=wrap, set_alpn_protocols=protocols.append, post_handshake_auth=pha)
+    monkeypatch.setattr(web_fetch.ssl, 'create_default_context', lambda: tls)
     conn = web_fetch.connection('https://example.com/article', [(2, 1, 6, '', ('93.184.216.34', 443))], web_fetch.Deadline())
     assert connected == [('93.184.216.34', 443)] and names == ['example.com']
     assert conn.host == 'example.com' and conn.auto_open == 0
+    assert protocols == [['http/1.1']]
+    assert tls.post_handshake_auth is (None if pha is None else True)
     conn.close()
 
 

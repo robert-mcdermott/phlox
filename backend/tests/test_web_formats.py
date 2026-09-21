@@ -258,11 +258,32 @@ def test_parser_process_is_killed_on_deadline_or_stop(monkeypatch, cancel):
             deadline.until = time.monotonic() + .2
         started = time.monotonic()
         with pytest.raises(web_fetch.FetchError):
-            web_formats.extract(b'{}', 'json', deadline, json_pointer='', json_start=0, json_limit=20, max_chars=6000)
+            # The stalled reader cannot drain this payload: Stop must also interrupt
+            # a blocked input write and reap the exchange thread/process.
+            web_formats.extract(b'x' * (512 * 1024), 'json', deadline, json_pointer='', json_start=0, json_limit=20, max_chars=6000)
         assert time.monotonic() - started < 3
         assert children[0].poll() is not None
         if cancel:
             timer.join()
+
+
+def test_slow_parser_startup_receives_entire_large_input(monkeypatch):
+    original = subprocess.Popen
+    children = []
+
+    def delayed_reader(*args, **kwargs):
+        process = original([sys.executable, '-c',
+            'import time,json,sys,base64; time.sleep(0.3); '
+            'v=json.load(sys.stdin); print(json.dumps({"result":{"received":len(base64.b64decode(v["body"]))}}))'], **kwargs)
+        children.append(process)
+        return process
+
+    monkeypatch.setattr(web_formats.subprocess, 'Popen', delayed_reader)
+    with web_fetch.Deadline() as deadline:
+        deadline.until = time.monotonic() + 5
+        result = web_formats.extract(b'x' * (512 * 1024), 'json', deadline)
+    assert result['received'] == 512 * 1024
+    assert children[0].poll() == 0
 
 
 def test_scripted_research_combines_html_pdf_json_and_notebook(db, monkeypatch, site):

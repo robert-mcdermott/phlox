@@ -91,3 +91,17 @@ def pubmed_files(ordered, coverage):
             'api_reported_matches': coverage['api_reported_matches'],
         }]),
     }
+
+
+def trial_files(ordered, coverage):
+    flattened = [{**r, 'phases': '; '.join(r['phases']) if r['phases'] is not None else None} for r in ordered]
+    return {
+        'records.json': render(ordered),
+        'records.csv': csv_text(['nct_id', 'title', 'overall_status', 'has_results', 'lead_sponsor',
+                                'phases', 'last_update_posted', 'url'], flattened),
+        'summary.csv': csv_text(['dataset_coverage', 'captured_unique_records', 'api_reported_matches'], [{
+            'dataset_coverage': 'all_api_reported_matches' if coverage['all_reported_records_captured'] else 'partial',
+            'captured_unique_records': coverage['captured_unique_records'],
+            'api_reported_matches': coverage['api_reported_matches'],
+        }]),
+    }

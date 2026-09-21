@@ -118,11 +118,14 @@ retain page numbers, and JSON citations retain the selected path and array index
 Ask for a specific page or set of records when a response is large; the model can use
 `pdf_page`, `json_pointer`, `json_start` and `json_limit`. Complete retained passages can
 support notebook findings and final writing. Scanned PDFs require OCR, complex PDF tables
-need verification. For NIH RePORTER projects or PubMed bibliographic searches, the separate
+need verification. For NIH RePORTER projects, PubMed publications or ClinicalTrials.gov studies, the separate
 [public API query tool](PUBLIC_API.md) supports validated pages and continuation from
 retained citations. Search metadata does not establish study findings. PubMed record-detail
 reading captures available abstracts and author affiliations with separate citations; see
-[article reading and the Fred Hutch demo](PUBLIC_API.md#read-abstracts-and-author-affiliations). Other POST APIs and bulk data acquisition remain unsupported. See
+[article reading and the Fred Hutch demo](PUBLIC_API.md#read-abstracts-and-author-affiliations). ClinicalTrials.gov adds condition/status/sponsor/location searches and cited study sections
+for eligibility, interventions, sponsor/site verification and posted results. Overall
+recruitment, site recruitment and results availability stay distinct; see the
+[study demo](PUBLIC_API.md#manual-verification-clinicaltrialsgov-demo). Other POST APIs and bulk data acquisition remain unsupported. See
 [PDF and JSON sources](WEB_SOURCES.md#pdf-and-json-sources) for limits and manual checks.
 
 ## Research notebook and working context

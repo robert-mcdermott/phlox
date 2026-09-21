@@ -13,7 +13,8 @@ class ExportApiDataset(Tool):
     description = ('When the user requests data files, export retained public API citation pages into records.csv, '
                    'records.json, summary.csv and manifest.json. Supply labels from one query. No network or arbitrary '
                    'code runs. Validates coverage and duplicates; NIH summaries use exact known award sums; partial data stays labelled '
-                   'partial. PubMed query pages contain bibliographic metadata; optional detail_labels add captured abstract/author selections in record_details.json. Creates a new workspace folder without overwriting files.')
+                   'partial. PubMed pages contain bibliography; ClinicalTrials.gov pages contain study metadata. '
+                   'Optional detail_labels add captured article/study sections in record_details.json. Creates a new workspace folder without overwriting files.')
     parameters = {'type': 'object', 'additionalProperties': False, 'properties': {
         'labels': {'type': 'array', 'minItems': 1, 'maxItems': 64, 'uniqueItems': True,
                    'items': {'type': 'string', 'pattern': '^S[1-9][0-9]{0,5}$'}},

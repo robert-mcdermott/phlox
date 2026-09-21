@@ -16,6 +16,11 @@ class QueryPublicApi(Tool):
     description = (
         'Query NIH RePORTER projects (org_names/fiscal_years), or PubMed publications '
         '(adapter=pubmed, query with PubMed field/date tags). Capture one cited page. '
+        'For ClinicalTrials.gov studies use adapter=clinical_trials and condition; optionally query (other terms), '
+        'statuses (e.g. RECRUITING), sponsor or location. Search matches do not prove institutional involvement. '
+        'Study details use record_from, record_id=NCT######## and section=overview (default), eligibility, '
+        'interventions, locations or results. These are character passages: use start/max_chars to finish a section. '
+        'Verify sponsors/sites, keep overall vs site recruitment and posted results distinct. '
         'Start with a small limit (NIH default 5; PubMed default 2). Continue with only '
         'continue_from=S# to reuse the saved query. PubMed search captures bibliographic metadata, '
         'not study findings. To read a selected PubMed article, supply record_from=S#, record_id=PMID, '
@@ -31,7 +36,7 @@ class QueryPublicApi(Tool):
 
     def run(self, ctx, **arguments):
         if next(Draft202012Validator(self.parameters).iter_errors(arguments), None):
-            return ToolResult('Invalid API query. Supply NIH org_names/fiscal_years, or adapter=pubmed and query, '
+            return ToolResult('Invalid API query. Supply NIH org_names/fiscal_years, adapter=pubmed and query, or adapter=clinical_trials and condition, '
                               'with optional limit; continue with only continue_from. For details use record_from/record_id and section. '
                               'URLs, headers and raw bodies are not accepted.', is_error=True)
         turn_id = ctx.accounting.turn_id if ctx.accounting else uuid.uuid4().hex
@@ -57,6 +62,8 @@ class QueryPublicApi(Tool):
                         'window_exhausted': page['window_exhausted'], 'record_ids': page['ids']}
             if adapter.name == 'pubmed':
                 location['query_translation'] = page['query_translation']
+            if adapter.name == 'clinical_trials':
+                location['next_page_token'] = page['next_page_token']
             captures = sources.capture_web(ctx.db, conversation_id=ctx.conversation_id, user_id=ctx.user_id,
                 turn_id=turn_id, url=adapter.endpoint, title=adapter.title, text=page['text'],
                 content_hash=digest, http_status=status, cancel=ctx.cancel_event, provenance=location)
@@ -70,7 +77,10 @@ class QueryPublicApi(Tool):
             if page['window_exhausted']:
                 notice += 'API offset window exhausted before the reported total. Narrow the query. '
             elif page['next_offset'] is not None:
-                notice += 'More API records remain. Use continue_from with this page\'s S-label for the next page, without filters or limit. '
+                notice += ('Another API page is available (it may be empty). ' if adapter.name == 'clinical_trials' else 'More API records remain. ')
+                notice += 'Use continue_from with this page\'s S-label for the next page, without filters or limit. '
+            elif page['end'] < page['total']:
+                notice += 'The API ended pagination before the reported match count was captured. This dataset is partial; do not claim completeness. '
             else:
                 notice += 'End of this API query according to its reported total; this does not validate statistical completeness. '
             return ToolResult(sources.INSTRUCTIONS + '\n' + notice + '\n\n' + '\n\n'.join(captures))

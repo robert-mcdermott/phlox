@@ -62,13 +62,13 @@ def collect(ctx, labels, turn_id):
 
 def assemble(pages, details=None):
     adapter = pages[0]['adapter']
-    recipe = {k: v for k, v in pages[0]['request'].items() if k not in {'offset', 'limit'}}
+    recipe = {k: v for k, v in pages[0]['request'].items() if k not in {'offset', 'limit', 'page_token'}}
     total = pages[0]['total']
     records, positions, provenance = {}, {}, []
     duplicates = 0
     for page in pages:
         if (page['adapter'] != adapter or page['query_translation'] != pages[0]['query_translation']
-                or {k: v for k, v in page['request'].items() if k not in {'offset', 'limit'}} != recipe):
+                or {k: v for k, v in page['request'].items() if k not in {'offset', 'limit', 'page_token'}} != recipe):
             raise DatasetError('Selected pages use different queries. Export each query separately.')
         if page['total'] != total:
             raise DatasetError('API totals changed across the selected pages; the dataset is inconsistent.')
@@ -111,7 +111,7 @@ def assemble(pages, details=None):
                           for name, text in files.items()}}
     if details:
         manifest['record_detail_sources'] = [d['provenance'] for d in details]
-        manifest['record_detail_notice'] = public_api_details.NOTICE + ' Selections may be partial or affiliation-filtered; they do not change query coverage.'
+        manifest['record_detail_notice'] = (adapter.detail_notice or public_api_details.NOTICE) + ' Selections may be partial or affiliation-filtered; they do not change query coverage.'
     if pages[0]['query_translation'] is not None:
         manifest['query_translation'] = pages[0]['query_translation']
     files['manifest.json'] = json.dumps(manifest, indent=2, ensure_ascii=False) + '\n'

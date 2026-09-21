@@ -149,7 +149,7 @@ funding calculations separate from PubMed bibliographic projections. Shared expo
 owns source reauthorization, conflict/coverage checks, manifests and atomic publication;
 existing NIH snapshots remain readable/exportable without a migration.
 
-`public_api.py` orchestrates fixed NIH RePORTER and PubMed read queries.
+`public_api.py` orchestrates fixed NIH RePORTER, PubMed and ClinicalTrials.gov read queries.
 The `query_public_api` registry tool accepts bounded filters or a retained source label
 for continuation; it never accepts arbitrary URLs or POST bodies. `web_fetch.read_api_query` (and its POST wrapper)
 reuses DNS pinning, cancellation and byte limits while rejecting redirects. The existing
@@ -161,6 +161,16 @@ source location JSON retains the canonical request, hash and pagination state; c
 reauthorizes the source and current Research attempt/domain scope. The tool counts as a
 Research read and uses the shared permission, notebook, source and replay seams. See
 [public API queries](PUBLIC_API.md); bulk acquisition and aggregation remain later work.
+
+ClinicalTrials.gov uses fixed v2 GET queries, saved opaque page tokens and a small study
+projection. Cursor values are part of per-page provenance, not dataset query identity.
+Its study-detail adapter selects bounded JSON text sections from a single NCT record;
+full-record hashes guard chained selections. Recruitment and posted results are distinct,
+missing fields remain unknown, and the shared source panel/export uses study-specific notices.
+The bounded parser subprocess receives input through a single communication call in an
+exchange thread, avoiding partial-input stalls after polling timeouts. The caller checks
+Stop/deadlines, kills and reaps the child on exit, and joins the exchange before releasing
+one of the two parser slots.
 
 `public_api_details.py` implements retained-source-to-record reading through adapter-owned
 endpoint, request and parser contracts. The query tool's `record_from` mode selects a

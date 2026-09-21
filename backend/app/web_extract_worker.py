@@ -232,6 +232,116 @@ def nih_projects(body, request, previous=None):
             'window_exhausted': end < total and end > 14999}
 
 
+def api_fail(message):
+    raise ExtractionError('invalid_api_response', message + ' No evidence or continuation captured.')
+
+
+def pubmed_integer(value):
+    if not isinstance(value, str) or not value.isascii() or not value.isdigit() or len(value) > 12:
+        api_fail('Expected unsigned PubMed pagination metadata or PMID.')
+    return int(value)
+
+
+def pubmed_search(body, request, previous=None):
+    value = decode_json(body)
+    data = value.get('esearchresult') if isinstance(value, dict) else None
+    if not isinstance(data, dict) or value.get('error') or data.get('ERROR') or data.get('errorlist'):
+        api_fail('PubMed rejected the search or returned invalid search metadata.')
+    # Unknown/ignored fields must not silently broaden a query. A no-results notice is
+    # the one benign warning; retain it through an explicit empty page.
+    warnings = data.get('warninglist', {})
+    if not isinstance(warnings, dict) or any(v for k, v in warnings.items() if k != 'outputmessages'):
+        api_fail('PubMed reported ignored terms or fields; revise the query.')
+    messages = warnings.get('outputmessages', [])
+    if not isinstance(messages, list) or any(m != 'No items found.' for m in messages):
+        api_fail('PubMed reported a search warning; revise the query.')
+    total, offset, limit = (pubmed_integer(data.get(k)) for k in ('count', 'retstart', 'retmax'))
+    expected = min(request['limit'], max(0, min(total, 10000) - request['offset']))
+    ids = data.get('idlist')
+    if (offset != request['offset'] or offset > total or limit not in (request['limit'], expected)
+            or not isinstance(ids, list) or len(ids) != expected):
+        api_fail('PubMed pagination does not match the requested page.')
+    if any(type(i) is not str or pubmed_integer(i) < 1 for i in ids) or len(set(ids)) != len(ids):
+        api_fail('Invalid or duplicate PubMed IDs.')
+    translation = data.get('querytranslation')
+    if type(translation) is not str or (total and not translation.strip()):
+        api_fail('Missing PubMed query translation.')
+    if previous and (total != previous['total'] or translation != previous.get('query_translation')):
+        api_fail('PubMed total or query translation changed between pages; restart the query.')
+    if previous and set(ids) & set(previous['ids']):
+        api_fail('Duplicate PMID or repeated adjacent API page detected.')
+    return {'total': total, 'offset': offset, 'limit': request['limit'], 'ids': ids,
+            'query_translation': translation}
+
+
+def pubmed_records(body, request, previous=None):
+    """Validate the normalized retained page as well as newly acquired records."""
+    value = decode_json(body)
+    if not isinstance(value, dict) or not isinstance(value.get('meta'), dict) or not isinstance(value.get('results'), list):
+        api_fail('Expected PubMed page metadata and records.')
+    meta, records = value['meta'], value['results']
+    total, offset, limit = (pubmed_integer(meta.get(k)) for k in ('total', 'offset', 'limit'))
+    translation = meta.get('query_translation')
+    if type(translation) is not str or (total and not translation.strip()):
+        api_fail('Missing PubMed query translation.')
+    if (offset != request['offset'] or limit != request['limit'] or offset > total or offset >= 10000
+            or len(records) != min(limit, min(total, 10000) - offset)):
+        api_fail('PubMed record count or pagination is inconsistent.')
+    if previous and (total != previous['total'] or translation != previous.get('query_translation')):
+        api_fail('PubMed total or query translation changed between pages.')
+    ids = []
+    for record in records:
+        if not isinstance(record, dict) or type(record.get('pmid')) is not str or pubmed_integer(record['pmid']) < 1:
+            api_fail('Invalid PubMed record ID.')
+        if record['pmid'] in ids or (previous and record['pmid'] in previous['ids']):
+            api_fail('Duplicate PMID or repeated adjacent API page detected.')
+        for field in ('title', 'journal', 'pubdate', 'volume', 'issue', 'pages', 'url'):
+            if type(record.get(field)) is not str or (field == 'title' and not record[field].strip()):
+                api_fail('Invalid PubMed bibliographic field.')
+        if record['url'] != 'https://pubmed.ncbi.nlm.nih.gov/' + record['pmid'] + '/':
+            api_fail('PubMed record URL does not match its PMID.')
+        for field in ('authors', 'doi', 'pmc'):
+            if not isinstance(record.get(field), list) or any(type(v) is not str for v in record[field]):
+                api_fail('Invalid PubMed author or identifier list.')
+        ids.append(record['pmid'])
+    text = ''.join(encode_json(value))
+    if len(text) > 6000:
+        raise ExtractionError('selection_empty', 'API page exceeds the 6,000-character evidence allowance. '
+                              'Start a query with a smaller limit; no partial records or continuation captured.')
+    end = offset + len(records)
+    return {'text': text, 'ids': ids, 'total': total, 'offset': offset, 'end': end,
+            'next_offset': end if end < min(total, 10000) else None,
+            'window_exhausted': end < total and end >= 10000, 'query_translation': translation}
+
+
+def pubmed_summary(body, request, search):
+    value = decode_json(body)
+    data = value.get('result') if isinstance(value, dict) else None
+    ids = search['ids']
+    if (not isinstance(data, dict) or value.get('error') or data.get('uids') != ids
+            or set(data) != {'uids', *ids}):
+        api_fail('PubMed summaries do not match the searched PMIDs.')
+    records = []
+    for identifier in ids:
+        record = data[identifier]
+        if not isinstance(record, dict) or record.get('error') or record.get('uid') != identifier:
+            api_fail('Missing or invalid PubMed summary.')
+        authors, articleids = record.get('authors'), record.get('articleids')
+        if (not isinstance(authors, list) or any(not isinstance(a, dict) or type(a.get('name')) is not str for a in authors)
+                or not isinstance(articleids, list) or any(not isinstance(a, dict) or type(a.get('value')) is not str
+                                                          or type(a.get('idtype')) is not str for a in articleids)):
+            api_fail('Invalid PubMed author or identifier list.')
+        records.append({'pmid': identifier, 'title': record.get('title'), 'journal': record.get('fulljournalname', ''),
+                        'pubdate': record.get('pubdate'), 'volume': record.get('volume', ''),
+                        'issue': record.get('issue', ''), 'pages': record.get('pages', ''),
+                        'authors': [a['name'] for a in authors],
+                        'doi': [a['value'] for a in articleids if a['idtype'] == 'doi'],
+                        'pmc': [a['value'] for a in articleids if a['idtype'] == 'pmc'],
+                        'url': 'https://pubmed.ncbi.nlm.nih.gov/' + identifier + '/'})
+    meta = {k: search[k] for k in ('total', 'offset', 'limit', 'query_translation')}
+    return pubmed_records(json.dumps({'meta': meta, 'results': records}).encode(), request)
+
+
 def main():
     # Hard CPU/address-space bounds where supported; the parent enforces wall time and Stop.
     try:
@@ -249,6 +359,10 @@ def main():
             result = pdf(body, request.get('pdf_page'))
         elif request['format'] == 'nih_projects':
             result = nih_projects(body, request['request'], request.get('previous'))
+        elif request['format'] == 'pubmed_search':
+            result = pubmed_search(body, request['request'], request.get('previous'))
+        elif request['format'] == 'pubmed_summary':
+            result = pubmed_summary(body, request['request'], request['search'])
         else:
             result = structured(body, request['json_pointer'], request['json_start'],
                                 request['json_limit'], request['max_chars'])

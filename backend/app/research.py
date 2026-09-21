@@ -8,7 +8,8 @@ from urllib.parse import urlsplit
 
 from app.research_config import LEGACY_PRESETS
 from app.research_notebook import NAME as NOTEBOOK_TOOL
-from app.public_api import NAME as API_TOOL, ENDPOINT as API_ENDPOINT
+from app.public_api import NAME as API_TOOL
+from app.public_api_adapters import ADAPTERS
 EXPORT_TOOL = 'export_api_dataset'
 PAGE_READ_TOOLS = {'web_fetch', 'read_web_source', API_TOOL}
 READ_TOOLS = {'web_search', 'search_documents'} | PAGE_READ_TOOLS
@@ -27,13 +28,13 @@ pdf_page for a specific PDF page. For JSON, follow structure previews with json_
 and json_start/json_limit; array selection is within one response, not API pagination.
 Do not guess that omitted records are absent or that requested API filters were honored.
 Scanned PDFs need OCR; complex table extraction needs verification. query_public_api supports
-NIH RePORTER parent-project searches by organization/year through its fixed POST adapter.
+NIH RePORTER projects by organization/year and PubMed bibliographic search (adapter=pubmed, query).
 Start with a small page. Continue with its S-label to reuse the saved recipe; each page is
-one source read. No other POST endpoints are supported. API pages are partial datasets,
+one source read (PubMed uses ESearch plus ESummary). PubMed records contain no abstracts or study findings. API pages are partial datasets,
 not annual totals: check scope, duplicates, missing amounts and completeness before aggregation.
 Report unsupported API capabilities instead of retrying guessed GET URLs.
 If the user requests data files, use export_api_dataset after collecting API pages and
-before the final handoff. It creates CSV/JSON data, an exact known-amount summary and a
+before the final handoff. It creates CSV/JSON data, an adapter-specific summary and a
 retrieval manifest from saved source labels, without refetching. Export only when files
 were requested; normal file-write approvals apply. A sample stays partial. Leave a tool
 pass for this export before synthesis; at most two export attempts are available. Do not
@@ -97,7 +98,7 @@ class Research:
         scope = self.state['options']['scope']
         allowed = ({'search_documents'} if scope != 'web' else set()) | (
             {'web_search'} | PAGE_READ_TOOLS if scope != 'documents' else set()) | {NOTEBOOK_TOOL}
-        if not self.url_allowed(API_ENDPOINT):
+        if not any(self.url_allowed(adapter.endpoint) for adapter in ADAPTERS.values()):
             allowed.discard(API_TOOL)
         if API_TOOL in allowed:
             allowed.add(EXPORT_TOOL)
@@ -184,8 +185,6 @@ class Research:
             return reason
         if name == 'web_fetch' and not self.url_allowed(arguments.get('url', '')):
             return 'URL is outside the selected research domains. Not fetched.'
-        if name == API_TOOL and not self.url_allowed(API_ENDPOINT):
-            return 'API is outside the selected research domains. Not queried.'
         if name == EXPORT_TOOL:
             if not self.state.get('api_data_available') or self.state.get('export_attempts', 0) >= 2:
                 return 'No API pages available or dataset export attempts exhausted.'

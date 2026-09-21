@@ -396,13 +396,17 @@ def read_body(resp, deadline):
 
 
 def post_read_query(url, body, deadline, url_policy=None):
+    return read_api_query(url, deadline, url_policy, body=body)
+
+
+def read_api_query(url, deadline, url_policy=None, *, body=None):
     """Transport for trusted read adapters, never exposed as an arbitrary POST tool.
 
     The adapter owns the endpoint and request schema. Redirects are rejected rather than
     forwarding a query to a different path/host or changing the method. No retries.
     """
     current = normalize_url(url)
-    if len(body) > 8192:
+    if body is not None and len(body) > 8192:
         raise FetchError('invalid_selection', 'Read query exceeds the 8 KiB request limit.')
     deadline.check()
     if url_policy is not None and not url_policy(current):
@@ -410,7 +414,7 @@ def post_read_query(url, body, deadline, url_policy=None):
     conn = connection(current, checked_addresses(current, deadline), deadline)
     try:
         parts = urlsplit(current)
-        conn.request('POST', parts.path + ('?' + parts.query if parts.query else ''), body=body,
+        conn.request('POST' if body is not None else 'GET', parts.path + ('?' + parts.query if parts.query else ''), body=body,
                      headers={'User-Agent': USER_AGENT, 'Accept': 'application/json',
                               'Accept-Encoding': 'identity', 'Content-Type': 'application/json',
                               'Connection': 'close'})

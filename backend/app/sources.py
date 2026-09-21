@@ -184,7 +184,7 @@ def capture_web(db, *, conversation_id, user_id, turn_id, url, title, text='', c
 
 def web_locator(location):
     if location.get('format') == 'api':
-        return (f"Public API: {location['adapter']} (POST); records [{location['offset']}, {location['item_end']}) "
+        return (f"Public API: {location['adapter']} ({location.get('method', 'POST')}); records [{location['offset']}, {location['item_end']}) "
                 f"of {location['total_records']} reported matches. Selected fields only.\n"
                 'Request: ' + json.dumps(location['request'], ensure_ascii=False, sort_keys=True) + '\n'
                 f"Request SHA-256: {location['request_hash']}\n")

@@ -2,16 +2,41 @@
 
 [User Guide](USER_GUIDE.md) · [Research](RESEARCH.md) · [Captured sources](WEB_SOURCES.md)
 
-Phlox can query supported public data APIs through `query_public_api`, including APIs
-whose documented search operation requires POST. The first adapter is **NIH RePORTER
-parent-project search** (`nih_projects`). It accepts organization name fragments and
-fiscal years. It works in ordinary Chat with **Web search enabled**, and in opt-in Research, subject to assistant tool
-access and Tool Manager policy. No API key, package installation, configuration change,
-database migration or separate service is required.
+`query_public_api` reads **NIH RePORTER projects** and **PubMed publication metadata**.
+It works in ordinary Chat with **Web search enabled** and in opt-in Research with Web
+or mixed sources, subject to assistant tool access and Tool Manager policy. No API key,
+configuration change, database migration or separate service is required.
 
-## Try it
+## Try PubMed
 
 Select Research with Web sources (or enable Web search in ordinary Chat), then ask:
+
+> Use query_public_api with adapter pubmed to search asthma[Title] AND 2024[pdat].
+> Retrieve exactly two pages of two records each, using continue_from for the second
+> page. List the four PMIDs, titles, journals and publication dates with citations.
+> State the API-reported match count and whether more pages remain. Then export those
+> two pages as downloadable data files. Do not infer study findings from the titles.
+
+The initial arguments are `adapter: "pubmed"`, `query`, and optionally `limit` (default 2).
+The query supports PubMed field tags, Boolean expressions and date filters. Phlox retains
+PubMed's **query translation** so you can inspect how the service interpreted the query.
+Results are sorted by publication date, most recent first; PMIDs need not be numerically
+ordered. Dates retain the API's original text, including month/season-only dates.
+
+Each nonempty page uses two fixed GET operations: **ESearch** identifies the page's PMIDs,
+then **ESummary** retrieves their bibliographic metadata. A zero-result search needs only
+ESearch. Missing/mismatched summaries, ignored-field/term warnings, duplicate IDs, changed
+query translations or changed match counts fail explicitly before evidence is captured.
+The reported translation is inspectable; this does not independently prove a complex
+search expresses your intended inclusion criteria.
+
+Captured fields are PMID, title, author names, journal, publication date, volume, issue,
+pages, DOI/PMC identifiers when returned, and the PubMed record link. **Abstracts and full
+article text are not retrieved in this slice.** These records support bibliographic claims;
+they do not establish study findings, quality or clinical recommendations. Abstract retrieval
+and ClinicalTrials.gov integration remain planned.
+
+## Try NIH RePORTER
 
 > Use the NIH RePORTER public API tool to inspect projects matching Johns Hopkins for
 > fiscal year 2024. Request two records per page and read only the first two pages.
@@ -19,75 +44,70 @@ Select Research with Web sources (or enable Web search in ordinary Chat), then a
 > State how many matches the API reports and whether more pages remain. Do not calculate
 > annual funding totals from this sample.
 
-The agent starts with `org_names`, `fiscal_years`, and optionally `limit`. For the next
-page it supplies **only `continue_from` and the previous page's S-label**, plus the optional
-adapter name. Phlox reuses the saved filters, selected fields, sort and page size, and
-advances the saved offset. The model cannot supply a different URL, POST body, headers,
-credentials or an arbitrary offset. Each call sends one request; there is no automatic
-bulk download, redirect following or retry loop.
+The agent supplies `org_names`, `fiscal_years`, and optionally `limit` (default 5).
+`adapter: "nih_projects"` is optional for compatibility with existing queries. This adapter
+uses one documented POST search per page. It accepts 1–5 organization fragments and
+1–10 fiscal years (1985–2100); empty filters, wildcards and unsupported fields are rejected.
 
-Click a citation to inspect the returned fields and record range. **Retrieval query**
-shows the exact payload. Opening the API endpoint in a browser does not repeat a POST
-query. Citation inspection, saved-passage rereads and Markdown exports preserve the query
-and captured evidence without accessing the API again. Separate queries/pages do not
-produce false "changed source" notices merely because they share an endpoint.
+Returned name/year filters, parent-project status, types, counts and offsets are validated.
+Application IDs must be unique and ascending, including across adjacent pages. Captures
+preserve numeric spellings, null amounts, organization identifiers and agency fields.
+Name fragments can match multiple legal entities; RePORTER includes non-NIH agencies.
+**A sample or known-amount sum is not verified annual NIH funding.** Agency scope, entity
+matching, fiscal-year completeness and monetary definitions still require analysis.
 
-## Validation and boundaries
+## Pagination, citations and exports
 
-- Queries require 1–5 organization fragments and 1–10 fiscal years (1985–2100). Empty
-  filters, wildcard syntax and unsupported fields are rejected before dispatch.
-- One request returns 1–20 records (default 5). A page's selected fields must fit a single
-  6,000-character passage; oversized pages fail explicitly and require a new query with
-  a smaller page size. Records are never silently dropped to fit.
-- Returned year/name filters, parent-project status, required field types, page offsets,
-  page sizes and counts are checked before capture. Application IDs must be unique and
-  ascending, including across successive pages. A changing reported total, repeated
-  page or inconsistent response stops continuation without capturing unvalidated rows.
-- Captures preserve original numeric spellings and null amounts, organization identifiers
-  when supplied, and administering/funding-agency fields. Other fields are omitted.
-  Missing amounts are unknown, not zero. Name fragments can match multiple organizations;
-  they are not legal-entity verification. RePORTER includes non-NIH agency projects too.
-- Pagination ends at the API-reported total or its supported offset window (14,999).
-  Hitting that window is reported as incomplete and requires narrower filters. Offset
-  pagination is not a frozen database snapshot: stable counts/order cannot prove the
-  upstream dataset stayed unchanged or that all relevant awards were returned.
-- **A captured page is not a verified annual total.** Entity matching, fiscal-year
-  completeness, funding-agency scope, monetary definitions, cross-query deduplication and
-  multi-year aggregation still require analysis. The separate [dataset exporter](API_DATASETS.md)
-  can now produce retained-record CSV/JSON files, known-amount summaries and a provenance
-  manifest. It does not perform bulk downloads or establish annual funding totals.
+For either adapter, continue with **only `continue_from: "S1"`**, substituting the previous
+page's citation label. An optional adapter must match that source. Phlox reuses the retained
+query, sort and page size; the model cannot change them or supply arbitrary offsets,
+endpoints, headers, credentials or POST bodies. Continuation rechecks retained content and
+pagination provenance, ownership, expiry and the current Research attempt/domain scope.
+Deleted/expired citations cannot authorize requests. A new Research attempt needs a fresh query.
 
-Invalid responses expose a tool error without a new evidence snapshot or usable cursor.
-To continue, the source must still be retained and belong to this conversation. Research
-additionally requires the same attempt and allowed source domains. Deleted/expired
-citations cannot authorize pagination. Starting a new Research attempt requires a fresh
-query; it does not import an old attempt's pages.
+Both adapters accept 1–20 records per page. The complete selected fields must fit one
+6,000-character passage; oversized pages fail and require a smaller limit. Records are
+never silently dropped to fit. PubMed exposes at most its first 10,000 matching records;
+NIH continuation uses its supported offset window of 14,999. Window exhaustion is explicitly
+incomplete: narrow the query. Server-side limits/errors may stop retrieval sooner.
+Neither offset pagination nor stable counts prove that the upstream database stayed frozen.
+
+Click a citation for the fields, record range, request recipe and (for PubMed) interpreted
+query. Opening the bare API endpoint does not replay the saved operation. PubMed's recipe
+records its search parameters; the retained PMIDs identify the ESummary request. Source
+inspection, rereads and Markdown exports do not contact the API again.
+
+When files are requested, [dataset export](API_DATASETS.md) creates records CSV/JSON,
+an adapter-specific summary and a provenance manifest from available source labels.
+Export one query at a time. Partial data remains labelled partial; no bulk download or
+unrequested calculation is performed by the query tool.
 
 ## Policy and operations
 
-The adapter is a registered read tool and defaults to automatic permission. Administrators
-can disable it or require approval in the Tool Manager. Research includes it only for
-Web or mixed source scope; domain restrictions must allow `api.reporter.nih.gov` (for
-example, `nih.gov`). Every attempted query page consumes one source read, including errors,
-under the existing Research allowance. Saved source capacity is checked before dispatch.
-Current restrictions and counters survive approval resume and durable-run replay.
+The registered read tool defaults to automatic permission; Tool Manager can require
+approval or disable it. Dataset file creation separately defaults to **Ask**. Research
+stays opt-in. Domain restrictions must allow `api.reporter.nih.gov` for NIH, or
+`eutils.ncbi.nlm.nih.gov` for PubMed. Allowing only `pubmed.ncbi.nlm.nih.gov` is insufficient:
+that is the public website, not the API host.
 
-The adapter targets only `https://api.reporter.nih.gov/v2/projects/search`. POST is treated
-as a read because this specific search endpoint and request schema are implemented in
-Phlox, not because POST responses happen to contain data. Adding other adapters requires
-code review of their endpoint, parameters, response validation and pagination semantics.
-Generic `web_fetch` remains GET-only; other POST APIs remain unsupported by Research.
+Every attempted page consumes one Research read, including failed pages. A PubMed page's
+two requests share that read and the same 30-second deadline. Source capacity is checked
+before dispatch. Counters and current-policy checks survive approvals and durable replay.
 
-Requests use the existing DNS-pinned connection and private-network policy, with no
-cookies, credentials or environment proxies. The 2 MiB response limit and 30-second
-deadline cover pacing, download and isolated JSON parsing; Stop interrupts waiting,
-network reads and parsing. Requests are paced at one start per second within Phlox's
-supported single-process deployment. Compression, redirects and non-JSON responses are
-rejected. HTTP failures are reported without response bodies or automatic retries.
+Both adapters use DNS-pinned connections, the private-network policy, no cookies/credentials
+or environment proxies, and a 2 MiB limit per response. The deadline covers pacing,
+network reads and isolated parsing; Stop interrupts these operations. NIH requests start
+at most once per second; PubMed starts are spaced by at least 0.4 seconds within Phlox's
+single process. Other applications sharing the same public IP may also consume NCBI's
+rate allowance. There is no API-key configuration or automatic retry in this slice.
+Compression, redirects and non-JSON responses are rejected; failures reveal no response bodies
+and create no usable evidence/cursor.
 
-The live API was checked with two one-record pages through the Phlox adapter. Automated
-tests use local synthetic data for pagination, filter rejection, private access, Stop,
-approval resume, notebooks and durable replay; these do not establish live-model research
-quality or statistical completeness.
+These are reviewed adapters, not arbitrary public API access. New adapters must define
+endpoints, request policy, validation, pagination and export fields. Generic `web_fetch`
+remains GET-only. ClinicalTrials.gov, abstract retrieval, bulk acquisition, configurable
+retry/backoff and general API discovery remain backlog work.
 
-API reference: [official NIH RePORTER API documentation](https://api.reporter.nih.gov/).
+References: [NIH RePORTER API](https://api.reporter.nih.gov/),
+[NCBI E-utilities parameters and usage guidance](https://www.nlm.nih.gov/dataguide/eutilities/utilities.html),
+[PubMed ESearch window](https://www.nlm.nih.gov/pubs/techbull/so22/so22_updated_pubmed_e_utilities.html).

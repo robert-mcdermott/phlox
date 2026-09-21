@@ -80,6 +80,9 @@ class Tool:
     description: str = ""
     #: JSON Schema object describing arguments
     parameters: dict[str, Any] = {"type": "object", "properties": {}}
+    #: Optional provider-compatible description of arguments. Execution always validates
+    #: parameters, including constraints that a provider's schema subset cannot express.
+    advertised_parameters: dict[str, Any] | None = None
     #: UI grouping
     category: str = "general"
     #: default permission policy: auto | ask | deny  (used to seed ToolPref)

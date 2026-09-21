@@ -456,7 +456,7 @@ version expiry remain outside this wave.
 ## Wave 14 — General reliability and task completion
 
 **Status:** in progress; first through third increments implemented 2026-09-09,
-fourth through eighth increments implemented 2026-09-20. **Scope:** application/session/run
+fourth through ninth increments implemented 2026-09-20. **Scope:** application/session/run
 reliability across Chat and Research, M2.3 evidence quality and completion budgets, with a
 bounded bridge to M3 deliverables. Schedule ahead of output inspection and portable exports.
 The delivery record below distinguishes implemented changes from the remaining plan.
@@ -746,6 +746,47 @@ saved downloads and no refetches. Approval-resume tests revoke a source before e
 and verify no files are published. No live-model evaluation or bulk dataset retrieval was
 performed; manual steps are in the dataset guide.
 
+**Ninth increment — shared API datasets and PubMed bibliographic search (2026-09-20):**
+
+- **W14.3/W14.7 delivery:** `query_public_api` accepts `adapter=pubmed` and a PubMed
+  search expression. Fixed ESearch/ESummary GET requests retrieve one matched metadata
+  page within one deadline/read allowance; empty searches skip ESummary. Continuation
+  reuses retained recipes with ownership, attempt, hash and pagination checks. Search
+  warnings/errors, missing summaries, duplicate IDs, changed counts/translations and
+  oversized pages fail before capture. Query translation is inspectable in citations.
+- **Shared export foundation:** adapter contracts define record identity, validation,
+  ordering, notices and CSV projections. Shared logic handles coverage/gaps/conflicts,
+  source reauthorization, manifests and atomic publication. NIH exact-decimal funding
+  summaries remain isolated; PubMed summaries report captured/reported record counts.
+  Existing NIH citations and exports remain compatible without a migration. Normal
+  file-write approvals, Stop, retention, source limits and saved-answer files still apply.
+- **Boundaries:** PubMed returns selected bibliographic metadata, not abstracts/full text
+  or evidence of study findings. Pages default to two records (maximum 20) and must fit
+  6,000 characters. The documented first-10,000-result window is explicit, not silently
+  treated as complete. Starts are paced at 0.4 seconds across Phlox's process; other apps
+  sharing an IP may still cause rate errors. No credentials, retry loop, bulk retrieval,
+  new model calls, configuration, dependency or schema is introduced. ClinicalTrials.gov
+  and PubMed abstracts remain planned. See [public API usage/manual checks](PUBLIC_API.md).
+
+**Ninth-increment verification:** local HTTP/parser and scripted Research tests cover
+PubMed pagination, malformed/partial responses, warning rejection, query/total drift,
+API window/empty results, scope/ownership/expiry, Stop, cross-adapter rejection, CSV
+escaping and query-to-export delivery in request-bound and durable execution. Existing NIH
+regressions verify unchanged arithmetic and saved-page compatibility. Browser coverage
+checks PubMed GET provenance and interpreted queries after reload. A live two-page,
+two-record-per-page smoke check passed through the actual adapter with consistent counts
+and continuation; it made no model calls and saved no user data. Full backend suite:
+754 passed, 24 skipped. Lint, frontend production build and all 45 Chromium regressions
+passed (existing deprecation and bundle-size warnings remain).
+
+**Provider compatibility follow-up:** a Claude-backed endpoint rejected the public API
+tool's top-level `oneOf` before generation. The tool now advertises a plain object schema,
+while its complete argument-union contract remains enforced before approval/execution
+and on direct calls. Regression tests cover both OpenAI-compatible and Bedrock wire
+schemas, all supported query modes and invalid combinations; this does not bypass local
+validation or change tool permissions.
+Verification: backend suite 771 passed, 24 skipped; lint and whitespace checks passed.
+
 **Still pending:** remaining W14.1/W14.5 stage allowances, live calibration and recovery UX, further W14.2 extraction quality, broader W14.3 API coverage and W14.4 quality evaluation, and
 W14.6–W14.8 (extraction, working context and analysis/deliverables), plus full process-level signal/draining/deadline work in
 W14.11. A stalled tool or open event stream can still delay graceful shutdown. No automatic
@@ -753,17 +794,15 @@ replay of uncertain actions, session refresh protocol, durable return hint or di
 worker has been introduced. Future increments should address bounded bulk acquisition
 and broader research-to-analysis execution/deliverable verification (W14.6–W14.8).
 
-**Planned public API expansion (W14.3/W14.7):** PubMed and ClinicalTrials.gov are the
-next named integrations, alongside the existing NIH RePORTER adapter. PubMed should
-support publication search, bibliographic records and available abstracts;
-ClinicalTrials.gov should support registered studies, eligibility, recruitment status
-and available reported results. Neither integration is implemented yet. Build reusable
-query, pagination, retry, citation/provenance and dataset-export components, with small
-adapters for each API's documented requirements. Refactor the NIH-specific export path
-into that shared foundation; keep funding fields and calculations specific to NIH.
-Verify each API's official documentation, access requirements and limits before
-implementation, and test the shared components against all three integrations. This is
-scoped support for these APIs, not a promise that arbitrary public APIs work automatically.
+**Planned public API expansion (W14.3/W14.7):** extend PubMed with available abstracts
+and add ClinicalTrials.gov studies, eligibility, recruitment status and available reported
+results. The ninth increment delivers the shared export foundation and PubMed bibliographic
+search; neither PubMed abstracts nor ClinicalTrials.gov is implemented yet. Continue using
+shared query/pagination, pacing/retry policy, citations/provenance and dataset publication,
+with adapters for documented API semantics. General discovery, retry/backoff and bounded
+bulk retrieval remain open. Verify official documentation, access requirements and limits
+before each addition; test common components against NIH, PubMed and eventually
+ClinicalTrials.gov. This does not promise arbitrary public API access.
 
 **Motivation:** a reviewed long-running research task exposed an empty synthesis saved as
 completed, exhausted search/read allowances, repeated context trimming, and useful financial

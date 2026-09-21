@@ -888,7 +888,19 @@ test('PDF, JSON and public API citations show provenance after reload', async t 
   await dialog.getByText(/More API pages remain/).waitFor()
   await dialog.getByText('Retrieval query', { exact: true }).click()
   await dialog.locator('pre').filter({ hasText: 'fiscal_years' }).waitFor()
-  await dialog.getByText('Opening the endpoint does not replay this POST query.', { exact: true }).waitFor()
+  await dialog.getByText('Opening the endpoint does not replay the saved query.', { exact: true }).waitFor()
+  await page.keyboard.press('Escape')
+  state.sources['source-1'] = { ...webSourceFixture(), location: { ...webSourceFixture().location,
+    format: 'api', adapter: 'pubmed', method: 'GET', offset: 0, item_end: 2, total_records: 50,
+    next_offset: 2, query_translation: '"asthma"[Title]',
+    request: { query: 'asthma[Title]', sort: 'pub date', offset: 0, limit: 2 } } }
+  await page.reload()
+  await page.getByText('Approval chat', { exact: true }).click()
+  await page.getByRole('button', { name: 'View source S1', exact: true }).click()
+  await dialog.getByText('Public API · pubmed · GET', { exact: true }).waitFor()
+  await dialog.getByText('PubMed interpreted query: "asthma"[Title]', { exact: true }).waitFor()
+  await dialog.getByText('Retrieval query', { exact: true }).click()
+  await dialog.locator('pre').filter({ hasText: 'asthma[Title]' }).waitFor()
 })
 
 test('saved citations inspect exact evidence, preserve code, reload and recheck revoked access', async (t) => {

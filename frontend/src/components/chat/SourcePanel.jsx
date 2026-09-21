@@ -71,10 +71,11 @@ export default function SourcePanel({ conversationId, reference, onClose }) {
         {source.location.format === 'api' && <>
           <p className="text-muted">Public API · {source.location.adapter} · {source.location.method}</p>
           <p className="text-muted">Records [{source.location.offset}, {source.location.item_end}) of {source.location.total_records} reported matches · selected fields</p>
-          <p className="text-muted">{source.location.window_exhausted ? 'API page window reached. More records remain; narrow the query.' : source.location.next_offset != null ? 'More API pages remain.' : 'End of this query according to the API.'} A page is not a verified annual total.</p>
+          <p className="text-muted">{source.location.window_exhausted ? 'API page window reached. More records remain; narrow the query.' : source.location.next_offset != null ? 'More API pages remain.' : 'End of this query according to the API.'} A page alone does not establish dataset completeness.</p>
+          {source.location.query_translation != null && <p className="break-all text-muted">PubMed interpreted query: {source.location.query_translation}</p>}
           <details className="rounded border border-border p-2">
             <summary className="cursor-pointer">Retrieval query</summary>
-            <p className="my-2 text-xs text-muted">Opening the endpoint does not replay this POST query.</p>
+            <p className="my-2 text-xs text-muted">Opening the endpoint does not replay the saved query.</p>
             <pre className="whitespace-pre-wrap break-all text-xs">{JSON.stringify(source.location.request, null, 2)}</pre>
           </details>
         </>}

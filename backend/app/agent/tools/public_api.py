@@ -1,9 +1,10 @@
 """Cited public API reading, through explicitly scoped adapters only."""
 import uuid
+from copy import deepcopy
 
 from jsonschema import Draft202012Validator
 
-from app import public_api, sources, web_fetch
+from app import public_api, public_api_adapters as adapters, sources, web_fetch
 from app.agent.tools.base import Tool, ToolResult
 from app.models import Conversation
 
@@ -13,18 +14,22 @@ class QueryPublicApi(Tool):
     category = 'web'
     default_permission = 'auto'
     description = (
-        'Query a supported public read-only API and capture one cited page. Currently supports NIH RePORTER '
-        'parent projects by organization name and fiscal year, using its documented POST search. '
-        'Start with org_names/fiscal_years and a small limit. Continue with only continue_from=S# to reuse '
-        'the saved filters and next offset. No arbitrary endpoints or raw POST bodies. '
-        'Pages are partial datasets, not annual totals; verify organizations, funding scope and completeness.'
+        'Query NIH RePORTER projects (org_names/fiscal_years), or PubMed publications '
+        '(adapter=pubmed, query with PubMed field/date tags). Capture one cited page. '
+        'Start with a small limit (NIH default 5; PubMed default 2). Continue with only '
+        'continue_from=S# to reuse the saved query. PubMed captures bibliographic metadata, '
+        'not abstracts or study findings. No arbitrary URLs/POST bodies. Pages are partial '
+        'datasets; inspect returned scope and completeness before analysis.'
     )
     parameters = public_api.PARAMETERS
+    # Claude-backed endpoints reject top-level composition keywords. Keep the complete
+    # union for dispatch/direct-call validation; advertise only its shared object fields.
+    advertised_parameters = deepcopy({k: v for k, v in parameters.items() if k != 'oneOf'})
 
     def run(self, ctx, **arguments):
         if next(Draft202012Validator(self.parameters).iter_errors(arguments), None):
-            return ToolResult('Invalid API query. Supply org_names and fiscal_years (optional limit), or only continue_from. '
-                              'Only adapter nih_projects is supported; URLs, headers and raw bodies are not accepted.', is_error=True)
+            return ToolResult('Invalid API query. Supply NIH org_names/fiscal_years, or adapter=pubmed and query, '
+                              'with optional limit; continue with only continue_from. URLs, headers and raw bodies are not accepted.', is_error=True)
         turn_id = ctx.accounting.turn_id if ctx.accounting else uuid.uuid4().hex
         try:
             if ctx.cancel_event and ctx.cancel_event.is_set():
@@ -33,26 +38,31 @@ class QueryPublicApi(Tool):
             conv = ctx.db.get(Conversation, ctx.conversation_id, populate_existing=True)
             if not conv or conv.user_id != ctx.user_id or sources.remaining_capacity(ctx.db, ctx.conversation_id, turn_id) < 1:
                 return ToolResult('API evidence unavailable: conversation or source allowance unavailable.', is_error=True)
-            request, previous = (public_api.continuation(ctx, arguments['continue_from'], turn_id)
-                                 if arguments.get('continue_from') else (public_api.recipe(arguments), None))
-            page, status, digest, request_hash = public_api.query(ctx, request, previous)
-            location = {'format': 'api', 'adapter': 'nih_projects', 'method': 'POST', 'request': request,
+            if arguments.get('continue_from'):
+                adapter, request, previous = public_api.continuation(ctx, arguments['continue_from'], turn_id,
+                                                                    arguments.get('adapter'))
+            else:
+                adapter = adapters.get(arguments.get('adapter', 'nih_projects'))
+                request, previous = public_api.recipe(arguments), None
+            page, status, digest, request_hash = public_api.query(ctx, request, previous, adapter.name)
+            location = {'format': 'api', 'adapter': adapter.name, 'method': adapter.method, 'request': request,
                         'request_hash': request_hash, 'offset': page['offset'], 'item_end': page['end'],
                         'total_records': page['total'], 'next_offset': page['next_offset'],
                         'window_exhausted': page['window_exhausted'], 'record_ids': page['ids']}
+            if adapter.name == 'pubmed':
+                location['query_translation'] = page['query_translation']
             captures = sources.capture_web(ctx.db, conversation_id=ctx.conversation_id, user_id=ctx.user_id,
-                turn_id=turn_id, url=public_api.ENDPOINT, title='NIH RePORTER project query', text=page['text'],
+                turn_id=turn_id, url=adapter.endpoint, title=adapter.title, text=page['text'],
                 content_hash=digest, http_status=status, cancel=ctx.cancel_event, provenance=location)
             if not captures or not captures[0].startswith('[S'):
                 return ToolResult('API query stopped or evidence could not be retained.', is_error=True)
             if ctx.research:
                 ctx.research.state['api_data_available'] = True
-            notice = ('Selected project fields; other fields are omitted. Name fragments may match multiple organizations. '
-                      'Parent projects only; null award amounts are unknown, not zero. RePORTER includes NIH and non-NIH '
-                      'agency projects. Do not sum these records as NIH-only funding without verifying agency scope. '
-                      'A page is not a complete dataset or a verified annual total. ')
+            notice = adapter.notice + ' '
+            if adapter.name == 'nih_projects':
+                notice += 'Parent projects only; null award amounts are unknown, not zero. '
             if page['window_exhausted']:
-                notice += 'API offset window exhausted before the reported total. Narrow the organization/year query. '
+                notice += 'API offset window exhausted before the reported total. Narrow the query. '
             elif page['next_offset'] is not None:
                 notice += 'More API records remain. Use continue_from with this page\'s S-label for the next page, without filters or limit. '
             else:

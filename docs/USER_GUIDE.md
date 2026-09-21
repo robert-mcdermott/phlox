@@ -452,10 +452,11 @@ Public PDFs retain page citations; JSON values and array selections retain field
 and record ranges without splitting records or rounding numeric text. See
 [PDF and JSON reading](WEB_SOURCES.md#pdf-and-json-sources) for examples and bounds.
 For structured data, the [public API query tool](PUBLIC_API.md) can read NIH RePORTER
-projects by organization/year and continue through validated, cited pages. It preserves
+projects by organization/year or PubMed publication metadata by search expression, with
+validated, cited pagination. PubMed abstracts and full text remain future work. It preserves
 the query for inspection; sampled pages are not complete annual funding totals.
 When downloadable data is requested, [dataset export](API_DATASETS.md) creates CSV/JSON
-records, a known-amount summary and a retrieval manifest from retained API pages. File
+records, an adapter-specific summary and a retrieval manifest from retained API pages. File
 creation uses normal approvals, and incomplete coverage and missing values stay explicit.
 
 Access is rechecked on each source read/export. Source excerpts expire 30 days after last

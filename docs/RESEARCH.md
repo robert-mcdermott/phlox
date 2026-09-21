@@ -118,9 +118,9 @@ retain page numbers, and JSON citations retain the selected path and array index
 Ask for a specific page or set of records when a response is large; the model can use
 `pdf_page`, `json_pointer`, `json_start` and `json_limit`. Complete retained passages can
 support notebook findings and final writing. Scanned PDFs require OCR, complex PDF tables
-need verification. For POST-based NIH RePORTER searches, the separate
+need verification. For NIH RePORTER projects or PubMed bibliographic searches, the separate
 [public API query tool](PUBLIC_API.md) supports validated pages and continuation from
-retained citations. Other POST APIs and bulk data acquisition remain unsupported. See
+retained citations. PubMed metadata does not include abstracts or establish study findings. Other POST APIs and bulk data acquisition remain unsupported. See
 [PDF and JSON sources](WEB_SOURCES.md#pdf-and-json-sources) for limits and manual checks.
 
 ## Research notebook and working context

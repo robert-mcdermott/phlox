@@ -10,10 +10,10 @@ class ExportApiDataset(Tool):
     name = api_dataset.NAME
     category = 'filesystem'
     default_permission = 'ask'
-    description = ('When the user requests data files, export retained NIH API citation pages into records.csv, '
+    description = ('When the user requests data files, export retained public API citation pages into records.csv, '
                    'records.json, summary.csv and manifest.json. Supply labels from one query. No network or arbitrary '
-                   'code runs. Validates coverage, duplicates and exact known award sums; partial data stays labelled '
-                   'partial, not annual funding totals. Creates a new workspace folder without overwriting files.')
+                   'code runs. Validates coverage and duplicates; NIH summaries use exact known award sums; partial data stays labelled '
+                   'partial. PubMed exports contain bibliographic metadata, not abstracts. Creates a new workspace folder without overwriting files.')
     parameters = {'type': 'object', 'additionalProperties': False, 'properties': {
         'labels': {'type': 'array', 'minItems': 1, 'maxItems': 64, 'uniqueItems': True,
                    'items': {'type': 'string', 'pattern': '^S[1-9][0-9]{0,5}$'}},

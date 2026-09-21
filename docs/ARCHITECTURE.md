@@ -134,7 +134,7 @@ See [ARTIFACTS.md](ARTIFACTS.md) for data flow, storage and preview boundaries.
 
 ### Evidence seam
 
-`api_dataset.py` validates and exports retained API pages, using exact decimal sums and
+`api_dataset.py` validates and exports retained API pages, using adapter-specific validation/formatting and
 source/request hashes, coverage intervals and duplicate checks. The registered
 `export_api_dataset` tool defaults to Ask and is excluded from read-only children. Research
 advertises it after API capture, with two bounded attempts before synthesis; it consumes
@@ -143,11 +143,20 @@ rechecks access/expiry, and atomically renames a fresh staging folder containing
 bounded files. Existing artifact events, checkpoints and saved-answer snapshots handle
 delivery. There is no network/model call, arbitrary code or new schema. See [API datasets](API_DATASETS.md).
 
-`public_api.py` defines fixed read-query adapters, initially NIH RePORTER project search.
+`public_api_adapters.py` defines adapter contracts (identity, endpoint, page validator,
+record key, ordering, notice and output formatter). `api_dataset_formats.py` keeps NIH
+funding calculations separate from PubMed bibliographic projections. Shared export logic
+owns source reauthorization, conflict/coverage checks, manifests and atomic publication;
+existing NIH snapshots remain readable/exportable without a migration.
+
+`public_api.py` orchestrates fixed NIH RePORTER and PubMed read queries.
 The `query_public_api` registry tool accepts bounded filters or a retained source label
-for continuation; it never accepts arbitrary URLs or POST bodies. `web_fetch.post_read_query`
+for continuation; it never accepts arbitrary URLs or POST bodies. `web_fetch.read_api_query` (and its POST wrapper)
 reuses DNS pinning, cancellation and byte limits while rejecting redirects. The existing
-parser subprocess validates filters, types, counts and ID ordering before capture. Web
+parser subprocess validates filters, types, counts and adapter-specific ordering before
+capture. PubMed uses ESearch followed by ESummary within one deadline/read allowance;
+only matched complete metadata pages are captured. It retains query translation and
+bibliographic fields, with no abstract/full-text claims. Web
 source location JSON retains the canonical request, hash and pagination state; continuation
 reauthorizes the source and current Research attempt/domain scope. The tool counts as a
 Research read and uses the shared permission, notebook, source and replay seams. See

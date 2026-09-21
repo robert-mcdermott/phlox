@@ -37,9 +37,10 @@ evaluation and analysis improvements remain planned. The eighth increment adds p
 retained-page dataset exports, exact known-amount summaries and coverage/provenance manifests;
 bulk acquisition, general analysis/charts and semantic deliverable tracking remain planned. See the wave's
 delivery record for verification and remaining restart boundaries.
-PubMed and ClinicalTrials.gov are planned additions to public API support, using shared
-query/pagination, provenance and export components with API-specific adapters. Neither
-integration ships yet; see the Wave 14 backlog for scope and the planned export refactor.
+The ninth increment adds PubMed bibliographic search, cited pagination and exports through
+shared API/source/dataset components. NIH funding calculations are now adapter-specific.
+PubMed abstracts, ClinicalTrials.gov, broader API discovery and bulk acquisition remain
+planned; see the Wave 14 backlog for scope.
 The wave log records verification and remaining limits. M3 has an initial delivery; M4–M5 remain proposed. Existing features and
 completed work are identified explicitly; unchecked entries do not yet ship.
 
@@ -329,7 +330,8 @@ tasks sufficient model-aware completion room, with bounded adaptive extensions a
 continuation that preserves evidence rather than restarting the investigation. Distinguish
 soft planning targets from explicit user/admin hard ceilings; honor Stop and actual provider
 capacity. Public PDF/JSON evidence now ships with explicit extraction/selection bounds.
-Scoped NIH RePORTER queries and saved-source API pagination also ship; other adapters remain planned.
+Scoped NIH RePORTER and PubMed bibliographic queries, saved-source pagination and dataset
+exports also ship; PubMed abstracts and ClinicalTrials.gov remain planned.
 Further improve extraction quality, structured-data validation and working-context
 consolidation. Measure successful completion and avoided restarts, not only
 tokens consumed per attempt. Audit effective settings across the generic harness, research,

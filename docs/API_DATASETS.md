@@ -3,13 +3,13 @@
 [Public API queries](PUBLIC_API.md) · [Research](RESEARCH.md) · [User Guide](USER_GUIDE.md)
 
 When a task asks for downloadable data, `export_api_dataset` can turn retained NIH
-RePORTER query pages into four real files in a new conversation workspace folder:
+RePORTER or PubMed query pages into four real files in a new conversation workspace folder:
 
 | File | Contents |
 |---|---|
-| `records.csv` | Project IDs, names, organizations, fiscal years and award amounts |
-| `records.json` | All fields retained by the API adapter, including nested agency data and original numeric spellings |
-| `summary.csv` | Dataset coverage, counts, known award sums and missing-amount counts by returned organization name, IPF identifier and fiscal year |
+| `records.csv` | NIH project fields, or PubMed PMIDs, titles, authors, journals, dates and identifiers |
+| `records.json` | All fields retained by the API adapter, including nested data and original numeric spellings |
+| `summary.csv` | Dataset coverage, NIH counts/known award sums/missing amounts grouped by organization and fiscal year; PubMed captured and reported record counts |
 | `manifest.json` | Query recipe, source references/capture times, coverage and gaps, duplicate counts, and data-file hashes |
 
 The tool reads existing source snapshots. It makes no network requests, installs nothing,
@@ -45,17 +45,23 @@ Submit the entire request together:
 For approval rejection, repeat in a fresh conversation with Agent mode off and deny the
 export. No dataset files should be created. Research can still report its retained evidence.
 
+For PubMed, use the [two-page example](PUBLIC_API.md#try-pubmed). Verify four PMIDs in
+`records.json`, a partial coverage summary with no funding columns, and the interpreted
+query in `manifest.json`. Authors and DOI/PMC lists remain arrays in JSON and are joined
+with semicolons in CSV. Bibliographic records do not include abstracts or full article text.
+The publication dates remain source strings; no publication-year aggregation is inferred.
+
 ## Validation and limits
 
 The agent supplies 1–64 distinct source labels, not file contents or model-authored rows.
-All pages must be available, owned by the same conversation and from one NIH query.
+All pages must be available, owned by the same conversation and from one query of one supported API.
 Research additionally requires the current attempt and allowed domains. Normal Chat can
 export retained pages from an earlier turn in the same conversation. Access and expiry
 are checked again immediately before file publication.
 
 The exporter revalidates source/request hashes, API filters and record types, pagination
 metadata and ordering. Mixing different filters, changing reported totals, inconsistent
-offsets, or conflicting versions of a project rejects the export. Identical records at
+offsets, or conflicting versions of a record rejects the export. Identical records at
 overlapping offsets are deduplicated and counted in the manifest. Missing ranges are
 reported explicitly; they do not prevent exporting a clearly labelled partial dataset.
 
@@ -66,7 +72,7 @@ year is complete, or the records represent NIH-only funding. The adapter exclude
 subprojects; entity/agency scope, award definitions and cross-query reconciliation still
 need analysis. Never substitute these sums for verified institutional annual funding.
 
-Amounts use exact decimal arithmetic, with explicit bounds of 100 significant digits and
+NIH amounts use exact decimal arithmetic, with explicit bounds of 100 significant digits and
 exponents between −100 and 100. Nulls remain null in JSON and blank in CSV. Original text
 and nested data remain in JSON; formula-like text cells in CSV receive an apostrophe
 prefix so opening the file in a spreadsheet does not interpret them as formulas.

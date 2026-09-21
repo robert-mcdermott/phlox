@@ -858,7 +858,7 @@ class AgentSession:
         )
 
     #: tools that change workspace files — snapshot before they run (for undo)
-    MUTATING_TOOLS = {"write_file", "edit_file", "run_shell", "execute_python", "execute_node"}
+    MUTATING_TOOLS = {"write_file", "edit_file", "run_shell", "execute_python", "execute_node", "export_api_dataset"}
 
     def _maybe_checkpoint(self, tool_name: str) -> None:
         if tool_name not in self.MUTATING_TOOLS:

@@ -10,6 +10,7 @@ if TYPE_CHECKING:
 def register_builtin_tools(registry: "ToolRegistry") -> None:
     """Register every built-in tool. Called once at startup (app.main)."""
     from app.agent.tools import (
+        api_dataset,
         checkpoint,
         code,
         docs,
@@ -38,6 +39,7 @@ def register_builtin_tools(registry: "ToolRegistry") -> None:
         web.WebFetch(),
         web.ReadWebSource(),
         public_api.QueryPublicApi(),
+        api_dataset.ExportApiDataset(),
         research.UpdateResearchNotebook(),
         memory.SaveMemory(),
         skills.UseSkill(),

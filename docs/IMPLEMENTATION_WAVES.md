@@ -456,7 +456,7 @@ version expiry remain outside this wave.
 ## Wave 14 — General reliability and task completion
 
 **Status:** in progress; first through third increments implemented 2026-09-09,
-fourth through seventh increments implemented 2026-09-20. **Scope:** application/session/run
+fourth through eighth increments implemented 2026-09-20. **Scope:** application/session/run
 reliability across Chat and Research, M2.3 evidence quality and completion budgets, with a
 bounded bridge to M3 deliverables. Schedule ahead of output inspection and portable exports.
 The delivery record below distinguishes implemented changes from the remaining plan.
@@ -714,12 +714,56 @@ actual adapter against the public NIH API; no live model, bulk retrieval or annu
 quality evaluation was performed. Ordinary chats without Web search retain their existing
 tool overhead, including the image-and-project-context regression.
 
+**Eighth increment — validated retained API datasets and file delivery (2026-09-20):**
+
+- **W14.6–W14.8 bounded delivery:** `export_api_dataset` turns 1–64 retained NIH query
+  citations into records CSV/JSON, an exact-decimal known-amount summary and a provenance
+  manifest. It performs no new requests or arbitrary execution. Source hashes, filters,
+  types, ordering, coverage and duplicates are checked before publication. Conflicting
+  records/queries fail; partial coverage and missing amounts remain explicit.
+- **Permission and continuity:** file creation defaults to Ask. Research advertises it
+  after API capture, for requested file deliverables; it permits at most two attempts
+  before synthesis under existing time/token/pass ceilings. Export uses no read allowance
+  and can operate on retained pages after reads/source storage are full. Ownership,
+  retention and current-attempt/domain scope are rechecked through approval resume.
+- **Delivery:** a new folder is published atomically with a 2 MiB total limit, without
+  overwriting existing files. CSV formula-like text is neutralized; original text/numeric
+  spellings remain in JSON. Existing artifact cards, checkpoints, downloads, saved answer
+  copies and durable replay carry the actual files. See [API datasets](API_DATASETS.md).
+- **Boundaries:** this is export and arithmetic over existing pages, not bulk acquisition,
+  entity reconciliation, verified NIH-only annual totals, arbitrary analysis/charts or
+  semantic proof that every requested deliverable was completed. A forced kill can leave
+  an unreported folder; no automatic replay is added. No migration/configuration/dependency
+  is needed. Full lifecycle shutdown work and broader analysis handoff remain open.
+
+**Eighth-increment verification:** full backend suite (713 passed, 24 skipped), lint,
+production frontend build and all 45 Chromium regressions. Synthetic fixtures verify exact
+decimal sums, nulls, incomplete/overlapping pages, conflicting versions, formula-safe CSV,
+file hashes, source reauthorization, Stop/write cleanup, unique publication, saved-file
+immutability, read-exhausted export and hard budget limits. Scripted real HTTP flows query
+two pages and export all four files in request-bound and durable execution, with private
+saved downloads and no refetches. Approval-resume tests revoke a source before execution
+and verify no files are published. No live-model evaluation or bulk dataset retrieval was
+performed; manual steps are in the dataset guide.
+
 **Still pending:** remaining W14.1/W14.5 stage allowances, live calibration and recovery UX, further W14.2 extraction quality, broader W14.3 API coverage and W14.4 quality evaluation, and
 W14.6–W14.8 (extraction, working context and analysis/deliverables), plus full process-level signal/draining/deadline work in
 W14.11. A stalled tool or open event stream can still delay graceful shutdown. No automatic
 replay of uncertain actions, session refresh protocol, durable return hint or distributed
-worker has been introduced. The next increment should address bounded structured-data
-acquisition and validation for the research-to-analysis workflow (W14.6–W14.8).
+worker has been introduced. Future increments should address bounded bulk acquisition
+and broader research-to-analysis execution/deliverable verification (W14.6–W14.8).
+
+**Planned public API expansion (W14.3/W14.7):** PubMed and ClinicalTrials.gov are the
+next named integrations, alongside the existing NIH RePORTER adapter. PubMed should
+support publication search, bibliographic records and available abstracts;
+ClinicalTrials.gov should support registered studies, eligibility, recruitment status
+and available reported results. Neither integration is implemented yet. Build reusable
+query, pagination, retry, citation/provenance and dataset-export components, with small
+adapters for each API's documented requirements. Refactor the NIH-specific export path
+into that shared foundation; keep funding fields and calculations specific to NIH.
+Verify each API's official documentation, access requirements and limits before
+implementation, and test the shared components against all three integrations. This is
+scoped support for these APIs, not a promise that arbitrary public APIs work automatically.
 
 **Motivation:** a reviewed long-running research task exposed an empty synthesis saved as
 completed, exhausted search/read allowances, repeated context trimming, and useful financial

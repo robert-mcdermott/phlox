@@ -53,8 +53,9 @@ produce false "changed source" notices merely because they share an endpoint.
   upstream dataset stayed unchanged or that all relevant awards were returned.
 - **A captured page is not a verified annual total.** Entity matching, fiscal-year
   completeness, funding-agency scope, monetary definitions, cross-query deduplication and
-  multi-year aggregation still require analysis. This slice does not create datasets,
-  charts, workspace scripts or download manifests.
+  multi-year aggregation still require analysis. The separate [dataset exporter](API_DATASETS.md)
+  can now produce retained-record CSV/JSON files, known-amount summaries and a provenance
+  manifest. It does not perform bulk downloads or establish annual funding totals.
 
 Invalid responses expose a tool error without a new evidence snapshot or usable cursor.
 To continue, the source must still be retained and belong to this conversation. Research

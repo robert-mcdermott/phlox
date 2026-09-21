@@ -454,6 +454,9 @@ and record ranges without splitting records or rounding numeric text. See
 For structured data, the [public API query tool](PUBLIC_API.md) can read NIH RePORTER
 projects by organization/year and continue through validated, cited pages. It preserves
 the query for inspection; sampled pages are not complete annual funding totals.
+When downloadable data is requested, [dataset export](API_DATASETS.md) creates CSV/JSON
+records, a known-amount summary and a retrieval manifest from retained API pages. File
+creation uses normal approvals, and incomplete coverage and missing values stay explicit.
 
 Access is rechecked on each source read/export. Source excerpts expire 30 days after last
 capture; deletion removes source snapshots and leaves unavailable labels. Historical answer/

@@ -691,6 +691,7 @@ def prepare_chat(req, db, user, cancel_event, run_id=None, tool_observer=None):
             if not web_search_allowed:
                 enabled_tools.discard("web_search")
                 enabled_tools.discard("query_public_api")
+                enabled_tools.discard("export_api_dataset")
             # The assistant's knowledge base force-enables document search — it is the
             # point of attaching one.
             if not (document_search_requested or referenced_docs or assistant_has_kb):
@@ -848,6 +849,7 @@ def prepare_approval(req, db, user, cancel_event, validate_only=False, tool_obse
     if not caps.get("web_search", True):
         allowed_tools.discard("web_search")
         allowed_tools.discard("query_public_api")
+        allowed_tools.discard("export_api_dataset")
     if not caps.get("document_search", True):
         allowed_tools.discard("search_documents")
     if not caps.get("tools", True):

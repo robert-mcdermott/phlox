@@ -33,8 +33,13 @@ The sixth increment adds bounded public PDF layout-text extraction with page cit
 complete JSON value/record selections, and notebook restoration with their provenance.
 The seventh increment adds a scoped NIH RePORTER POST-query adapter, validated API
 pagination and inspectable retrieval recipes. Broader API coverage, context quality
-evaluation and analysis improvements remain planned; see the wave's
+evaluation and analysis improvements remain planned. The eighth increment adds permission-gated
+retained-page dataset exports, exact known-amount summaries and coverage/provenance manifests;
+bulk acquisition, general analysis/charts and semantic deliverable tracking remain planned. See the wave's
 delivery record for verification and remaining restart boundaries.
+PubMed and ClinicalTrials.gov are planned additions to public API support, using shared
+query/pagination, provenance and export components with API-specific adapters. Neither
+integration ships yet; see the Wave 14 backlog for scope and the planned export refactor.
 The wave log records verification and remaining limits. M3 has an initial delivery; M4–M5 remain proposed. Existing features and
 completed work are identified explicitly; unchecked entries do not yet ship.
 

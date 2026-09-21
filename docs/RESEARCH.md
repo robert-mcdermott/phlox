@@ -19,9 +19,12 @@ replace ordinary chat, the Web search checkbox, Agent mode, or skills.
 
 Research uses a model with tool calling enabled and at least three allowed model passes
 (**Settings → Model → Max tool rounds**). Assistant restrictions and tool permissions still
-apply. Only `web_search`, `web_fetch`, `read_web_source`, and `search_documents` are eligible; Research does
-not enable shell/code execution, MCP, file mutation, memory tools, or child agents.
-Approvals still appear when the effective permission for an eligible read tool is Ask.
+apply. Eligible tools include `web_search`, `web_fetch`, `read_web_source`, `query_public_api`,
+`search_documents` and the research notebook. After API evidence is captured,
+`export_api_dataset` can create [validated data files](API_DATASETS.md) when the user requests
+them, under the normal file-write permission gate (Ask by default). Research does not enable
+general shell/code execution, arbitrary file mutation, MCP, memory tools or child agents.
+Approvals still appear when the effective permission for an eligible tool is Ask.
 
 Research uses the **current question and selected sources**, rather than replaying older
 conversation messages or injecting cross-conversation memories. Include relevant context
@@ -66,6 +69,9 @@ One long page can consume several records; failures also consume records. Once r
 new records is exhausted, Research stops gathering and writes from retained evidence,
 including when a batch requests more reads than can be captured. This conservative check
 does not attempt to predict whether another page might reuse an existing record.
+An available dataset export can still use retained API pages after reads or source storage
+are exhausted, within the remaining time/token/pass ceilings. Export before the synthesis
+handoff; it does not create extra model passes or extend a hard budget.
 
 Presets are saved as the `research` database configuration section. The admin form accepts
 3–100 planned passes, 1–100 searches, 1–100 source reads, 30–7,200 gathering seconds, and

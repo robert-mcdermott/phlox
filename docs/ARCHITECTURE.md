@@ -134,6 +134,15 @@ See [ARTIFACTS.md](ARTIFACTS.md) for data flow, storage and preview boundaries.
 
 ### Evidence seam
 
+`api_dataset.py` validates and exports retained API pages, using exact decimal sums and
+source/request hashes, coverage intervals and duplicate checks. The registered
+`export_api_dataset` tool defaults to Ask and is excluded from read-only children. Research
+advertises it after API capture, with two bounded attempts before synthesis; it consumes
+no read allowance but keeps time/token/pass ceilings. Publication holds the source lock,
+rechecks access/expiry, and atomically renames a fresh staging folder containing four
+bounded files. Existing artifact events, checkpoints and saved-answer snapshots handle
+delivery. There is no network/model call, arbitrary code or new schema. See [API datasets](API_DATASETS.md).
+
 `public_api.py` defines fixed read-query adapters, initially NIH RePORTER project search.
 The `query_public_api` registry tool accepts bounded filters or a retained source label
 for continuation; it never accepts arbitrary URLs or POST bodies. `web_fetch.post_read_query`

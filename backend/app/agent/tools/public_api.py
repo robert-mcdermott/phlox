@@ -45,6 +45,8 @@ class QueryPublicApi(Tool):
                 content_hash=digest, http_status=status, cancel=ctx.cancel_event, provenance=location)
             if not captures or not captures[0].startswith('[S'):
                 return ToolResult('API query stopped or evidence could not be retained.', is_error=True)
+            if ctx.research:
+                ctx.research.state['api_data_available'] = True
             notice = ('Selected project fields; other fields are omitted. Name fragments may match multiple organizations. '
                       'Parent projects only; null award amounts are unknown, not zero. RePORTER includes NIH and non-NIH '
                       'agency projects. Do not sum these records as NIH-only funding without verifying agency scope. '

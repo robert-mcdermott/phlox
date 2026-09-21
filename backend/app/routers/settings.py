@@ -21,6 +21,14 @@ def read_suggestions(_: User = Depends(get_current_user)):
     return {"suggestions": config.get_suggestions()}
 
 
+@router.get('/research')
+def read_research(_: User = Depends(get_current_user)):
+    """Only public numerical presets; never deployment credentials or other users' data."""
+    from app.sources import MAX_TURN_SOURCES, MAX_CONVERSATION_SOURCES
+    return {'presets': config.get_research_config(), 'source_limit': MAX_TURN_SOURCES,
+            'conversation_source_limit': MAX_CONVERSATION_SOURCES}
+
+
 @router.get("", response_model=SettingsOut)
 def read_settings(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     return get_settings(db, user.id)

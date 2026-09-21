@@ -30,13 +30,15 @@ accounts, tool preferences, MCP connections, or index work. A migration failure 
 startup. `/api/readiness` is 503 when the database revision is unavailable/out of date or
 the selected sandbox is unavailable.
 
-The current head is `0008_artifacts`, adding private artifact metadata and immutable text
+The current head is `0009_api_datasets`, adding private, resumable API dataset pages in SQL.
+They are included in normal database backups and expire with their source evidence.
+`0008_artifacts` adds private artifact metadata and immutable text
 versions stored in SQL ([Editable artifacts](ARTIFACTS.md)). `0007_branches` adds message ancestry and saved conversation
 selection ([Conversation alternatives](CONVERSATION_ALTERNATIVES.md)). `0006_projects` adds private projects, per-turn context records, and
 a nullable conversation project association ([Projects](PROJECTS.md)). `0005_ingestion` adds nullable document processing, chunk provenance,
 and embedding identity metadata for [Wave 7](INGESTION.md). `0004_sources` adds private
 evidence snapshots, turn-source links, and nullable message citations; `0003_runs` adds
-run/replay/action tables. Revisions `0001_wave3`, `0002_ledger_width`, `0003_runs`, `0004_sources`, `0005_ingestion`, `0006_projects`, and `0007_branches` remain
+run/replay/action tables. Revisions `0001_wave3`, `0002_ledger_width`, `0003_runs`, `0004_sources`, `0005_ingestion`, `0006_projects`, `0007_branches`, and `0008_artifacts` remain
 readable by check/backup before upgrade. The initial revision, `0001_wave3`, contains a **frozen** schema snapshot and
 the previous releases' explicit additive-column allowlist. Existing tables are inspected
 for column types/lengths/nullability, primary keys, uniqueness, foreign keys, and named
@@ -140,7 +142,7 @@ export PHLOX_CONFIG=/srv/phlox-restored/config.yml
 # Restore PHLOX_JWT_SECRET and other required secrets through your normal secret manager.
 uv run -m app.ops db check
 uv run -m app.ops reindex
-uv run uvicorn app.main:app --host 127.0.0.1 --port 8001
+uv run -m app.server --host 127.0.0.1 --port 8001
 ```
 
 `reindex` is offline and rebuilds the configured vector collection from saved embeddings,

@@ -125,6 +125,10 @@ class AgentSession:
             self.allowed_tools &= allowed_tools
         if research:
             self.allowed_tools &= research.allowed_tools()
+        if not {'query_public_api', 'export_api_dataset'} <= self.allowed_tools:
+            self.allowed_tools.discard('collect_api_dataset')
+        if 'export_api_dataset' not in self.allowed_tools:
+            self.allowed_tools.discard('create_api_report')
         self.final_text = ""
         # Set by the caller (e.g. the chat router, watching for a client disconnect) so a
         # user's "Stop" click can actually halt an in-flight turn — kill any running
@@ -162,8 +166,24 @@ class AgentSession:
 
     def _research_event(self):
         from app.model_calls import turn_usage
+        self._refresh_research_budget()
         return events.sse("research", **self.research.progress(
             turn_usage(self.accounting), len(self._source_refs())))
+
+    def _refresh_research_budget(self):
+        from app.models import ApiDataset, Source
+        # Advertise reuse without injecting old evidence. Loading still requires an
+        # explicit dataset_id and fresh ownership, expiry and domain authorization.
+        retained = self.db.query(ApiDataset.id).join(Source, ApiDataset.source_id == Source.id).filter(
+            Source.conversation_id == self.conversation.id, Source.excerpt.isnot(None)).first()
+        if retained:
+            self.research.state['api_data_available'] = True
+        self.research.state.update(
+            rounds_used=self.rounds_used,
+            effective_rounds=self.research.effective_rounds(int(self.params.get('max_tool_rounds', 12))),
+            model_round_limit=int(self.params.get('max_tool_rounds', 12)),
+            source_capacity=sources.remaining_capacity(self.db, self.conversation.id, self.accounting.turn_id),
+        )
 
     def _has_research_evidence(self):
         from app.models import Source, SourceUse
@@ -219,9 +239,9 @@ class AgentSession:
         initial_decisions: dict[str, str] | None = None,
     ) -> Iterator[str]:
         max_rounds = int(self.params.get("max_tool_rounds", 12))
-        if self.research:
-            max_rounds = min(max_rounds, self.research.limits['rounds'])
         enabled = self.allowed_tools if self.allowed_tools is not None else self.gate.enabled_names()
+        if not self.research:
+            enabled = enabled - {'update_research_notebook', 'begin_research_analysis'}
         tools = self.registry.specs(enabled_names=enabled)
 
         # Guardrails (see app/guardrails.py): input rules scrub the outbound message
@@ -252,23 +272,49 @@ class AgentSession:
                 return
 
         used_fallback = False
+        completion_text = ''
+        recovery_attempts = 0
+        completion_only = False
         for _round in range(self.rounds_used, max_rounds):
             if self._cancelled():
-                yield from self._finalize("", tool_steps, all_artifacts)
+                yield from self._finalize(completion_text, tool_steps, all_artifacts)
                 return
             if self.research:
                 from app.model_calls import turn_usage
-                instruction = self.research.before_round(self.rounds_used, max_rounds,
+                self._refresh_research_budget()
+                from app.research_analysis import deliverables
+                delivery = deliverables(self.ctx)
+                instruction = self.research.before_round(self.rounds_used, self.research.effective_rounds(max_rounds),
                                                         turn_usage(self.accounting)['total'])
                 # Transient stage instructions are not persisted as user messages. End with
                 # a user turn for providers that disallow assistant-prefill continuations.
                 round_messages = deepcopy(messages)
                 round_messages[0]['content'] += '\n\nCurrent research stage: ' + instruction
+                if delivery:
+                    round_messages[0]['content'] += '\nRequested analysis files (existence only, not correctness): ' + json.dumps(delivery)
                 round_messages.append({'role': 'user', 'content': 'Proceed with the current research stage.'})
-                round_tools = tools if self.research.phase == 'gather' else []
-                yield self._research_event()
+                round_tools = [t for t in tools if t.name in self.research.available_tools()] if self.research.phase == 'gather' else []
             else:
                 round_messages, round_tools = messages, tools
+            final_reserve = not self.research and max_rounds > 1 and self.rounds_used >= max_rounds - 1
+            if completion_only or final_reserve:
+                round_messages, round_tools = deepcopy(round_messages), []
+                if completion_text:
+                    round_messages.append({'role': 'assistant', 'content': completion_text})
+                round_messages.append({'role': 'user', 'content': (
+                    'Continue the unfinished answer exactly where it stopped, without repeating its text. '
+                    if completion_only and completion_text else
+                    'Write the final answer now from the work already performed. '
+                ) + 'Use the existing evidence; no more tools or new actions. Do not claim files or actions '
+                    'were completed unless the saved tool results confirm them. Explain any remaining gaps.'})
+            from app.research_analysis import capabilities
+            round_messages = deepcopy(round_messages)
+            round_messages[0]['content'] += ('\nExecution tools now: ' + (', '.join(t.name for t in round_tools if t.name in {'execute_python', 'execute_node', 'run_shell'}) or 'none')
+                + '. ' + capabilities() + ' Use the current tool definitions; do not invent restrictions.')
+            call_params = {**self.params, '_stage': (
+                'completion_recovery' if completion_only else
+                self.research.phase if self.research else 'finalize' if final_reserve else 'generation'
+            )}
             self.rounds_used += 1
             round_text = ""
             pending_calls: list[ToolCall] = []
@@ -282,14 +328,23 @@ class AgentSession:
                     # Text and reasoning stream independently, so each needs its own.
                     redactor = StreamRedactor(guardrails_out)
                     thinking_redactor = StreamRedactor(guardrails_out)
-                provider_messages = (
-                    scrub_messages(round_messages, guardrails_in)[0] if guardrails_in else round_messages
-                )
                 try:
                     from app.model_calls import stream_model
 
+                    provider_messages = round_messages
+                    if self.research:
+                        from app.research_notebook import prepare
+                        # A notebook written in this model response cannot summarize results
+                        # from sibling tools that have not run yet (including approval resumes).
+                        self.research.state['notebook_eligible_calls'] = list(
+                            self.research.state.get('completed_calls', []))
+                        provider_messages = prepare(self.ctx, round_messages, round_tools, call_params, self.provider)
+                        yield self._research_event()
+                    if guardrails_in:
+                        provider_messages = scrub_messages(provider_messages, guardrails_in)[0]
+
                     model_stream = stream_model(
-                        self.provider, provider_messages, round_tools, self.params,
+                        self.provider, provider_messages, round_tools, call_params,
                         replace(self.accounting, kind="fallback") if used_fallback else self.accounting,
                         cancel_event=self.cancel_event,
                     )
@@ -332,9 +387,12 @@ class AgentSession:
 
                                 totals = turn_usage(self.accounting)
                                 self.turn_usage = {k: totals[k] for k in ("input", "output", "total")}
+                                if self.research:
+                                    self.research.state['reported_tokens'] = totals['total']
                                 yield events.usage(u)
                             elif delta.type == "tool_calls":
                                 pending_calls = delta.tool_calls
+                                stop_reason = delta.stop_reason
                             elif delta.type == "done":
                                 stop_reason = delta.stop_reason
                     break  # round streamed successfully
@@ -342,6 +400,12 @@ class AgentSession:
                     # Fall back to a secondary provider if one is configured and we failed
                     # before producing any output this round (so we don't duplicate tokens).
                     from app.agent.context import ContextLimitError
+                    from app.model_calls import IncompleteStreamError
+
+                    if isinstance(e, IncompleteStreamError):
+                        stop_reason = 'incomplete_stream'
+                        pending_calls = []  # No action from an unconfirmed stream may run.
+                        break
 
                     if (self.fallback_provider and not used_fallback and not streamed_any
                             and not round_text and not isinstance(e, ContextLimitError)):
@@ -361,7 +425,7 @@ class AgentSession:
                     logger.exception("Provider stream error")
                     self.outcome = "failed"
                     yield events.error(f"Model error: {e}")
-                    yield from self._finalize(round_text, tool_steps, all_artifacts)
+                    yield from self._finalize(completion_text + round_text, tool_steps, all_artifacts)
                     return
 
             # Drain the guardrails redactors: emit the held-back tail (or discover a
@@ -389,26 +453,98 @@ class AgentSession:
                 )
                 round_text += note
                 yield events.token(note)
-                yield from self._finalize(round_text, tool_steps, all_artifacts)
+                yield from self._finalize(completion_text + round_text, tool_steps, all_artifacts)
                 return
 
-            # The turn hit the output-token limit before finishing (common with heavy
-            # "thinking" models or large file output) — make it visible, not silent.
-            if stop_reason in ("length", "max_tokens"):
-                note = (
-                    "\n\n> ⚠️ **Response was cut off at the max-tokens limit** before completing"
-                    " (the model may have spent the budget on reasoning and/or large output)."
-                    " Increase **Max tokens** in Settings → Model and try again."
-                )
-                round_text += note
+            if self._cancelled():
+                yield from self._finalize(completion_text + round_text, tool_steps, all_artifacts)
+                return
+
+            if stop_reason in {'content_filter', 'guardrail_intervened'}:
+                self.outcome = 'blocked'
+                note = '\n\nResponse stopped by the provider’s content policy. No further actions were executed.'
                 yield events.token(note)
+                yield from self._finalize(completion_text + round_text + note, tool_steps, all_artifacts)
+                return
+
+            if stop_reason not in {None, 'stop', 'end_turn', 'stop_sequence', 'tool_use', 'tool_calls',
+                                   'length', 'max_tokens', 'incomplete_stream'}:
+                self.outcome = 'failed'
+                note = '\n\nResponse incomplete: the provider ended with an unsupported completion reason. No further actions were executed.'
+                yield events.token(note)
+                yield from self._finalize(completion_text + round_text + note, tool_steps, all_artifacts)
+                return
+
+            # Complete text can continue safely with no tools. Never execute a tool
+            # batch whose provider finish reason indicates truncation/interruption.
+            incomplete = stop_reason in {'length', 'max_tokens', 'incomplete_stream'}
+            if (completion_only and completion_text and round_text.startswith(completion_text)
+                    and len(round_text) > len(completion_text)):
+                # Some models restart their answer despite the continuation instruction.
+                # Keep an exact repeated prefix only once in the canonical saved answer.
+                round_text = round_text[len(completion_text):]
+            empty = not round_text.strip() and not pending_calls
+            no_progress = bool(completion_only and completion_text and round_text.strip()
+                               and round_text.strip() in completion_text)
+            if incomplete or empty or no_progress:
+                reason = stop_reason if incomplete else 'no_progress' if no_progress else 'empty_response'
+                if not no_progress:
+                    completion_text += round_text
+                # Each call flushes its output redactor. Joining two separately
+                # checked streams could reconstruct a sensitive match at the seam.
+                can_recover = (not guardrails_out and not pending_calls
+                               and (not self.research or self.research.phase == 'synthesize')
+                               and recovery_attempts < 2 and self.rounds_used < max_rounds and not no_progress)
+                if can_recover:
+                    recovery_attempts += 1
+                    if self.research:
+                        self.research.state['recovery_calls'] = recovery_attempts
+                    self.completion = {'reason': reason, 'recovery_calls': recovery_attempts, 'recovered': False}
+                    completion_only = True
+                    yield events.status('Continuing the unfinished answer from saved work; no tools will be repeated…')
+                    continue
+                self.outcome = 'limit_reached' if reason in {'length', 'max_tokens'} else 'failed'
+                self.completion = {'reason': reason, 'recovery_calls': recovery_attempts, 'recovered': False}
+                note = ('\n\nResponse incomplete: ' + (
+                    'the model reached its output-token limit. Increase Max output tokens in Settings → Model.'
+                    if reason in {'length', 'max_tokens'} else
+                    'the model returned no usable continuation or ended without confirming completion.'
+                ) + ' Saved output and tool results are retained. Continue in Chat to reuse the saved work.'
+                    + (' The unfinished tool request was not executed.' if pending_calls else '')
+                    + (' Automatic continuation is unavailable while output guardrails are active.'
+                       if guardrails_out else ''))
+                yield events.token(note)
+                yield from self._finalize(completion_text + note, tool_steps, all_artifacts)
+                return
+
+            if completion_only or final_reserve:
+                if pending_calls:
+                    self.outcome = 'limit_reached'
+                    note = '\n\nResponse incomplete: the model requested additional tools during final completion. No further actions were executed. Continue from the saved work after adjusting the round limit if needed.'
+                    yield events.token(note)
+                    yield from self._finalize(completion_text + round_text + note, tool_steps, all_artifacts)
+                    return
+                round_text = completion_text + round_text
+                if completion_only:
+                    self.completion['recovered'] = True
 
             if self.research:
                 if self._cancelled():
                     yield from self._finalize(round_text, tool_steps, all_artifacts)
                     return
                 if self.research.phase == 'synthesize':
+                    from app.research_analysis import deliverables
+                    missing = [item['path'] for item in deliverables(self.ctx) if not item['nonempty_file_exists']]
+                    if missing:
+                        completed = self.research.state['delivery']['available_files']
+                        self.outcome = 'limit_reached' if self.research.state.get('reason') else 'failed'
+                        note = '\n\nDelivery incomplete: declared files are missing or empty: ' + ', '.join(missing) + '.'
+                        if completed:
+                            note += ' Available files retained: ' + ', '.join(completed) + '. Existing reports do not prove the missing chart was completed.'
+                        round_text += note
+                        yield events.token(note)
                     if pending_calls:
+                        self.outcome = 'limit_reached'
                         round_text += '\n\nResearch ended: the model requested more tools instead of completing the report. No further actions were executed.'
                     if not self._has_research_evidence():
                         round_text += '\n\nNo supporting passages were retained in this research run. Treat the report as unverified.'
@@ -443,7 +579,7 @@ class AgentSession:
 
         self.outcome = "limit_reached"
         yield from self._finalize(
-            "I reached the tool-call limit before finishing. Please refine the request.",
+            "I reached the configured model-pass limit before finishing. Saved tool results and output are retained. Increase Max tool rounds in Settings → Model, then continue from the saved work.",
             tool_steps,
             all_artifacts,
         )
@@ -550,6 +686,7 @@ class AgentSession:
             if self._cancelled():
                 break
             if self.research:
+                self._refresh_research_budget()
                 denied = self.research.admit(call.name, call.arguments)
                 if denied:
                     yield from self._emit_result(call, ToolResult(content=denied, is_error=True),
@@ -713,9 +850,20 @@ class AgentSession:
         messages: list[dict],
     ) -> Iterator[str]:
         self._observe_child_tool("child_tool_result", call, content=result.content, is_error=result.is_error)
+        if self.research:
+            completed = self.research.state.setdefault('completed_calls', [])
+            completed.append(call.id)
+            del completed[:-1600]
+            if call.name == 'update_research_notebook' and not result.is_error:
+                self.research.state['notebook']['covered_calls'].append(call.id)
+                yield self._research_event()
+        if self.research:
+            from app.research_analysis import remember_files
+            remember_files(self.ctx, result.artifacts)
+        from app.artifact_snapshots import unique_artifacts
         for art in result.artifacts:
             url = f"/api/files/{self.conversation.id}?path={art['path']}"
-            all_artifacts.append({**art, "url": url})
+            all_artifacts[:] = unique_artifacts([*all_artifacts, {**art, "url": url}])
             yield events.artifact(art["name"], art["path"], art.get("ext", ""), url)
 
         yield events.tool_result(call.id, call.name, result.content, result.is_error, result.artifacts)
@@ -741,7 +889,7 @@ class AgentSession:
         )
 
     #: tools that change workspace files — snapshot before they run (for undo)
-    MUTATING_TOOLS = {"write_file", "edit_file", "run_shell", "execute_python", "execute_node"}
+    MUTATING_TOOLS = {"write_file", "edit_file", "run_shell", "execute_python", "execute_node", "export_api_dataset", "collect_api_dataset", "create_api_report"}
 
     def _maybe_checkpoint(self, tool_name: str) -> None:
         if tool_name not in self.MUTATING_TOOLS:
@@ -804,17 +952,23 @@ class AgentSession:
 
     def _finalize(self, final_text: str, tool_steps: list[dict], all_artifacts: list[dict]) -> Iterator[str]:
         if self._cancelled():
-            self.outcome = "cancelled"
+            from app.shutdown import interrupted
+            self.outcome = "interrupted" if interrupted(self.cancel_event) else "cancelled"
         elif self.outcome == "running":
             self.outcome = "completed"
         if self.ephemeral:
             self.final_text = final_text
-            yield events.done("")
+            yield events.done("", outcome=self.outcome)
             return
+        if self.outcome != 'completed' and not final_text.strip():
+            final_text = 'The response did not complete. Review the saved progress and tool results before continuing.'
 
         from app.model_calls import turn_usage
 
         usage = turn_usage(self.accounting)
+        usage['outcome'] = self.outcome
+        if hasattr(self, 'completion'):
+            usage['completion'] = self.completion
         from app.models import ContextRecord
         record = self.db.get(ContextRecord, self.accounting.turn_id)
         if record:
@@ -822,14 +976,18 @@ class AgentSession:
                          context_attachments=record.data.get('user_attachments', []))
         if self.research:
             import time
-            if self.outcome in {'cancelled', 'failed', 'limit_reached'} and self.research.phase != 'synthesize':
+            from app.research_analysis import deliverables
+            deliverables(self.ctx)
+            if self.outcome in {'cancelled', 'interrupted', 'failed', 'limit_reached'} and self.research.phase != 'synthesize':
                 refs = self._source_refs()
                 final_text = ('Research ended before a complete report was written. '
                               'The collected passages remain available for inspection: '
                               + (', '.join('[' + r['label'] + ']' for r in refs) if refs else 'none were retained.')
-                              + '\n\nNo complete conclusion was reached. Start a new Research turn to continue.')
+                              + ('\n\nSaved partial output:\n' + final_text if final_text.strip() else '')
+                              + '\n\nNo complete conclusion was reached. Continue in Chat to reuse the saved work.')
             self.research.state['phase'] = self.outcome
             self.research.state['finished_at'] = time.time()
+            self._refresh_research_budget()
             usage['research'] = self.research.progress(dict(usage), len(self._source_refs()))
             yield self._research_event()
 

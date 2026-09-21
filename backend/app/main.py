@@ -22,11 +22,12 @@ from fastapi.staticfiles import StaticFiles
 from app.agent.permissions import seed_tool_prefs
 from app.agent.registry import REGISTRY
 from app.agent.tools import register_builtin_tools
+from app import shutdown
 from app.branding import emit_startup_banner, get_version
 from app.config import BACKEND_DIR
 from app.config import validate_auth_startup
 from app.database import SessionLocal, init_db
-from app.observability import setup_observability
+from app.observability import lifecycle, setup_observability
 from app.routers import (
     admin_config,
     api_keys,
@@ -128,6 +129,8 @@ async def lifespan(app: FastAPI):
     from app.rag.jobs import worker as document_worker
 
     with maintenance_lock(DATA_DIR, ENGINE):
+        shutdown.reset()
+        lifecycle("startup_started")
         worker_started = False
         document_worker_started = False
         try:
@@ -137,8 +140,11 @@ async def lifespan(app: FastAPI):
             document_worker.start()
             document_worker_started = True
             logger.info("Phlox ready — %d tools registered", len(REGISTRY.names()))
+            lifecycle("startup_complete")
             yield
         finally:
+            shutdown.begin()
+            lifecycle("shutdown_started")
             try:
                 if worker_started:
                     await asyncio.to_thread(worker.stop)
@@ -148,9 +154,13 @@ async def lifespan(app: FastAPI):
                         await asyncio.to_thread(document_worker.stop)
                 finally:
                     mcp_manager.close()
+                    lifecycle("shutdown_complete")
+                    shutdown.reset()
 
 
 app = FastAPI(title="Phlox", version=get_version(display=False), lifespan=lifespan)
+
+app.add_middleware(shutdown.AdmissionMiddleware)
 
 app.add_middleware(
     CORSMiddleware,

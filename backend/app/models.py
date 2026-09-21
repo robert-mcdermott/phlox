@@ -589,11 +589,24 @@ class Source(Base):
     location: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     captured_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    datasets: Mapped[list["ApiDataset"]] = relationship(cascade="all, delete-orphan")
     uses: Mapped[list["SourceUse"]] = relationship(cascade="all, delete-orphan")
     __table_args__ = (
         UniqueConstraint("conversation_id", "number", name="uq_source_number"),
         UniqueConstraint("conversation_id", "fingerprint", name="uq_source_fingerprint"),
     )
+
+
+class ApiDataset(Base):
+    """Private resumable API pages; anchored to revocable, expiring source evidence."""
+
+    __tablename__ = 'api_datasets'
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    source_id: Mapped[str] = mapped_column(ForeignKey('sources.id', ondelete='CASCADE'), index=True)
+    # Text preserves API numeric spellings (including exact decimal amounts).
+    pages: Mapped[str] = mapped_column(Text)
+    manifest_source_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
 
 class SourceUse(Base):

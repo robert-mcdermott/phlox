@@ -50,8 +50,11 @@ def test_conversation_crud_and_truncate(client):
 def test_settings_get_and_update(client):
     s = client.get("/api/settings").json()
     assert "max_tokens" in s and "max_context_tokens" in s
-    updated = client.patch("/api/settings", json={"max_tokens": 9001}).json()
-    assert updated["max_tokens"] == 9001
+    try:
+        updated = client.patch("/api/settings", json={"max_tokens": 9001}).json()
+        assert updated["max_tokens"] == 9001
+    finally:
+        client.patch("/api/settings", json={"max_tokens": s["max_tokens"]})
 
 
 def test_tools_list_admin(client):
@@ -111,11 +114,19 @@ def test_chat_web_search_advertised_only_when_requested(client, monkeypatch):
     r = client.post("/api/chat", json={"message": "hello"})
     assert r.status_code == 200
     assert seen_tools and "web_search" not in seen_tools[-1]
+    assert "query_public_api" not in seen_tools[-1]
+    assert "export_api_dataset" not in seen_tools[-1]
+    assert "collect_api_dataset" not in seen_tools[-1]
+    assert "analyze_api_dataset" not in seen_tools[-1]
+    assert "create_api_report" not in seen_tools[-1]
     assert "search_documents" not in seen_tools[-1]
 
     r = client.post("/api/chat", json={"message": "hello", "web_search": True})
     assert r.status_code == 200
     assert "web_search" in seen_tools[-1]
+    assert "query_public_api" in seen_tools[-1]
+    assert "export_api_dataset" in seen_tools[-1]
+    assert "collect_api_dataset" in seen_tools[-1]
     assert "search_documents" not in seen_tools[-1]
 
     r = client.post("/api/chat", json={"message": "hello", "document_search": True})

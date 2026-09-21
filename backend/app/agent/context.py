@@ -60,6 +60,7 @@ def _summarize(provider: LLMProvider, old: list[dict[str, Any]], max_context: in
         {"role": "user", "content": _transcript(old).encode("utf-8")[:max(0, (max_context - SUMMARY_MAX_TOKENS - 512) * 3)].decode("utf-8", errors="ignore")},
     ]
     text = ""
+    complete = False
     from contextlib import closing
 
     params = {"temperature": 0.2, "max_tokens": SUMMARY_MAX_TOKENS, "max_context_tokens": max_context}
@@ -68,7 +69,9 @@ def _summarize(provider: LLMProvider, old: list[dict[str, Any]], max_context: in
         for delta in stream:
             if delta.type == "text":
                 text += delta.text or ""
-    return text.strip()
+            elif delta.type == 'done':
+                complete = delta.stop_reason in {None, 'stop', 'end_turn', 'stop_sequence'}
+    return text.strip() if complete else ''
 
 
 def compact_history(

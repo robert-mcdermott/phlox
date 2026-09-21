@@ -44,7 +44,8 @@ class StreamDelta:
     type:
       - "text"       : incremental assistant text (``text`` set)
       - "reasoning"  : incremental reasoning/thinking text (``text`` set)
-      - "tool_calls" : the turn ended requesting tools (``tool_calls`` set)
+      - "tool_calls" : the turn ended requesting tools (``tool_calls`` set);
+                       preserve ``stop_reason`` even when arguments were cut off
       - "done"       : the turn ended with a final answer (``stop_reason`` set)
       - "usage"      : token usage info (``usage`` set)
     """
@@ -79,6 +80,8 @@ class LLMProvider(ABC):
         Yields ``text``/``reasoning`` deltas as the model produces them, then exactly
         one terminal delta: ``tool_calls`` if the model wants tools, else ``done``.
         May also yield a ``usage`` delta.
+        Wire EOF without a provider finish signal must use ``incomplete_stream``;
+        never infer successful completion merely from socket closure.
         """
         raise NotImplementedError
 

@@ -13,6 +13,51 @@ files**; see [Conversation alternatives](CONVERSATION_ALTERNATIVES.md). **Wave 1
 text artifacts**, selected-passage revision, version comparison and restore; see
 [Editable artifacts](ARTIFACTS.md). Richer project memory, extracted tasks and portable output
 bundles remain proposed.
+**Near-term priority: Wave 14 — General reliability and task completion** is
+[in progress](IMPLEMENTATION_WAVES.md#wave-14--general-reliability-and-task-completion),
+ahead of output inspection and portable exports. It addresses empty completion, missed
+page evidence, PDF/JSON sources, research context efficiency, configurable budgets and an
+explicit analysis handoff, plus generated-file reload isolation, session continuity and
+restart recovery/diagnostics. The first increment implements dev reload isolation and
+initial session/restart diagnostics: source reloads preserve the launcher signing secret,
+temporary outages retain login, and same-owner reauthentication reopens saved work.
+The second increment adds bounded tool-free completion recovery, truthful incomplete
+outcomes, current generation settings for existing chats, and inspectable call limits/finish
+reasons. The third increment adds larger, admin-configurable Research presets, per-run
+snapshots with stricter approval resumes, visible gathering/pass limits and source-capacity
+admission checks. The fourth increment adds focused HTML/text passage retrieval beyond the
+initial cutoff, offset pagination, navigation removal and reauthorized retained web reads.
+The fifth increment adds an inspectable, source-linked Research notebook, transient
+consolidation of covered tool exchanges, and reauthorized original passages for synthesis.
+The sixth increment adds bounded public PDF layout-text extraction with page citations,
+complete JSON value/record selections, and notebook restoration with their provenance.
+The seventh increment adds a scoped NIH RePORTER POST-query adapter, validated API
+pagination and inspectable retrieval recipes. Broader API coverage, context quality
+evaluation and analysis improvements remain planned. The eighth increment adds permission-gated
+retained-page dataset exports, exact known-amount summaries and coverage/provenance manifests;
+larger acquisitions, general analysis and semantic deliverable tracking remain planned. See the wave's
+delivery record for verification and remaining restart boundaries.
+The ninth increment adds PubMed bibliographic search, cited pagination and exports through
+shared API/source/dataset components. NIH funding calculations are now adapter-specific.
+The tenth increment adds separately cited PubMed abstracts and author affiliations,
+version-checked detail paging and optional captured-detail exports. The eleventh increment
+adds ClinicalTrials.gov search, cursor pagination and cited study sections/exports.
+The twelfth increment adds shared bounded retries for temporary failures across all three
+API adapters, server-directed cooldowns, Stop/access rechecks and inspectable attempt history.
+The thirteenth increment adds bounded multi-page collection from a validated preview,
+per-page checkpoints/read accounting, compact results, partial exports and explicit continuation.
+The fourteenth increment adds column inspection and permission-controlled HTML reports
+over those retained datasets: filtered grouped counts, exact sums, tables/bar charts and
+reproducible analysis files with coverage and provenance. General execution, additional
+chart types and semantic deliverable tracking remain open; see [Dataset reports](DATASET_REPORTS.md).
+The fifteenth increment separates bulk acquisition from citation-preview limits, adds
+checkpointed dataset storage and an approval-controlled Research-to-code handoff. Late
+analysis can use remaining Model passes; available and missing files are shown separately.
+The sixteenth increment adds pre-drain cancellation, bounded process shutdown and restart
+regressions. See the [Wave 14 delivery record](IMPLEMENTATION_WAVES.md#wave-14--general-reliability-and-task-completion)
+for verified scope, release checks and live-provider results. Wave 14's broader quality ambitions continue after this release.
+Full article text, broader API discovery and larger acquisition beyond these bounds remain planned; see the
+Wave 14 backlog for scope.
 The wave log records verification and remaining limits. M3 has an initial delivery; M4–M5 remain proposed. Existing features and
 completed work are identified explicitly; unchecked entries do not yet ship.
 
@@ -292,6 +337,34 @@ scope must be a server-enforced constraint, including child tools and fallbacks.
   handling; semantic claim verification and live-model quality targets remain open.
   End with a useful partial result when the budget expires.
 
+**Wave 14 in progress:** initial truthful synthesis completion/recovery, effective-setting
+diagnostics and larger admin-configurable presets now ship, including saved-limit continuity
+and source-capacity checks. Focused page retrieval, retained web passage rereading, and an
+inspectable Research notebook now ship. Accepted notes reduce repeated tool input, and
+synthesis restores authorized original passages that fit. Remaining budget work calibrates
+stage-specific output/reasoning allowances alongside live-model notebook quality. Give substantial
+tasks sufficient model-aware completion room, with bounded adaptive extensions and synthesis
+continuation that preserves evidence rather than restarting the investigation. Distinguish
+soft planning targets from explicit user/admin hard ceilings; honor Stop and actual provider
+capacity. Public PDF/JSON evidence now ships with explicit extraction/selection bounds.
+Scoped NIH RePORTER and PubMed bibliographic queries, saved-source pagination and dataset
+exports also ship, with separately cited PubMed abstracts/author affiliations.
+ClinicalTrials.gov searches and cited study sections now ship.
+Further improve extraction quality, structured-data validation and working-context
+consolidation. Measure successful completion and avoided restarts, not only
+tokens consumed per attempt. Audit effective settings across the generic harness, research,
+existing chats and recovery, with per-call limit/finish diagnostics. Route explicitly
+requested API acquisition and analysis through a permission-controlled workflow that
+finishes the requested files without a second prompt. Support scoped POST-based data
+queries, validate filters/pagination before full downloads, and verify actual deliverables
+rather than treating an unexecuted script as completion. Preserve Research's source and tool
+policy boundaries through the transition. The same wave also addresses general application
+reliability: prevent generated workspace files from triggering dev reloads, preserve valid
+sessions across intended reloads, reconnect after reauthentication, and distinguish server
+shutdown from user Stop. Verify graceful/forced restart recovery and optional telemetry
+failures across ordinary Chat and Research without replaying uncertain tool actions.
+See the [planned tasks and acceptance criteria](IMPLEMENTATION_WAVES.md#wave-14--general-reliability-and-task-completion).
+
 **Acceptance:** a research run stays inside source and budget limits, produces a useful
 partial result on failure, and supports inspection of both agreement and contradictory
 evidence. Benchmark grounding, usefulness, latency, and cost against Quick answer.
@@ -509,6 +582,11 @@ F03 is a minimal correctness repair; F07 moves that state into the durable run s
 F04 supplies call IDs that can attach to runs. F06 is complete and precedes shipping new persistent
 schemas; F08 may prototype on fixtures while F07 lands. Expand F10 to the release targets
 as M2/M3 ship. This ordering deliberately pairs foundational work with visible progress.
+
+**Near-term follow-up backlog:** [Wave 14 — General reliability and task completion](IMPLEMENTATION_WAVES.md#wave-14--general-reliability-and-task-completion)
+is underway after Wave 13. Tasks W14.1–W14.11 define its scope, ordering,
+budget experiments, application/session/restart reliability and verification. Output inspection and portable exports remain queued
+after this reliability work; the original F01–F10 identifiers above remain unchanged.
 
 ## 12. Deferred scope and review cadence
 

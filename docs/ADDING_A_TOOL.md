@@ -154,3 +154,10 @@ The harness validates arguments against each tool’s JSON Schema before approva
 Keep schemas accurate; malformed arguments produce an actionable tool error. Research mode
 additionally restricts the registry to its explicit read-tool allowlist. Adding a tool or
 MCP connection does not automatically make it available to Research mode.
+
+Some providers reject top-level schema composition (`oneOf`, `anyOf`, `allOf`). When a
+tool needs those constraints, keep its complete local contract in `parameters` and supply
+an optional `advertised_parameters` object using the provider-compatible subset. Describe
+the allowed combinations in the tool description. Only advertising uses that override;
+the harness still validates `parameters` before approval/execution. Direct-call validation
+inside the tool must also use the full contract. `query_public_api` is the example.

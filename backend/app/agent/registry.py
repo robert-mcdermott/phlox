@@ -58,7 +58,8 @@ class ToolRegistry:
             if enabled_names is not None and tool.name not in enabled_names:
                 continue
             out.append(
-                ToolSpec(name=tool.name, description=tool.description, parameters=tool.parameters)
+                ToolSpec(name=tool.name, description=tool.description,
+                         parameters=tool.parameters if tool.advertised_parameters is None else tool.advertised_parameters)
             )
         return out
 

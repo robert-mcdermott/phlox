@@ -47,7 +47,7 @@ export default function SourcePanel({ conversationId, reference, onClose }) {
       {source && !source.available && <p role="status">{source.reason || 'Source unavailable.'}</p>}
       {source?.kind === 'web' && <>
         <p className="text-xs text-muted">Fetched web source · {source.location?.status === 'fetched' ? 'Retained evidence' : 'No supporting passage captured'}</p>
-        {source.url && /^https?:\/\//i.test(source.url) && <a href={source.url} target="_blank" rel="noopener noreferrer" className="block break-all text-accent underline">Open original page: {source.url}</a>}
+        {source.url && /^https?:\/\//i.test(source.url) && <a href={source.url} target="_blank" rel="noopener noreferrer" className="block break-all text-accent underline">{['api', 'api_record'].includes(source.location?.format) ? 'API endpoint' : 'Open original page'}: {source.url}</a>}
         {source.location?.fetched_at && <p className="text-muted">Fetched {new Date(source.location.fetched_at).toLocaleString()}</p>}
         <button disabled={forgetting} onClick={async () => {
           setForgetting(true); setError(null)
@@ -62,7 +62,39 @@ export default function SourcePanel({ conversationId, reference, onClose }) {
       {source?.available && <>
         <h3 className="break-words font-semibold">{source.title}</h3>
         {source.location.page && <p className="text-muted">Page {source.location.page}</p>}
+        {source.location.format === 'pdf' && <p className="text-muted">PDF layout text · offsets within this page. Verify complex tables against the original PDF.</p>}
+        {source.location.format === 'json' && <>
+          <p className="break-all text-muted">JSON pointer: {source.location.json_pointer || '(root)'}</p>
+          {source.location.item_start != null && <p className="text-muted">Array items [{source.location.item_start}, {source.location.item_end}) of {source.location.total_items} · zero-based indices</p>}
+          <p className="text-muted">Complete JSON selection · offsets within its rendered text</p>
+        </>}
+        {source.location.format === 'api' && <>
+          <p className="text-muted">Public API · {source.location.adapter} · {source.location.method}</p>
+          <p className="text-muted">Records [{source.location.offset}, {source.location.item_end}) of {source.location.total_records} reported matches · selected fields</p>
+          <p className="text-muted">{source.location.window_exhausted ? 'API page window reached. More records remain; narrow the query.' : source.location.next_offset != null ? 'More API pages remain.' : 'End of this query according to the API.'} A page alone does not establish dataset completeness.</p>
+          {source.location.query_translation != null && <p className="break-all text-muted">PubMed interpreted query: {source.location.query_translation}</p>}
+          <details className="rounded border border-border p-2">
+            <summary className="cursor-pointer">Retrieval query</summary>
+            <p className="my-2 text-xs text-muted">Opening the endpoint does not replay the saved query.</p>
+            <pre className="whitespace-pre-wrap break-all text-xs">{JSON.stringify(source.location.request, null, 2)}</pre>
+          </details>
+        </>}
+        {source.location.format === 'api_record' && <>
+          <p className="text-muted">API record · {source.location.adapter} · {source.location.record_id}</p>
+          <p className="text-muted">Selection [{source.location.selection.start}, {source.location.selection.end}) of {source.location.selection.total} {source.location.selection.unit}</p>
+          <p className="text-muted">{source.location.selection.next_start != null ? 'More of this selection remains.' : 'End of this selection.'} {source.location.adapter === 'clinical_trials' ? 'Selected study evidence only. Overall recruitment can differ from site status; posted results are separate. Missing fields are unknown.' : 'Full article text was not retrieved. Missing affiliations are unknown.'}</p>
+          <details className="rounded border border-border p-2">
+            <summary className="cursor-pointer">Record retrieval</summary>
+            <pre className="whitespace-pre-wrap break-all text-xs">{JSON.stringify(source.location.request, null, 2)}</pre>
+          </details>
+        </>}
         {source.location.section && <p className="text-muted">Section: {source.location.section}</p>}
+        {source.location.retrieval?.length > 0 && <details className="rounded border border-border p-2">
+          <summary className="cursor-pointer">API retrieval attempts</summary>
+          {source.location.retrieval.map((operation, index) => <p key={index} className="my-2 text-xs text-muted">
+            {operation.operation}: {operation.attempts.length} HTTP attempt(s), {Math.max(0, operation.attempts.length - 1)} automatic retry/retries.
+          </p>)}
+        </details>}
         {source.location.table_row && <p className="text-muted">Table {source.location.table || ''} row {source.location.table_row}</p>}
         <p className="text-muted">{source.kind !== 'web' && <>Chunk {source.location.chunk + 1} · </>}Characters {source.location.start + 1}–{source.location.end}</p>
         <p className="text-muted">Captured {new Date(source.captured_at).toLocaleString()}</p>

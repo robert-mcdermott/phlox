@@ -1,0 +1,152 @@
+{
+  "artifacts": {
+    "columns": [
+      {
+        "name": "id",
+        "type": "VARCHAR(32)",
+        "nullable": false,
+        "primary_key": true
+      },
+      {
+        "name": "conversation_id",
+        "type": "VARCHAR(32)",
+        "nullable": false,
+        "primary_key": false
+      },
+      {
+        "name": "path",
+        "type": "VARCHAR(1000)",
+        "nullable": false,
+        "primary_key": false
+      },
+      {
+        "name": "path_key",
+        "type": "VARCHAR(64)",
+        "nullable": false,
+        "primary_key": false
+      },
+      {
+        "name": "head_version_id",
+        "type": "VARCHAR(32)",
+        "nullable": true,
+        "primary_key": false
+      }
+    ],
+    "unique": [
+      [
+        "conversation_id",
+        "path_key"
+      ]
+    ],
+    "foreign_keys": [
+      {
+        "columns": [
+          "conversation_id"
+        ],
+        "target": [
+          "conversations.id"
+        ],
+        "ondelete": "CASCADE"
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_artifacts_conversation_id",
+        "columns": [
+          "conversation_id"
+        ],
+        "unique": false
+      }
+    ]
+  },
+  "artifact_versions": {
+    "columns": [
+      {
+        "name": "id",
+        "type": "VARCHAR(32)",
+        "nullable": false,
+        "primary_key": true
+      },
+      {
+        "name": "artifact_id",
+        "type": "VARCHAR(32)",
+        "nullable": false,
+        "primary_key": false
+      },
+      {
+        "name": "number",
+        "type": "INTEGER",
+        "nullable": false,
+        "primary_key": false
+      },
+      {
+        "name": "content",
+        "type": "TEXT",
+        "nullable": false,
+        "primary_key": false
+      },
+      {
+        "name": "sha256",
+        "type": "VARCHAR(64)",
+        "nullable": false,
+        "primary_key": false
+      },
+      {
+        "name": "parent_version_id",
+        "type": "VARCHAR(32)",
+        "nullable": true,
+        "primary_key": false
+      },
+      {
+        "name": "origin",
+        "type": "VARCHAR(30)",
+        "nullable": false,
+        "primary_key": false
+      },
+      {
+        "name": "source_message_id",
+        "type": "VARCHAR(32)",
+        "nullable": true,
+        "primary_key": false
+      },
+      {
+        "name": "details",
+        "type": "JSON",
+        "nullable": true,
+        "primary_key": false
+      },
+      {
+        "name": "created_at",
+        "type": "DATETIME",
+        "nullable": false,
+        "primary_key": false
+      }
+    ],
+    "unique": [
+      [
+        "artifact_id",
+        "number"
+      ]
+    ],
+    "foreign_keys": [
+      {
+        "columns": [
+          "artifact_id"
+        ],
+        "target": [
+          "artifacts.id"
+        ],
+        "ondelete": "CASCADE"
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_artifact_versions_artifact_id",
+        "columns": [
+          "artifact_id"
+        ],
+        "unique": false
+      }
+    ]
+  }
+}

@@ -453,7 +453,869 @@ writers do not participate in Phlox's process lock. Existing HTML preview networ
 is unchanged; rich binary previews, React builds, evidence bundles, sharing and automatic
 version expiry remain outside this wave.
 
-## Next wave — Output inspection and portable exports
+## Wave 14 — General reliability and task completion
+
+**Status:** in progress; first through third increments implemented 2026-09-09,
+fourth through fifteenth increments implemented 2026-09-20; sixteenth increment implemented 2026-09-21. **Scope:** application/session/run
+reliability across Chat and Research, M2.3 evidence quality and completion budgets, with a
+bounded bridge to M3 deliverables. Schedule ahead of output inspection and portable exports.
+The delivery record below distinguishes implemented changes from the remaining plan.
+Research/model limits and synthesis behavior have not changed in this first increment.
+
+**First increment — development and session reliability:**
+
+- **W14.9 implemented:** both launchers use `app.dev`, watching application source and
+  excluding runtime data, including a custom directory inside the source tree. Generated
+  workspace Python files no longer trigger reloads. Manual/demo startup instructions use
+  the same entry point; production continues to start without a watcher.
+- **W14.10 initial delivery:** one development signing secret is inherited by reload
+  children for the launcher lifetime. Explicit secrets retain precedence; a full launcher
+  restart still signs users out unless a stable secret was configured. Startup outages
+  preserve the token and show a connection retry screen. REST, blob/upload and streaming
+  requests invalidate only the session that sent them, protecting a fresh login against
+  delayed 401 responses. Session loss clears private state; same-owner login in the same
+  page reopens the conversation and saved run without resubmitting work. The return hint
+  is in memory only, and explicit logout/page reload clears it.
+- **W14.11 initial delivery:** worker shutdown cancellation becomes `interrupted` with a
+  server-shutdown reason, distinct from user Stop. Completed work and unknown tool outcomes
+  retain their existing treatment. Lifecycle logs include UTC time, boot/PID and private
+  run correlation; auth diagnostics distinguish token expiry/signature failures without
+  logging tokens. Optional HTTP trace-export failure logs are redacted and coalesced.
+
+**Verified for this increment:** backend lint and suite (536 passed, 24 skipped), frontend
+production build, all 40 Chromium browser regressions, shell syntax and diff checks. New
+process tests use the actual Uvicorn watcher with an isolated synthetic app: generated
+scripts do not reload it, real source edits do, and the signing secret survives. Browser
+regressions cover startup 503/network failures, a late 401 after a fresh login, same-owner
+reconnection and a different owner's login. Worker tests distinguish shutdown from Stop,
+retain partial progress and preserve completed outcomes. Diagnostics have redaction and
+coalescing tests. Native Windows launcher execution and external collector delivery were
+not tested; both launcher command selections are checked.
+
+**Second increment — truthful answers and effective generation settings:**
+
+- **W14.1 initial delivery:** empty/reasoning-only answers, output-limit termination and
+  streams without a provider completion signal cannot silently become successful reports.
+  Up to two tool-free continuation calls retain the partial answer and existing evidence
+  within the effective generic round ceiling. Recovery never repeats gathering or executes
+  unfinished tool requests; Stop, current policy and model-call accounting still apply.
+  Repeated empty/no-progress output stops with a clear incomplete outcome. Ordinary agents
+  with more than one pass reserve their last pass for an answer without tools. Saved answers
+  display incomplete outcomes or successful recovery. Truncated compaction summaries never
+  replace retained history.
+- **W14.5 initial delivery:** current generation settings now apply consistently to new turns
+  in existing chats, subject to assistant and explicitly marked conversation overrides.
+  Compaction observes the resolved context allowance and profile cap. Approval resumes can
+  adopt stricter current output/context/round limits without extending their saved allowance.
+  Legacy unmarked conversation parameters are treated as creation seeds; API clients with
+  intentional custom values should PATCH those overrides again. Research removes exhausted
+  tools and checks cumulative reported usage before admitting reads requested by a model call.
+- **Private diagnostics:** existing ledger/context JSON records link effective limits, setting
+  origins, input fitting, stage and finish reason to each call. **Context record → Model calls**
+  exposes these details without copying prompts or tool bodies. Provider-reported reasoning
+  counts remain a subset of output, never an additional charge. No migration is required.
+- **Boundaries at this increment:** Research gathering presets were unchanged. Recovery may exceed their planned
+  pass count but never the effective generic round limit. Output guardrail rules disable
+  automatic continuation because separately checked streams must not reconstruct sensitive
+  text at their boundary; separate Chat turns retain the incomplete answer and evidence.
+  Exact repeated answer prefixes are removed from the saved result; semantic completeness
+  and general duplicate detection are not guaranteed. Recovery occurs within the active turn,
+  with no automatic replay after worker loss.
+
+**Second-increment verification:** backend lint and suite (561 passed, 24 skipped), frontend
+production build and all 41 Chromium browser regressions. Scripted tests cover bounded
+recovery, Stop, empty/reasoning-only output, no progress, retained citations without repeated
+fetching, incomplete OpenAI/Bedrock tool streams, output guardrail boundaries, current settings
+in old chats, stricter approval resumes, exhausted reads and reasoning accounting. The
+browser regression inspects saved outcomes and effective call limits. No live provider or
+long-form research evaluation was performed.
+
+**Third increment — configurable Research allowances:**
+
+- **W14.5 further delivery:** Brief/Standard/Thorough presets now live behind a validated
+  admin configuration endpoint and form. The composer fetches current numerical presets,
+  identifies a lower Model setting, and explains gathering versus reporting allowances.
+  Progress/replay includes actual passes used, planned passes, the generic pass ceiling,
+  time/token thresholds, remaining source capacity and stricter policy applied on resume.
+- **Defaults:** Brief stays 5 passes/3 searches/4 reads/2 minutes/20,000 reported tokens.
+  Standard becomes 12/8/16/15 minutes/250,000; Thorough becomes
+  24/24/48/30 minutes/1,000,000. These enlarge gathering opportunity, not per-call
+  output/context, provider capacity or monthly spend policy. Lower effective Model rounds
+  still win; report writing/recovery can add time and usage. Search charges remain separate.
+- **Continuity:** new execution snapshots presets; active runs retain them. Approval resumes
+  take the minimum of saved/current limits without resetting attempts, elapsed time or usage.
+  Legacy approvals retain old preset ceilings. Regeneration starts a new attempt under
+  current policy. No schema change, automatic action replay or mode-default change.
+- **Source limits:** before each gathering operation, the harness checks room for new
+  records under the existing 64-per-turn/512-per-conversation ceilings, including failure
+  records. Full storage switches to synthesis; it does not cause additional uncapturable
+  fetches, including later reads in the same batch. This is conservative about possible reuse.
+- **Scripted comparison:** a synthetic 2020–2029 task with one unavailable year retained
+  only three years under the old Thorough preset (108,000 reported tokens), versus all nine
+  available years and an explicit gap with the new preset (234,000 reported tokens).
+  No page was fetched twice within either attempt, citations reference retained values,
+  and profile/output caps remain unchanged. These are controlled fixture measurements,
+  not live-model quality, latency or cost benchmarks. More context-efficient evidence
+  handling and model-aware stage allowances still need implementation and evaluation.
+
+**Third-increment verification:** backend lint and full suite (580 passed, 24 skipped),
+frontend production build and all 43 Chromium browser regressions. New coverage includes
+admin-only writes/public numerical reads, invalid-policy rejection, legacy/saved approval
+ceilings, queued versus in-flight policy changes, source capacity within a batch, lower
+generic round limits, the synthetic annual-data comparison, live composer updates and
+mobile budget layout. Provider usage gaps remain explicitly unknown. No live provider or
+real research session was executed, and the broader extraction/working-context work remains.
+
+**Artifact-card follow-up:** repeated writes/edits emitted multiple descriptors for the
+same path, which the answer displayed as separate files and snapshot capture copied again.
+Live aggregation, final snapshots and historical answer rendering now keep one descriptor
+per full path; individual tool steps remain intact. Snapshot sizes reflect the captured
+bytes and repeated entries no longer consume the answer's storage allowance repeatedly or
+create identical agent versions. Existing saved records/URLs are preserved. Files unavailable
+at final capture are clearly marked with preview/download disabled, including temporary
+files removed during a task. Regression coverage checks repeated writes, snapshot quotas,
+same-name files in different folders, old links, reload and live updates.
+Verified with backend lint, 582 backend tests (24 skipped), all 44 Chromium regressions,
+and the production frontend build.
+
+**Fourth increment — focused web evidence and retained passage reuse (2026-09-20):**
+
+- **W14.2 bounded delivery:** `web_fetch` accepts keyword queries and explicit character
+  offsets. Queries rank overlapping windows of the full extracted HTML/text within the
+  unchanged download/deadline bounds, returning at most 6,000 contiguous characters.
+  Sequential reads return up to 20,000 characters and expose the next offset. Captures use
+  absolute extracted-text positions and a whole-page content hash, preserving citation
+  inspection, identity and export. Navigation and site chrome are omitted while article
+  headings and table cell boundaries remain. A no-match or out-of-range selection publishes
+  no false evidence and no failure snapshot.
+- **W14.4 foundation:** `read_web_source` retrieves one saved web passage with no network
+  request, new snapshot, or retention extension. Ownership, cancellation, availability,
+  domain scope and turn source limits are checked at access. Research permits only its
+  current attempt's evidence; Chat may rebind accessible same-conversation evidence to the
+  current turn. Retained reads use the existing Research read allowance and normal tool
+  permissions; approval state and durable replay retain these boundaries.
+- **Limits:** lexical ranking is not semantic relevance verification. Each offset/query
+  fetch still downloads the current page; this introduces no whole-page cache. Source
+  numbers/storage limits remain unchanged. Research working notes, automatic context
+  consolidation and PDF/JSON/API acquisition are not delivered by this slice.
+
+**Fourth-increment verification:** backend lint and full suite (601 passed, 24 skipped),
+frontend production build and all 44 Chromium browser regressions. Real local HTTP fixtures
+cover evidence after character 20,000, keyword selection, exact offsets, pagination,
+no-match results and citation inspection/export. Retained-read tests cover no network
+access or renewed retention, source deletion/expiry, ownership, Research attempt/domain
+scope, and use through ordinary/durable chat and approval replay. Existing transport,
+source-limit and Stop regressions pass. Browser coverage verifies the renamed Source reads
+allowance in admin settings and the composer. No live-model or external-site evaluation
+was performed. No database migration or new configuration is required.
+
+**Fifth increment — research notebook and evidence-aware context (2026-09-20):**
+
+- **W14.4 bounded delivery:** a Research-only registry tool saves complete, bounded
+  revisions of source-linked findings, disagreements and open questions. The progress
+  panel exposes these working notes and their revision during execution and in saved
+  answers/replayed runs. Notes are derived data, never independent evidence or private
+  reasoning; accepted references establish access, not semantic support for a claim.
+- **Context reduction:** accepted revisions cover server-observed tool calls completed
+  before the model composed the update, never unseen sibling read results in its batch.
+  Provider-bound copies omit complete covered exchanges while retaining the two most
+  recent reading results during gathering. Synthesis can replace all covered exchanges
+  with notes and whole referenced excerpts within the effective context/output allowance.
+  Uncovered exchanges, the original objective, and canonical transcripts are preserved.
+  The six-source fixture reduces gathering input by more than half without changing saved
+  tool output. Actual quality/cost savings require live-model evaluation.
+- **Evidence and continuity:** restoration rechecks current-attempt usage, ownership,
+  document/domain scope and snapshot availability. Revoked evidence withdraws dependent
+  notes/questions and conservatively discards earlier complete exchanges/paraphrases from
+  the next input. Available originals are restored for synthesis; oversized passages are
+  explicitly omitted. No network access, retention renewal, hidden summarization call or
+  larger hard allowance is introduced. Normal guardrails, context/accounting, permissions
+  and Stop still apply. Approval state, saved-answer usage and durable events carry the
+  notebook using existing storage, with no migration/configuration required.
+- **Limits:** models must call the tool for notebook-driven reduction; disabled/unused
+  notebooks retain ordinary context fitting. Updates consume model passes/tokens and
+  replace the full notebook, so models must preserve relevant findings. Old transcripts,
+  events and backups are not erased by source reauthorization. New Research attempts
+  start fresh; cross-turn notebook inheritance, semantic claim verification, PDF/JSON/API
+  extraction and analysis execution remain outside this increment. See the
+  [notebook guide](RESEARCH.md#research-notebook-and-working-context).
+
+**Fifth-increment verification:** backend lint and full suite (618 passed, 24 skipped),
+frontend production build and all 44 Chromium regressions, including notebook revision/content replay and
+narrow-screen layout. Offline fixtures cover input reduction, complete original-passage
+restoration, provider context caps/explicit omissions, expiry/deletion/scope/owner/attempt
+checks, output policy, same-batch unseen reads through approval resume, request-bound and durable execution, and Stop after
+a notebook update. No live-provider quality evaluation was performed.
+
+**Sixth increment — public PDF and JSON evidence (2026-09-20):**
+
+- **W14.3 bounded delivery:** `web_fetch` accepts PDF and JSON media types over the existing
+  bounded GET transport. PDF layout text preserves basic columns/line breaks, supports
+  whole-document keyword/offset selection or an explicit page, and captures passages with
+  page-local offsets. JSON selections preserve complete values/records, nested fields and
+  original numeric spellings. RFC 6901 pointers and array start/limit select data within
+  one response; oversized objects offer a bounded, non-evidence structure preview.
+- **Source continuity:** existing web-source locations and identities include format/page
+  or pointer/item-range provenance. Citation inspection, retained reads, Markdown exports
+  and notebook synthesis preserve those locations. The source panel shows PDF pages and
+  JSON record ranges. Only excerpts are saved; no raw-response files or ingestion jobs.
+- **Reliability:** parser subprocesses share the fetch deadline and Stop, with two slots,
+  bounded output, PDF expansion limits, and OS CPU/address-space limits where supported.
+  External PDF image decoders and JSON schema reference resolution are disabled. Malformed,
+  encrypted, image-only, excessively nested and oversized inputs have explicit outcomes.
+  DNS pinning, domain/redirect policy, permissions, private source ownership and existing
+  source/read allowances remain in effect. The pypdf minimum now matches the existing
+  locked 6.13.2 version for its decoder limits; no resolved package version changed.
+- **Limits:** no OCR, reliable complex-table reconstruction, authenticated fetching,
+  compressed HTTP responses, POST queries or API pagination. Each selection refetches the
+  current response. JSON selection does not validate server filters or statistical
+  completeness. Large datasets and analysis/deliverables remain later work. See
+  [PDF and JSON sources](WEB_SOURCES.md#pdf-and-json-sources) for bounds and manual checks.
+
+**Sixth-increment verification:** full backend suite (640 passed, 24 skipped), lint, production frontend build and
+45 Chromium regressions. Local HTTP/parser fixtures cover late-page PDF facts, page
+selection and identity, JSON paths/array windows/schema data, numeric precision, rejected
+inputs, expansion/selection limits, deadline/Stop termination, source access/expiry/removal,
+and a scripted HTML/PDF/JSON research task with notebook restoration. Browser coverage
+verifies page and JSON record provenance after reload. No live-provider or external-site
+quality evaluation was performed. No database migration or new configuration is required.
+
+**Seventh increment — controlled public API queries and pagination (2026-09-20):**
+
+- **W14.3 further delivery:** `query_public_api` introduces a fixed NIH RePORTER parent-project
+  search adapter. Organization/year filters produce one bounded POST response per call;
+  pagination uses a retained S-label to reuse the exact query and next offset. No arbitrary
+  endpoints, headers, credentials, request bodies, redirects or bulk downloads are exposed.
+- **W14.7 foundation:** strict response parsing checks returned filters, field types,
+  page counts/offsets, parent-project status and ascending unique application IDs. Repeated
+  pages, changing totals and mismatches yield explicit errors with no new evidence/cursor.
+  Selected fields preserve numeric spellings/nulls and include organization/agency data.
+  Source inspection and exports retain the request and range; a page is not an annual total.
+- **Continuity:** ownership, retention, current-attempt/domain scope and source capacity
+  are checked before continuation. Each attempt uses a Research source read; permissions,
+  approval resume, notebooks, Stop and durable replay use their existing seams. Pacing,
+  shared DNS-pinned transport and the isolated parser bound resource use. No migration,
+  new configuration or new dependency is required.
+- **Tool exposure:** ordinary Chat advertises the adapter when Web search is enabled;
+  Research includes it for allowed web scope/domains. Other chats retain their prior tool
+  schema overhead. Assistant web-capability restrictions also apply on approval resume.
+- **Boundaries:** only this reviewed POST search adapter is supported. Large datasets,
+  cross-query deduplication, entity/funding-scope validation, aggregate calculations and
+  deliverable generation remain future work. Offset pagination is not a frozen snapshot;
+  the API window and source/read limits can require narrower queries. See [the guide](PUBLIC_API.md).
+
+**Seventh-increment verification:** backend lint and full suite (692 passed, 24 skipped),
+production frontend build and all 45 Chromium regressions. Local HTTP/parser tests cover
+validated pagination, ignored filters, malformed/oversized responses, null/precise numbers,
+redirect rejection, DNS policy, Stop during reads/pacing, private retained cursors,
+approval resume, notebook restoration and request-bound/durable replay. Browser coverage
+checks query/range inspection after reload. Two one-record pages also passed through the
+actual adapter against the public NIH API; no live model, bulk retrieval or annual-total
+quality evaluation was performed. Ordinary chats without Web search retain their existing
+tool overhead, including the image-and-project-context regression.
+
+**Eighth increment — validated retained API datasets and file delivery (2026-09-20):**
+
+- **W14.6–W14.8 bounded delivery:** `export_api_dataset` turns 1–64 retained NIH query
+  citations into records CSV/JSON, an exact-decimal known-amount summary and a provenance
+  manifest. It performs no new requests or arbitrary execution. Source hashes, filters,
+  types, ordering, coverage and duplicates are checked before publication. Conflicting
+  records/queries fail; partial coverage and missing amounts remain explicit.
+- **Permission and continuity:** file creation defaults to Ask. Research advertises it
+  after API capture, for requested file deliverables; it permits at most two attempts
+  before synthesis under existing time/token/pass ceilings. Export uses no read allowance
+  and can operate on retained pages after reads/source storage are full. Ownership,
+  retention and current-attempt/domain scope are rechecked through approval resume.
+- **Delivery:** a new folder is published atomically with a 2 MiB total limit, without
+  overwriting existing files. CSV formula-like text is neutralized; original text/numeric
+  spellings remain in JSON. Existing artifact cards, checkpoints, downloads, saved answer
+  copies and durable replay carry the actual files. See [API datasets](API_DATASETS.md).
+- **Boundaries:** this is export and arithmetic over existing pages, not bulk acquisition,
+  entity reconciliation, verified NIH-only annual totals, arbitrary analysis/charts or
+  semantic proof that every requested deliverable was completed. A forced kill can leave
+  an unreported folder; no automatic replay is added. No migration/configuration/dependency
+  is needed. Full lifecycle shutdown work and broader analysis handoff remain open.
+
+**Eighth-increment verification:** full backend suite (713 passed, 24 skipped), lint,
+production frontend build and all 45 Chromium regressions. Synthetic fixtures verify exact
+decimal sums, nulls, incomplete/overlapping pages, conflicting versions, formula-safe CSV,
+file hashes, source reauthorization, Stop/write cleanup, unique publication, saved-file
+immutability, read-exhausted export and hard budget limits. Scripted real HTTP flows query
+two pages and export all four files in request-bound and durable execution, with private
+saved downloads and no refetches. Approval-resume tests revoke a source before execution
+and verify no files are published. No live-model evaluation or bulk dataset retrieval was
+performed; manual steps are in the dataset guide.
+
+**Ninth increment — shared API datasets and PubMed bibliographic search (2026-09-20):**
+
+- **W14.3/W14.7 delivery:** `query_public_api` accepts `adapter=pubmed` and a PubMed
+  search expression. Fixed ESearch/ESummary GET requests retrieve one matched metadata
+  page within one deadline/read allowance; empty searches skip ESummary. Continuation
+  reuses retained recipes with ownership, attempt, hash and pagination checks. Search
+  warnings/errors, missing summaries, duplicate IDs, changed counts/translations and
+  oversized pages fail before capture. Query translation is inspectable in citations.
+- **Shared export foundation:** adapter contracts define record identity, validation,
+  ordering, notices and CSV projections. Shared logic handles coverage/gaps/conflicts,
+  source reauthorization, manifests and atomic publication. NIH exact-decimal funding
+  summaries remain isolated; PubMed summaries report captured/reported record counts.
+  Existing NIH citations and exports remain compatible without a migration. Normal
+  file-write approvals, Stop, retention, source limits and saved-answer files still apply.
+- **Boundaries:** PubMed returns selected bibliographic metadata, not abstracts/full text
+  or evidence of study findings. Pages default to two records (maximum 20) and must fit
+  6,000 characters. The documented first-10,000-result window is explicit, not silently
+  treated as complete. Starts are paced at 0.4 seconds across Phlox's process; other apps
+  sharing an IP may still cause rate errors. No credentials, retry loop, bulk retrieval,
+  new model calls, configuration, dependency or schema is introduced. ClinicalTrials.gov
+  and PubMed abstracts remain planned. See [public API usage/manual checks](PUBLIC_API.md).
+
+**Ninth-increment verification:** local HTTP/parser and scripted Research tests cover
+PubMed pagination, malformed/partial responses, warning rejection, query/total drift,
+API window/empty results, scope/ownership/expiry, Stop, cross-adapter rejection, CSV
+escaping and query-to-export delivery in request-bound and durable execution. Existing NIH
+regressions verify unchanged arithmetic and saved-page compatibility. Browser coverage
+checks PubMed GET provenance and interpreted queries after reload. A live two-page,
+two-record-per-page smoke check passed through the actual adapter with consistent counts
+and continuation; it made no model calls and saved no user data. Full backend suite:
+754 passed, 24 skipped. Lint, frontend production build and all 45 Chromium regressions
+passed (existing deprecation and bundle-size warnings remain).
+
+**Provider compatibility follow-up:** a Claude-backed endpoint rejected the public API
+tool's top-level `oneOf` before generation. The tool now advertises a plain object schema,
+while its complete argument-union contract remains enforced before approval/execution
+and on direct calls. Regression tests cover both OpenAI-compatible and Bedrock wire
+schemas, all supported query modes and invalid combinations; this does not bypass local
+validation or change tool permissions.
+Verification: backend suite 771 passed, 24 skipped; lint and whitespace checks passed.
+
+**Tenth increment — PubMed article evidence and reusable record-detail reading (2026-09-20):**
+
+- **W14.3/W14.7 delivery:** `query_public_api` accepts a retained `record_from` citation
+  and `record_id`. PubMed EFetch is the first adapter-owned detail endpoint/parser;
+  abstracts and authors are separate selections with new `api_record` citations. Structured
+  abstract headings and language labels survive extraction. Missing abstracts, unmapped
+  affiliations, collective authors and returned author-list completeness are explicit.
+  Optional affiliation substring matching supports focused author inspection without
+  assigning an institution to every coauthor.
+- **Continuity and scope:** long abstracts and author lists are pageable. Chaining from
+  a detail citation checks the normalized record version before retaining another
+  selection. Owner, expiry, Research attempt and domain scope are rechecked before the
+  request and before capture; source revocation during retrieval cannot mint new evidence.
+  Saved-source rereads avoid refetches and use the existing notebook/citation seams.
+- **Delivery:** optional `detail_labels` add `record_details.json` and per-selection
+  manifest provenance alongside query dataset files. Detail IDs must belong to the
+  selected query records; mixed record versions fail. Detail coverage/filters do not
+  change query coverage or imply full abstracts, author lists or article text. Normal
+  file approvals, publication, saved downloads and source limits remain in force.
+- **Boundaries:** one paced EFetch request and one Research read per detail call; no
+  arbitrary URLs or new permission. Reviewed XML transport shares DNS pinning, Stop,
+  2 MiB download and deadline bounds. The parser rejects entities, external resolution,
+  excessive nesting, malformed/mismatched/multi-record responses and unsupported book
+  records. Selections must fit 6,000 serialized characters; reduce passage/page size when
+  needed. No full article text, independent study verification, current-employment claim,
+  ClinicalTrials.gov adapter, new dependency or database migration is introduced.
+
+**Tenth-increment verification:** synthetic HTTP/XML fixtures cover abstract headings,
+author mapping/filtering, missing fields, selection paging/version drift, hostile XML,
+transport failures, Stop, source revocation and approval resume. Scripted request-bound
+and durable runs perform search → detail reading → five-file export in one turn. Source
+inspection/reload is covered in Chromium. A live single-record Fred Hutch ovarian-cancer
+check retrieved an abstract and two matching authors with the same record hash; no model
+calls or user-data writes were involved. See [manual verification](PUBLIC_API.md#manual-verification-fred-hutch-demo).
+Full backend suite: 813 passed, 24 skipped. Lint, frontend production build and all
+45 Chromium regressions passed; existing deprecation and bundle-size warnings remain.
+
+**Eleventh increment — ClinicalTrials.gov study evidence (2026-09-20):**
+
+- **W14.3/W14.7 delivery:** `query_public_api` adds `adapter=clinical_trials` with a
+  required condition and optional other terms, overall recruitment statuses, sponsor/
+  collaborator and location expressions. Small study projections retain NCT IDs, titles,
+  lead sponsors, phases, registry update dates and separate recruitment/results fields.
+  Institutional keyword matches require sponsor/site evidence rather than an inferred
+  affiliation. No API key, configuration, dependency or schema migration is introduced.
+- **Cursor continuity:** saved-source continuation reuses opaque v2 page tokens and
+  filters. ClinicalTrials.gov reports totals only on the first page, so later citations
+  carry the original count with that limitation explicit. Empty pages and a terminal
+  empty page after the reported count are supported. Repeated adjacent tokens/IDs,
+  contradictory counts, malformed records and status-filter mismatches fail before
+  capture. Exports retain per-page tokens in provenance while excluding them from query
+  identity; missing coverage remains partial.
+- **Study details and delivery:** overview, eligibility, interventions, locations and
+  posted results use the shared record reader with bounded JSON text passages. Missing
+  sections remain explicit. Full-record hashes detect changes when chaining passages or
+  sections; mixed versions cannot be exported together. Sponsor/site status must be read
+  independently of overall recruitment and results availability. Optional detail exports
+  retain section selections and provenance. Normal ownership, expiry, Research scope,
+  Stop, file approval and saved-answer download rules remain in force.
+- **Transport reliability:** live testing exposed HTTP 403 responses from the existing
+  manually wrapped TLS connection. Matching Python's standard HTTPS negotiation (HTTP/1.1
+  ALPN and TLS 1.3 post-handshake-auth capability where supported) resolved the public API
+  failure. DNS pinning, hostname/certificate verification, private-address checks,
+  cancellation and no-proxy/no-cookie/no-redirect rules remain unchanged.
+- **Parser reliability:** PDF regressions exposed an existing incomplete-input stall
+  when a parser took longer than the first polling interval to start reading. The
+  subprocess now receives its entire payload through one communication call in a bounded
+  exchange thread; the caller polls Stop/deadlines and kills/reaps the child and joins the
+  exchange on exit. A delayed-reader regression failed before the correction and now
+  checks a payload larger than the pipe buffer. No timeout or size limit was increased.
+- **Boundaries:** one study request per detail read, process-wide 0.5-second request
+  pacing, 2 MiB responses, 500,000-character sections and 6,000-character serialized
+  selections. Passages may split JSON text and omit essential outcome context; this is
+  registry evidence, not independent study verification or patient-matching advice.
+  Full articles, bulk acquisition, automatic retry/backoff and general API discovery
+  remain future work. The next reliability slices should return to shared retry/backoff,
+  bounded data acquisition and completion-aware budgets rather than adding more services.
+
+**Eleventh-increment verification:** local HTTP fixtures cover cursor reuse, first-page-only
+counts, empty pages, duplicate/status/type failures, missing results, partial passages,
+record versions, expiry/ownership/Research scope, cancellation and exports. Scripted normal
+and durable Research runs complete search → study inspection → five-file export. Chromium
+verifies retained study citations after reload. A live two-page Fred Hutch ovarian-cancer
+query and one study response exercised all five section parsers without model calls or
+saving user data. Shared TLS tests preserve the pinned peer and hostname and cover optional
+post-handshake-auth support. See the [manual study demo](PUBLIC_API.md#manual-verification-clinicaltrialsgov-demo).
+Final verification after the transport/parser corrections: **858 backend tests passed,
+24 skipped**; all **45 Chromium regressions**, lint, frontend production build and diff
+checks passed. Existing deprecation and bundle-size warnings remain. The earlier PDF
+timeout failures led to the reproduced input-handoff fix described above; the final full
+suite passes with the original deadlines and a blocked-input cancellation regression.
+
+**Twelfth increment — Shared public API recovery (2026-09-20):**
+
+- **W14.3/W14.7 delivery:** NIH RePORTER, PubMed and ClinicalTrials.gov use a shared
+  per-operation retry layer. Reviewed repeatable reads get at most three HTTP attempts
+  for connection/incomplete-response failures or HTTP 408/429/500/502/503/504. Backoff
+  starts at 1 then 2 seconds plus small jitter. Valid `Retry-After` sets a minimum wait
+  and an in-process per-adapter cooldown that subsequent tool calls cannot bypass.
+- **Preserved progress and budgets:** successful PubMed search is not repeated when
+  metadata retrieval fails; pagination retries retain the same request/cursor. All waits,
+  requests and parsing share the original 30-second deadline and one Research read.
+  Delays that cannot fit return an explicit temporary failure. No new model calls,
+  duplicated source captures or expanded source/byte limits are introduced.
+- **Access and Stop:** waits remain cancellable. Every attempt rechecks ownership,
+  source availability/capacity and Research scope; transport repeats DNS/address checks.
+  TLS and policy failures are not reclassified as transient connection errors. Redirects,
+  permanent HTTP errors, DNS errors, wrong content types and invalid data are not retried.
+  Evidence capture reauthorizes again after retrieval/validation.
+- **Inspection:** successful citations expose per-operation attempts and retry counts;
+  dataset manifests retain safe attempt status/delay history. Failed operations create
+  no evidence/cursor. Existing captures remain readable and exportable.
+- **Boundaries:** retry safety is opt-in in the adapter contract. These changes do not
+  retry arbitrary POSTs, generic web fetches, tool mutations or uncertain run outcomes.
+  Cooldowns do not survive process restart. No configuration, dependency or schema change.
+
+**Twelfth-increment verification:** local HTTP fixtures exercise all three adapters,
+PubMed metadata-only retry, study cursor/detail recovery, exhausted and permanent failures,
+server delays, cancellation, revocation/scope/capacity checks and address revalidation.
+Attempt history round-trips through retained citations and dataset manifests without
+changing evidence identity, including older captures. Scripted request-bound and durable
+Research runs recover a transient study-search failure and still count three logical
+reads for search plus two detail selections. Chromium verifies citation attempt counts
+after reload. No public rate limits are deliberately triggered; see
+[manual verification and recovery behavior](PUBLIC_API.md#temporary-failures-and-automatic-retries).
+Final verification: **910 backend tests passed, 24 skipped**; all **45 Chromium
+regressions**, lint, frontend production build and diff checks passed. Existing
+deprecation and bundle-size warnings remain.
+
+**Thirteenth increment — Bounded multi-page data collection (2026-09-20):**
+
+- **W14.7 and initial W14.6/W14.8 delivery:** the Ask-tier `collect_api_dataset` tool
+  follows a small validated preview for any of the three existing adapters. It reuses
+  saved filters/page size/cursors, collects multiple pages and exports the dataset in
+  one tool call. The model receives compact counts, source labels, coverage, stop reason
+  and file artifacts; the added raw records stay in the source store and data files.
+- **Progress and consistency:** each validated page is committed before moving on.
+  Ordered retained labels form the explicit continuation input; completed pages are
+  revalidated, not fetched again. Cross-page conflicts, duplicate positions/identities,
+  repeated study cursors and bundle-size limits are checked before a new capture.
+  API failure or an acquisition limit yields a labelled partial bundle when the retained
+  prefix is still valid. Revocation/expiry cannot publish stale cached data.
+- **Budget and policy:** each additional page attempt uses a Research read, while
+  HTTP retries stay within that read. Each page retains its 30-second maximum and shares
+  the overall acquisition deadline. Defaults are five additional attempts, 200 total
+  records and 60 seconds; caller ceilings are 20 attempts, 1,000 records and 120 seconds.
+  Existing Research time/read/source limits and 2 MiB bundle limits may stop earlier.
+  These are explicit bounds, not automatic extensions of the user's selected limits.
+- **Stop and continuation:** progress and final tool results report all saved labels.
+  Stop preserves committed pages without publishing a new bundle. Normal Chat can reuse
+  older owned citations with Web search enabled; new Research attempts retain their
+  fresh-evidence boundary. No automatic replay or recovery of uncertain file publication
+  after process loss is introduced. A forced kill may leave progress without a final result.
+- **Integration:** normal file approval, artifact snapshots/downloads, workspace checkpoints,
+  source inspection and durable replay are reused. Disabled or denied query/export
+  capabilities cannot be bypassed through collection. Read-only children cannot collect.
+  No new provider, dependency, configuration or database migration is required.
+
+**Thirteenth-increment verification:** local fixtures cover all three adapters, ordered
+continuation without refetching completed pages, cross-page consistency, partial exports,
+record/page/time/read/source/byte ceilings, server cooldowns, Stop during acquisition and
+publication, source revocation and disabled tools. Follow-up calls reserve capacity for
+reused citations before requesting new pages; publication failures return actionable
+saved labels. Scripted request-bound and durable Research runs deliver real saved files
+from one prompt, count every page and keep collected records out of provider input.
+The full regression run passed **950 backend tests, with 24 skipped**. After final
+capacity/publication recovery refinements, all **116 collection/export/retry tests**
+passed. All **45 Chromium regressions**, lint, production build and diff checks passed;
+existing deprecation and bundle-size warnings remain. See the
+[collect-and-continue demo](API_DATASETS.md#manual-verification-collect-and-continue).
+
+**Fourteenth increment — Retained-data analysis and HTML reports (2026-09-20):**
+
+- **Bounded W14.6/W14.8 delivery:** `analyze_api_dataset` inspects retained query-page
+  columns, types, missing counts and coverage. `create_api_report` uses those same source
+  labels for filtered grouped counts or exact known-value sums, then creates a standalone
+  HTML report with tables/bar charts, original data, analysis CSV/JSON and a manifest.
+  The model supplies a bounded recipe, not file contents or executable expressions.
+- **Accuracy and scope:** original coverage stays separate from report filters. Partial
+  samples, unknown amounts, overlapping list categories and source references are explicit.
+  List grouping supports counts only. Tables, chart labels and files share computed
+  results; the report's numeric values remain exact and bar lengths are approximations.
+  Limits are six sections, fifty groups each, eight filters and a 2 MiB complete bundle.
+- **Permissions and delivery:** inspection defaults to Auto, reports to Ask. Disabled export
+  cannot be bypassed through reports. Source ownership, expiry, current Research attempt
+  and domain scope are rechecked before publication; Stop prevents new file publication.
+  Existing checkpoints, saved answer files, preview/downloads and durable replay are reused.
+  Staged bytes are verified before atomic publication. The manifest does not claim live
+  visual review. No server, package installation, new dependency or schema is needed.
+- **Research:** inspection and reports become available after a validated API page. Four
+  inspections and two report attempts remain possible after read/source capacity is full,
+  within existing time/token/pass ceilings. Instructions prioritize requested reports
+  before synthesis. General task-completion tracking, arbitrary code and richer charts
+  remain future work; this does not guarantee any selected model follows the workflow.
+
+**Fourteenth-increment verification:** the full suite passed **983 backend tests, with
+24 skipped**. After final publication-time Stop and missing-category refinements, all
+**53 report/export tests** passed. All **45 Chromium regressions**, lint, production
+build and diff checks passed. Synthetic reports were visually inspected at desktop and
+phone widths; long hashes wrap and wide tables scroll within the report. Fixtures cover
+all three adapters, exact decimals/nulls, filters/list membership, escaping, size limits,
+approval/resume, revocation, Stop, saved downloads and ordinary/durable Research delivery.
+Tests use scripted providers and local API fixtures, not a live provider/model or public
+API account. Existing deprecation and build-size warnings remain. See the
+[manual report demo](DATASET_REPORTS.md#manual-verification).
+
+**Fifteenth increment — Bulk datasets and Research analysis handoff (2026-09-21):**
+
+- Replaced the citation-per-page bottleneck for large acquisitions with a separate `source` /
+  `dataset_id` path in `collect_api_dataset`. NIH bulk pages request up to 500 records;
+  PubMed and ClinicalTrials.gov use 100. Validated pages commit privately before the next
+  request, with compact progress, resumable checkpoints and one manifest citation per
+  published revision. One bounded collection invocation uses one Research read.
+- Added additive migration `0009_api_datasets` and frozen revision-0008 metadata. Dataset
+  pages preserve exact serialized numbers, source ownership/expiry/revocation, hashes,
+  query identity and validated pagination. Storage has separate per-dataset/conversation
+  quotas; exports/reports accept dataset IDs and a 32 MiB bulk bundle allowance. Existing
+  small-page labels and their limits remain compatible. Stops retain pages without file
+  publication; interrupted work requires explicit continuation, never automatic replay.
+- Added Ask-tier `begin_research_analysis`, exposing normal execution/file tools only after
+  an explicit handoff. Their own permissions remain authoritative. Configured runner/network
+  facts accompany model calls; their exact advertised tool names are retained in call
+  diagnostics. Domain filters apply to reviewed web/API tools, not arbitrary code networking.
+- Declared analysis outputs are checked for nonempty files before synthesis. Missing outputs
+  are listed and mark the run failed; file presence does not claim scientific or visual
+  correctness. Custom code can create trend lines and evidence-backed annotations, while
+  built-in reports retain deterministic tables/bars. No unbounded retries or extra model
+  passes are introduced. Research instructions now prefer combined multi-year bulk queries
+  and reserve work for the requested deliverables.
+
+**Fifteenth-increment verification:** a synthetic ten-year dataset with **4,286 records**
+collects through the real HTTP/parser path in **10 requests, two citations and one bulk
+collection read**, with verified annual table sums. A scripted-provider harness test then
+executes Python to produce an HTML bar/trend chart with an example annotation, without
+replaying raw rows into model context. All three adapters, Stop/resume, stale totals,
+quotas, source removal/expiry, ownership/scope, handoff and separate execution approvals,
+current disabled-tool policy and missing-file outcomes have regressions. Populated upgrade
+and backup/restore drills cover SQLite and Postgres. No live model or public API quality
+claims are made by these fixtures. See [bulk data](API_DATASETS.md#multi-page-collection)
+and [analysis handoff](RESEARCH.md#analysis-handoff) for manual testing and limits.
+
+The complete backend run recorded **1,002 passed / 25 optional skips**, with one preview-error
+wording assertion subsequently corrected and verified in a **66-test passing API/bulk/analysis
+rerun**. A **53-test passing bulk/analysis/report rerun** covers the final integrity and
+record-ceiling refinements. All **45 Chromium regressions**, the frontend production build,
+lint and diff checks passed. The operations suite also passed with a disposable PostgreSQL
+16 instance alongside SQLite (one SQLite-specific case intentionally skips on Postgres).
+Existing deprecation and frontend chunk-size warnings remain.
+
+**Fifteenth-increment follow-up — Late analysis and partial delivery:**
+
+- Approved analysis in new Research turns uses remaining effective Model rounds after the
+  preset’s evidence passes, with the last pass reserved for synthesis. Searches, reads and
+  collection close at the evidence boundary; time/token thresholds, Stop, permissions and
+  lower Model limits remain enforced. Existing paused turns keep their old pass policy.
+- The handoff lists actual generated paths, and report results include bounded exact group
+  summaries with explicit omission counts. Agents can reuse complete datasets and reports
+  without another export or file search. Selector errors explain dataset_id versus labels.
+- Recursive workspace globs now allow ** to match zero directories, fixing missed root-level
+  dataset bundles. Partial delivery shows available files separately from absent declarations;
+  an existing report never silently substitutes for a missing custom chart.
+- Regression coverage includes a late handoff followed by actual Python execution beyond
+  pass 12, preserved approval boundaries, time/token/Model ceilings, old approval policy,
+  recursive matching, exact summary values and partial-delivery display/replay.
+
+**Follow-up verification:** the full backend run passed **1,021 tests**, with **25 optional
+Postgres cases skipped**. After the final Stop/inventory and approval-resume refinements,
+all **136 focused regressions** passed. All **46 Chromium tests**, the production build,
+lint and diff checks passed. Tests used scripted providers, local API fixtures and real
+local Python execution; no live provider or public API was called. Existing deprecation
+and large frontend chunk warnings remain.
+
+**Manual follow-up:** the user confirmed that a new Research prompt in the same chat,
+explicitly reusing the retained dataset and requesting a self-contained HTML chart/report,
+completed successfully. The Research guide now documents this recovery workflow and a
+reusable prompt; this is a reported successful example, not a general live-model benchmark.
+
+**Sixteenth increment — release lifecycle hardening:**
+
+- The supported `app.server` entry point and dev reload children cancel active work before
+  draining HTTP/SSE connections. New requests receive 503, without invalidating login.
+  Model calls, request-bound chat, durable workers and document workers share shutdown
+  signaling. Gateway responses terminate with an error instead of a successful partial answer.
+- A signal-time watchdog bounds the whole shutdown (default 30 seconds, configurable from
+  1–300). Stalled providers/tools, blocked event loops, MCP cleanup or executor teardown
+  trigger exit 75. Maintenance remains locked while writers are alive. Repeated signals
+  do not bypass cleanup. The macOS/Linux stop script respects this deadline and stops
+  walking ancestors at an unrelated process; Windows scripts remain forced termination.
+- Recovery preserves completed answers across the gap before the worker commits terminal
+  run status. Started or already-unknown tool outcomes prevent that reconciliation. Pending
+  approvals and saved progress survive restart, with no automatic replay.
+- Research guidance recommends checking plotting dependencies and using standard-library
+  JSON/CSV with inline SVG when packages are unavailable, preserving requested chart features.
+- Compatible frontend dependency updates and removal of unused React Router clear the npm
+  audit. Setup guides now use the supported production command and longer supervisor grace.
+
+**Sixteenth-increment verification (2026-09-21):** the full backend suite passed **1,048
+tests**, with **25 optional Postgres cases skipped**. After the final refinements, **45
+focused shutdown/watcher/recovery/gateway/analysis tests** passed. Separate SQLite and
+disposable PostgreSQL 16 upgrade/backup/restore drills passed **59 tests**, with one
+SQLite-only case skipped on Postgres, using the matching PostgreSQL 16 client. All **46
+Chromium regressions**, the frontend build, Ruff, shell syntax and diff checks passed.
+The npm audit reported zero vulnerabilities. Existing Python deprecation and frontend
+chunk-size warnings remain.
+
+The production image was built and tested with isolated fresh data: uid/gid 10001,
+writable data, read-only application code, SPA serving, v0.4.0 API, readiness, schema head
+and graceful shutdown passed. This caught and fixed a non-root uv cache startup error;
+the image now uses `uv run --no-cache --no-sync -m app.server`. CI gains an actual container
+startup/readiness/shutdown check. The new code had not yet run on GitHub CI at this local
+verification point. Native Windows execution was not tested; Windows stop remains forced.
+
+Process tests use real servers/open SSE connections and scripted providers, including
+cooperative and stalled model/tool work in both execution modes, blocked event loops,
+stalled cleanup, forced loss during model/tool/approval stages, completed-answer recovery
+and the macOS/Linux stop script. They assert retained maintenance locks and no automatic
+tool replay. The user's active database was not used as a test target.
+
+**Live-provider verification:** a fresh prompt requested Fred Hutch's FY2016–2025 RePORTER
+records, complete collection, an HTML report with annual bars and a linear trend, and a
+supporting CSV. Settings were Standard Research, 50 Model rounds, 32,768 output tokens,
+128,000 context tokens, local execution and explicit auto-approval in isolated test data.
+
+- `kiro-acp` / `claude-sonnet-5` refused before using tools. Its cause was not established;
+ this was a failed functional check despite the model-turn completion status.
+- An initial `local-ollama` / `gemma4:31b-cloud` run collected 3,047 records and made files,
+ but omitted the trend after missing plotting dependencies. This led to the new
+ dependency-aware Research guidance.
+- A fresh run with the same Ollama model and original prompt collected all **3,047**
+ reported records and produced CSV, HTML and inline SVG bars/trend through the analysis
+ handoff and Python, without extra packages, a follow-up prompt or a reused dataset.
+ It took **35 seconds**, **9 calls** and **62,875 reported tokens**; cost was unavailable.
+- Independent checks found unique project IDs, no missing award amounts, all ten annual
+ totals/counts matching the retained records, and matching bar heights/linear-fit
+ coordinates. Chromium rendering showed a clipped axis label and missing charset
+ metadata. The report called its totals “NIH funding” although the agency set included
+ FDA, and collapsed two returned organization names in its prose.
+
+This is evidence of the collection-to-execution path for one configured model/task, not
+a quality benchmark or independently verified funding analysis. Generated reports still
+require scope, citation and visual review; file existence checks cannot detect those
+defects. Provider-refusal diagnosis, agency/scope verification and semantic/visual report
+checks remain follow-up work.
+
+**Deferred beyond the v0.4.0 release scope:** remaining W14.1/W14.5 stage-specific budget
+calibration and recovery UX, further W14.2 extraction quality, broader W14.3 API coverage,
+W14.4 context quality evaluation and broader W14.6–W14.8 capability routing and semantic/
+visual verification. File existence does not prove that a requested chart, citation or
+scientific claim is correct. General API discovery, acquisitions beyond bulk quotas,
+Windows graceful stop, a session refresh protocol, a persisted return hint and distributed
+workers remain future work. No automatic replay of uncertain actions is introduced.
+
+**Remaining public API work (W14.3/W14.7):** NIH RePORTER, PubMed bibliography/article
+details and ClinicalTrials.gov study search/details now use shared source and export
+contracts, bounded transient retries and multi-page collection. Full article text, general API
+discovery and larger acquisitions beyond the current bounds remain open. Continue testing common components against all three adapters;
+this does not promise arbitrary public API access.
+
+**Motivation:** a reviewed long-running research task exposed an empty synthesis saved as
+completed, exhausted search/read allowances, repeated context trimming, and useful financial
+sections beyond the HTML extraction cutoff. PDF and JSON sources were rejected despite
+successful HTTP responses. A subsequent ordinary agent turn needed shell/dependency
+workarounds to obtain data and generate a chart. These findings motivate product fixes;
+they do not establish the upstream cause of the empty response. Use synthetic or approved
+public fixtures for regressions, not private conversation content or credentials.
+A subsequent user-reported research attempt hit the max-output-token warning. Investigate
+its effective settings and provider finish reason rather than assuming the cumulative
+research allowance caused it. Completion-aware budget handling is a first-priority part
+of this wave, not a later tuning exercise.
+
+**Additional observed pattern:** a later API-to-chart task exhausted Research's cumulative
+usage threshold and search allowance, then returned an unexecuted script instead of the
+requested files. Its saved events showed neither context trimming nor an output-limit
+warning. The follow-up succeeded in ordinary agent mode with POST requests and execution.
+This identifies a capability/routing problem as well as a budget problem: increasing the
+generic tool-round setting does not override Research's separate preset ceilings, and GET
+fetching alone cannot query a POST-based data API. The successful follow-up also exposed
+silently ignored API filters, incorrect assumptions about field types, repeated prompt
+input, and browser/workspace connectivity failures. Preserve these distinctions when
+diagnosing failures; a completed model turn is not proof the requested deliverable exists.
+
+**Restart investigation:** local logs confirm development auto-reloads triggered by generated
+workspace Python files, including the container runner's `.phlox/run.py` and an agent-written
+report script. The launcher watches the entire backend directory, which includes runtime
+data. In two reviewed sessions, these writes caused orderly shutdown/startup sequences,
+including a second queued reload, followed by repeated HTTP 401 responses. This is direct
+evidence of an unintended dev restart; the observed sequences do not indicate a hard crash.
+In the latest session, model calls continued while Uvicorn waited for connections to close,
+and both saved turns ended `completed`. The earlier follow-up ended `cancelled` without a
+persisted reason, so its cancellation initiator cannot be established from that row alone.
+
+The inspected configuration has no persistent JWT signing secret. Development falls back
+to a new per-process secret, and the frontend clears authentication on a 401. Secret rotation
+is therefore the likely explanation for the login screen after reload; the historical
+server environment and token validation reason were not captured, so distinguish that
+inference from the confirmed restart. The production launcher omits `--reload` and requires
+a strong environment-provided signing secret: this specific generated-file trigger does
+not apply there. Production process loss, shutdown and session expiry still need regression
+coverage. Repeated failures to reach the optional local telemetry collector also obscured
+the logs; those exporter errors alone are not evidence of an application crash.
+
+| Task | Planned behavior | Acceptance |
+|---|---|---|
+| W14.1 — Truthful completion and recovery | Detect empty synthesis, incomplete streams and output-limit termination; distinguish completed reports from failed, interrupted, or partial attempts. Preserve evidence and partial output; support bounded continuation or explicit synthesis retry without repeating gathering. | Empty/abrupt/reasoning-only streams cannot silently produce a successful blank report. Truncated reports remain incomplete until recovered; truncated tool arguments never execute. Recovery uses reauthorized evidence and current policy/accounting; Stop prevents further calls. |
+| W14.2 — Relevant page evidence | Remove navigation/boilerplate, preserve tables and headings, and support bounded targeted passage retrieval or pagination beyond the initial excerpt. | A long annual-report fixture exposes financial figures after character 20,000 without sending the entire page on every pass. Retained citations identify the exact passages supplied; omitted content remains explicit. |
+| W14.3 — PDF and structured web sources | Add bounded PDF text/table extraction with page provenance, JSON/API schema retrieval, and policy-controlled read queries including POST-based search APIs. Prefer documented endpoints and pagination over repeated guessed GET URLs. | Valid public PDF/JSON and paginated POST-query fixtures are usable without ad hoc shell downloads or package installation. POST is not assumed read-only solely because it returns data: use a scoped adapter or explicit request policy. Malformed, oversized, encrypted/unsupported and timed-out inputs fail clearly; DNS pinning, redirects/domain scope, cancellation, ownership and retention remain enforced. |
+| W14.4 — Research working context | Maintain compact findings, source references and unresolved questions during a single investigation; retrieve original evidence as needed instead of repeatedly replaying and prefix-truncating tool output. | Long single-turn and follow-up fixtures reduce repeated input while retaining the passages needed for final claims. Summaries remain derived notes, not new evidence; source deletion, scope changes, approvals and reconnects preserve the same boundaries. |
+| W14.5 — Completion-aware model and research budgets | Audit effective context, output/reasoning, round, search/read, time and cumulative usage limits across research and ordinary agent calls. Provide generous, model-aware stage allowances, configurable admin presets and bounded adaptive continuation; distinguish planning targets from explicit hard ceilings. | Large and reasoning-heavy tasks can finish within supported model and authorized deployment limits without restarting research. Reserve enough input/output room for synthesis; expose the actual limiting setting and recovery action. Limits survive approval/replay, exhausted tools stop being offered, and admission rechecks budgets after calls. Unknown usage stays unknown; model/search charges and source/event/storage bounds remain explicit. |
+| W14.6 — Research-to-analysis handoff | Recognize requested API acquisition, calculations and file deliverables before gathering. Within the user's requested scope and current tool policy, carry research through data acquisition, analysis and artifact creation in the same task. Reuse the sandbox, source and artifact services. | A request explicitly asking for a script to fetch data and build a report/chart completes those deliverables without a second "where is my graph?" prompt or invented plan-approval step. Selecting Research alone does not grant execution: actual tool approvals still apply. If required capabilities are unavailable, explain the specific blocker early instead of spending the allowance on an impossible workflow. |
+| W14.7 — Verified structured-data acquisition | Probe the API schema and a small response before full retrieval; validate effective filters, returned organizations/years, field types, identifiers, pagination and aggregation rules. Persist the retrieval recipe and provenance. | An HTTP-200 fixture that ignores unknown filter keys cannot trigger a full unfiltered download or a misleading success claim. Array-valued fields, duplicates/subprojects, missing values and incomplete years are handled explicitly. A known filtered dataset yields the reference annual totals and source-backed annotations. |
+| W14.8 — Deliverable completion and usable verification | Track requested outputs separately from model-turn completion; check files, report/chart data agreement, dependency requirements and available preview routes. Keep retrieval and build steps reproducible and large raw data out of prompts. | An unexecuted script is not reported as a delivered HTML report/chart. An inaccessible browser tool does not cause repeated file/localhost probes or an unbounded background preview server. Report visual verification as unavailable when appropriate while delivering validated files. Large raw datasets retain clear current-workspace versus saved-copy status and a bounded portable provenance/retrieval manifest. |
+| W14.9 — Development reload isolation | Restrict reload watching to application source; exclude runtime data, workspaces, uploads and generated artifacts. Align shell/PowerShell launchers and documented manual commands. | Repeated container executions and agent-created Python files cause no backend restart or logout. Real application source edits still reload. Cover default and custom data paths; production starts without a watcher. |
+| W14.10 — Session continuity and reauthentication | Make local development signing-secret lifetime deliberate and easy to configure, with a secure approach that survives source reloads. Preserve production secret requirements, session expiry and account revocation. Distinguish authentication loss from backend/network unavailability and reconnect the owner to saved work after login. | Source reload with a stable secret retains a valid session. Genuine expiry or secret rotation produces a clear sign-in flow; transient network/5xx failures do not masquerade as logout. Reauthentication restores the owned run without resubmitting the request or repeating tools; logout clears private state and stops unauthorized polling. Stale responses from a previous login cannot clear a newer session. |
+| W14.11 — Restart recovery and lifecycle diagnostics | Audit graceful shutdown, forced process loss, request-bound streams and durable workers. Record termination initiator/reason, process/boot identity, timestamps and run correlation; make optional telemetry failures concise and non-blocking. | Distinguish user Stop, server shutdown, provider failure, budget termination and unknown tool outcome in saved status. Completed work remains completed; interrupted work retains evidence and offers an explicit recovery path without automatically replaying uncertain actions. Production restart and unavailable-collector tests preserve startup, execution, shutdown and isolation. Diagnostics contain no tokens, secrets or private prompt/tool bodies. |
+
+**Implementation order:** fix generated-file reloads and establish lifecycle/session
+diagnostics first, alongside truthful completion/recovery and effective-budget diagnostics.
+Then harden reauthentication/shutdown recovery, early capability routing and extraction;
+follow with PDF/JSON/POST-query support, further working-context evaluation, measured budget calibration,
+validated acquisition and the analysis/delivery path. Keep normal Chat the default,
+Research opt-in, the deep-research skill as optional guidance,
+and DuckDuckGo as the default/fallback search provider.
+
+**Budget design and evaluation:** give models enough room to finish useful work; avoid
+discarding an investigation because an arbitrary preset is too small. Examine all limits
+together rather than treating every cutoff as a request for a larger context window.
+
+- Trace effective defaults, profile caps, user/assistant overrides, research presets and
+  provider request parameters. Distinguish maximum context capacity, reserved output,
+  reasoning tokens where exposed, cumulative usage and tool rounds. Show the effective
+  limit and its origin in diagnostics without exposing prompts or secrets.
+- Resolve and snapshot effective settings consistently across new turns, existing chats,
+  assistants, regeneration, approval resume, durable runs and fallback models. The second
+  increment resolves the previous split between runtime output/context and conversation
+  round limits, including compaction and stricter approval resumes. Existing saved
+  conversation parameters alone cannot establish
+  what each historical provider call received. Persist effective input/output limits,
+  research stage, finish reason and trimming metadata per call for reliable diagnosis.
+- Audit the generic harness as well as Research: the second increment reserves final
+  completion and preserves progress with an actionable incomplete notice. Expose configurable
+  preset ceilings alongside generic settings so raising
+  Max tool rounds cannot appear to raise a separate research limit. Give the model accurate
+  remaining allowances and supported tools; adapt planning before another doomed call.
+- Use provider-supported output/reasoning controls and task-stage allowances. Keep planning
+  economical while giving synthesis and substantial artifacts sufficient completion room.
+  Fit useful evidence and output together; a larger output reservation must not needlessly
+  crowd out the evidence needed to write the report. Do not infer capability from model names.
+- Distinguish reported visible output, reasoning and cached input when providers expose
+  them; retain unknowns when they do not. Repeated cached input still occupies context and
+  is not necessarily charged like uncached input. Investigate excessive planning/gathering
+  reasoning and schema/tool-prompt overhead before assuming more output tokens are needed.
+- Evaluate soft gathering targets and bounded adaptive extensions within admin-authorized
+  ceilings. Account for gathering, reasoning, compaction, retries and synthesis separately.
+  Preserve explicit user/admin spend and resource ceilings, supported provider limits and
+  Stop; never silently replace an explicitly chosen hard limit with an unlimited run.
+- Handle `length` / `max_tokens` as incomplete output. Where supported and authorized,
+  continue synthesis from retained evidence and partial text without repeating searches or
+  tool side effects. Bound continuation attempts, detect lack of progress and preserve
+  citations without duplicate prose. If recovery requires a changed hard limit, offer a
+  specific resume action instead of only telling the user to restart the request.
+- The third increment delivers admin-configurable Thorough defaults of 24 model passes,
+  24 searches and 48 fetch attempts with larger token/time allowances after a controlled
+  fixture comparison. Further live-model calibration remains necessary. These limits are
+  not sufficient fixes by themselves. Preserve source/event storage and transport safeguards.
+- Measure completed useful reports, truncation/restart rate, evidence coverage, latency,
+  repeated-input tokens and total reported usage/cost. A shorter run that produces no usable
+  answer is not a budget-efficiency improvement.
+
+**Workflow and delivery boundaries:** preserve the initial user objective and selected
+source scope across the research-to-analysis transition. Use normal permissions for the
+requested execution instead of requiring a mode switch and repeated user instruction.
+HTTP status alone is not data validation, generated code is not executed output, and a
+nonempty answer is not proof of task completion. Final checks should be task-specific and
+bounded; lack of a usable preview surface must not prevent delivery of otherwise valid
+files. Defer general browser control and broader output-preview features to their existing
+backlogs. Package or reference large datasets deliberately rather than increasing all
+snapshot/output caps or replaying raw records into the model.
+
+**Application reliability boundaries:** reconnectable runs survive browser disconnection,
+not arbitrary process loss. Build on their current journal and conservative interruption
+recovery rather than promising transparent restart of an in-flight tool. Preserve saved
+evidence, accounting, approvals and unknown outcomes; resume only steps whose execution
+state and current authorization are known. Keep explicit Stop responsive and distinguish it
+from shutdown-triggered cancellation. Evaluate connection draining and shutdown deadlines
+with a stalled provider/tool so an open event stream cannot indefinitely conceal a pending
+restart. Persist the reason before termination where possible; a forced kill must leave an
+honest interrupted state on recovery. Do not change durable-run defaults or introduce a
+distributed worker system as an incidental fix.
+
+Choose a secure development secret strategy (for example, one secret inherited by reload
+children for the launcher lifetime, or protected local persistence) and document its exact
+restart behavior. Never use a shared fallback, commit generated secrets, disable login, or
+extend sessions indefinitely to hide the issue. Reauthentication must respect ownership,
+revocation and cleared private browser state. Retain only a safe navigation/reconnection
+hint, then reauthorize the run; login must not implicitly submit another task. Record safe
+authentication failure categories separately from network/server failures. Add timestamps,
+boot/PID and termination reason to lifecycle diagnostics, with private run correlation only
+in appropriately protected records. Rate-limit/coalesce unavailable-collector messages and
+surface optional telemetry degradation without flooding or blocking normal execution.
+
+**Verification before delivery:** offline regressions cover empty/truncated streams,
+late-page evidence, PDF/JSON parsing limits, source-preserving context reduction, budget
+exhaustion, Stop/approval/reconnect and cross-user isolation. Include reasoning-heavy output,
+long final reports, limits during tool-call generation, configured provider caps, conflicting
+overrides, adaptive extensions, continuation with no duplicated actions, and explicit hard
+ceilings. Successful recovery must not repeat evidence gathering; unrecoverable truncation
+must retain a clear incomplete outcome and recoverable work. Use a reproducible multi-year
+research fixture with a known reference table, unavailable sources and an explained spike;
+check the report and chart against those values and their supporting passages. Add browser
+coverage for budget/status/recovery and handoff controls. Include a one-prompt API-to-HTML/chart
+journey with POST pagination, silently ignored filters, an array-valued field, a large raw
+dataset, an unavailable preview tool and settings changed between turns. Check that a
+generic agent near its round limit can finish or continue with retained state without
+repeating completed actions. Add process-level regressions that write generated workspace
+Python files under the real dev watcher, then edit application source and observe exactly
+the intended reload behavior. Exercise shell/PowerShell launch configuration, stable and
+ephemeral secrets, session expiry, concurrent stale 401 responses, network loss and same-user
+reauthentication with a running task. Test graceful restart with an open SSE subscription,
+forced termination during a model call/tool/approval, stalled shutdown, and a missing
+telemetry collector. Assert preserved progress, accurate completion/interruption reasons,
+no duplicate execution, bounded shutdown behavior and cross-user isolation in both
+request-bound and durable modes. Record explicitly configured
+live-provider quality checks separately from CI, including provider/model, effective limits,
+reported versus estimated usage, truncation, missing evidence and completion outcome.
+Update [Research](RESEARCH.md), [Web sources](WEB_SOURCES.md), [Model calls](MODEL_CALLS.md),
+[Runs](RUNS.md), [Authentication](AUTH.md), and the relevant setup/architecture guides when
+behavior ships.
+
+## Later wave — Output inspection and portable exports
 
 Continue the remaining bounded M3.3 work: CSV/table and PDF inspection, a deliberate preview
 network policy, and portable output bundles with clear source/provenance and access rules.

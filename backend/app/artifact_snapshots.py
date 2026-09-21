@@ -14,10 +14,19 @@ MAX_TURN = 64 * 1024 * 1024
 logger = logging.getLogger(__name__)
 
 
+def unique_artifacts(artifacts):
+    """One final descriptor per full workspace path; updates retain first-seen order."""
+    latest = {}
+    for index, artifact in enumerate(artifacts or []):
+        key = ('path', artifact['path']) if artifact.get('path') else ('unkeyed', index)
+        latest[key] = artifact
+    return list(latest.values())
+
+
 def capture(message):
     remaining = MAX_TURN
     result = []
-    for index, artifact in enumerate(message.artifacts or []):
+    for index, artifact in enumerate(unique_artifacts(message.artifacts)):
         item = {**artifact, 'snapshot_status': 'unavailable'}
         try:
             path = resolve_in_workspace(message.conversation_id, artifact['path'])
@@ -36,7 +45,7 @@ def capture(message):
                     destination.parent.mkdir(parents=True, exist_ok=True)
                     destination.write_bytes(data)
                     remaining -= len(data)
-                    item.update(snapshot_status='saved', snapshot_index=index,
+                    item.update(snapshot_status='saved', snapshot_index=index, size=len(data),
                                 url=f'/api/files/{message.conversation_id}/saved/{message.id}/{index}')
                     db = object_session(message)
                     if db is not None:

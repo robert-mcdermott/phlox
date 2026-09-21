@@ -57,6 +57,15 @@ Treat that first-run output as sensitive.
 
 ---
 
+## Shutdown
+
+The image uses `app.server`, with a 30-second overall shutdown deadline. Compose allows
+40 seconds before its own forced stop. For a direct container stop, use `docker stop -t 40
+phlox` (or `podman stop -t 40 phlox`). If you pass a different `PHLOX_SHUTDOWN_SECONDS`
+(1–300 seconds), also increase the external stop timeout to at least five seconds longer.
+A stalled shutdown exits with code 75; inspect interrupted runs after restart before
+continuing. No uncertain tool action is automatically repeated. See [Runs](RUNS.md#shutdown-and-restart).
+
 ## What goes where
 
 The image holds only code. Everything that changes per-deployment or must persist is the

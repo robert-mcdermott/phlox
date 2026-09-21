@@ -100,11 +100,26 @@ resets use the same forced-change behavior.
 
 For production (`PHLOX_ENV=production`), set `PHLOX_JWT_SECRET` to at least 32 bytes of
 random material and keep it stable across restarts. Production startup fails closed if it is
-missing, short, or a known placeholder. Local development without this variable gets a
-strong per-process ephemeral secret, so sessions intentionally do not survive a restart.
+missing, short, or a known placeholder. The development launchers and `uv run -m app.dev`
+inherit one strong ephemeral secret into their reload children when no secret is configured.
+Sessions survive source reloads, but not a full stop/start of that launcher. The secret is
+neither persisted nor printed. An explicit environment or file secret is preserved
+(environment takes precedence); production still requires the environment variable.
+Starting raw Uvicorn without a configured secret still uses a per-process fallback.
 To rotate the production secret, schedule a sign-out event, replace it in the deployment
 secret store, restart every Phlox process together, and require users to sign in again;
 there is currently no overlapping old/new verification window.
+
+During startup, unavailable auth endpoints show **Retry connection** without clearing the
+saved token or assuming authentication is disabled. A genuine 401 invalidates only the
+browser session that sent the request; delayed responses cannot sign out a newer login.
+The app clears private state and detaches progress subscriptions on session loss. Signing
+back in as the same owner returns to the previous conversation and its saved run without
+submitting another task. This return hint contains only owner/conversation IDs, remains in
+memory, and is discarded on explicit logout, another account's login, or page reload.
+After reloading the login page, reopen the conversation manually. Sessions still expire
+normally, and account/ownership checks apply again on reconnect. Request-bound work retains
+its existing disconnect behavior; use [reconnectable runs](RUNS.md) for durable progress.
 
 Self-service registration is disabled by default. If explicitly enabled, every registered
 account receives the `user` role (never first-user/admin promotion) and registration is

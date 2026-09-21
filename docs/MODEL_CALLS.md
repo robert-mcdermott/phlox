@@ -1,5 +1,15 @@
 # Model-call accounting and context fit
 
+Research can reduce repeated tool input using its
+[working notebook](RESEARCH.md#research-notebook-and-working-context). This projection
+runs before the normal input guardrails, context fitting and call accounting. It preserves
+the canonical transcript and restores complete, currently authorized cited passages for
+final synthesis within the configured/provider context window minus the output reservation
+and framing headroom. Omitted passages are explicit. Preparation makes no model calls;
+model-generated notebook updates consume the usual passes and reported tokens. Notebook
+projection estimates are not provider-reported or billable usage. Context records still
+identify the complete passages present after guardrails and fitting.
+
 [User Guide](USER_GUIDE.md) · [Project overview](../README.md)
 
 Delivered in [Wave 3](IMPLEMENTATION_WAVES.md). The shared seam is
@@ -23,6 +33,12 @@ known counters and mark usage incomplete. Streams close on normal completion, ex
 Stop, or consumer closure. Call status is `running`, `completed`, `failed`, `cancelled`, or
 `interrupted`; usage status is independently `reported`, `partial`, or `unknown`.
 A process killed before cleanup leaves a running row with unknown or partial usage.
+
+A provider EOF without a terminal signal is now recorded as interrupted, not completed.
+Provider output-limit termination can still be a completed *call* with reported usage;
+it is not a completed *answer*. Message receipts separately record the task `outcome` and
+bounded completion-recovery attempts. Reported reasoning tokens, when available, are a
+subset of output tokens and are never added to usage or cost a second time.
 
 Explicit OpenAI compatibility retries get separate rows linked to their preceding call.
 SDK-internal transport retries are opaque: this is application-call accounting, not an
@@ -78,9 +94,59 @@ with an actionable context-limit error; fallback does not bypass it. Compaction 
 own bounded prompt. Long-history compaction remains a separate earlier heuristic and
 does not promise to summarize every oversized request automatically.
 
+## Effective settings and completion recovery
+
+New turns, including turns in existing chats and regeneration, resolve current runtime
+generation settings, then assistant overrides, then explicit conversation overrides. The
+same resolved context window (also bounded by the profile) drives pre-run compaction and
+the final fit check. A truncated compaction summary never replaces the original history.
+Queued durable runs resolve settings when they begin execution. In-flight turns retain
+their prepared parameters. Approval resumes retain saved allowances and apply stricter
+current user/assistant/conversation output, context and round limits; they cannot extend a
+saved allowance or reset cumulative rounds.
+
+Old `Conversation.params` values are historical creation snapshots, not persistent
+generation overrides. This fixes old chats retaining a stale round limit when the user
+changes Settings. API clients can explicitly override generation values through
+`PATCH /api/conversations/{id}` with `params`; these overrides are now marked separately
+and apply consistently to output, context, temperature and rounds. Clients relying on an
+older unmarked custom value should submit that override again. `params: null` clears the
+generation overrides. Conversation model/profile selection keeps its existing behavior.
+
+Ordinary agent tasks with more than one allowed pass reserve their last pass for a final
+answer without tools. Unfinished ordinary text or Research synthesis can continue from
+the retained answer and existing evidence with up to two additional **tool-free** calls,
+only when room remains under the effective Max tool rounds setting. Recovery does not
+increase per-call output/context limits, bypass budget checks or ignore Stop. It never
+executes truncated tool requests, retries uncertain actions or restarts gathering. Repeated
+empty/no-progress output, unavailable context, exhausted rounds and provider/policy failures
+leave a clear incomplete outcome with saved progress. Automatic continuation does not
+guarantee semantic completeness; artifact/workflow verification remains Wave 14 work.
+Automatic continuation is disabled when output guardrail rules are active: joining two
+separately checked streams could reconstruct sensitive text at their boundary. The partial
+answer remains explicitly incomplete and can be continued in a separate Chat turn.
+
+Research's admin-configurable gathering allowances are separate from these per-call
+settings. Larger Standard/Thorough defaults provide more cumulative room without enlarging
+the output reservation or profile context window. Effective Model rounds remain a ceiling,
+and synthesis/recovery still use normal context fitting and spend-policy checks. Research
+progress records the snapshotted preset and effective pass limits; approval resumes can
+only reduce saved allowances. See [Research limits](RESEARCH.md#depth-and-limits).
+
+For new calls, `UsageLedger.usage_details.call` stores metadata from the model-call seam:
+effective context/output/round limits, configured profile context cap, original/fitted input
+estimates, trimming, stage, setting origin and provider finish reason. No prompt, tool body
+or secret is stored there. `runtime` means merged user settings/deployment defaults; it
+does not distinguish those two origins. Adapter/SDK-internal behavior remains outside this
+record. Under an answer, open **Context record → Model calls** to inspect linked call
+diagnostics and reported reasoning usage. Legacy calls without this metadata stay unknown;
+the records do not reconstruct their historic limits. Private context access still requires
+conversation ownership, including for admins.
+
 ## Upgrade and verification
 
-Wave 3 introduced nullable ledger columns through the old additive upgrade. Wave 4 now
+Wave 14 diagnostics use existing JSON metadata; no schema migration is required. Wave 3
+introduced nullable ledger columns through the old additive upgrade. Wave 4 now
 uses a checked Alembic baseline and preserves existing rows; see
 [BACKUP_RESTORE.md](BACKUP_RESTORE.md). Worker recovery, call-level admin inspection UI,
 and provider invoice reconciliation remain later work.
@@ -90,3 +156,9 @@ fallback/retries, interrupted usage, prices/cache rates, context limits, deletio
 and schema upgrades. [Approval tests](../backend/tests/test_approval_continuity.py) cover
 version-2 import and version-3 reconciliation. [Browser tests](../frontend/tests/browser/approval.test.js)
 verify unknown-cost receipts, chargeback and CSV using synthetic API fixtures.
+
+New call diagnostics also include `advertised_tools`: the exact tool names supplied to
+that provider call. Research planning/synthesis can have an empty list; analysis tools
+appear only after the approved handoff. This records Phlox's outbound catalog, not a
+promise that an external gateway preserved it. No tool arguments or credentials are added
+by this diagnostic field.

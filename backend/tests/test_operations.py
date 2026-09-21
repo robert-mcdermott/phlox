@@ -97,7 +97,7 @@ def test_fresh_and_repeated_upgrade_match_models(engines):
     engine = engines()
     upgrade(engine)
     upgrade(engine)
-    assert status(engine) == {'current': '0008_artifacts', 'head': '0008_artifacts'}
+    assert status(engine) == {'current': '0009_api_datasets', 'head': '0009_api_datasets'}
     assert check(engine)['compatible']
     with engine.connect() as conn:
         validate(conn, expected=Base.metadata)
@@ -170,7 +170,7 @@ def test_concurrent_upgrade_serializes(engines):
     engine = engines()
     with ThreadPoolExecutor(max_workers=2) as pool:
         list(pool.map(lambda _: upgrade(engine), range(2)))
-    assert status(engine)['current'] == '0008_artifacts'
+    assert status(engine)['current'] == '0009_api_datasets'
 
 
 def test_different_databases_do_not_share_alembic_context(engines):
@@ -221,7 +221,7 @@ def test_backup_restore_populated_instance(engines, tmp_path, monkeypatch):
     restored = pg_target or sa.create_engine(f'sqlite:///{target / "data/phlox.db"}')
     try:
         assert_content(restored)
-        assert status(restored)['current'] == '0008_artifacts'
+        assert status(restored)['current'] == '0009_api_datasets'
         for name, content in files.items():
             assert (target / 'data' / name).read_bytes() == content
         restored_workspace = target / 'data/workspaces/conversation'
@@ -403,7 +403,7 @@ def test_lifespan_failure_releases_lock_and_readiness_checks_schema(client, monk
         pass
     with maintenance_lock(DATA_DIR, ENGINE):
         pass
-    monkeypatch.setattr('app.migrations.status', lambda _: {'current': None, 'head': '0008_artifacts'})
+    monkeypatch.setattr('app.migrations.status', lambda _: {'current': None, 'head': '0009_api_datasets'})
     response = client.get('/api/readiness')
     assert response.status_code == 503 and response.json()['database']['ready'] is False
 
@@ -503,7 +503,7 @@ def test_wave4_revision_can_be_checked_backed_up_and_upgraded(engines, tmp_path)
                   pg_bin_dir=os.environ.get('PHLOX_TEST_PG_BIN_DIR'))
     upgrade(engine)
     assert_content(engine)
-    assert status(engine)['current'] == '0008_artifacts'
+    assert status(engine)['current'] == '0009_api_datasets'
 
 
 def test_run_evidence_survives_restore_without_replaying(engines, tmp_path):
@@ -853,3 +853,43 @@ def test_wave13_populated_history_upgrade_and_artifact_restore(engines, tmp_path
             assert db.get(ArtifactVersion, ids[2]).source_message_id == 'message'
     finally:
         restored.dispose()
+
+
+def test_wave14_bulk_dataset_populated_upgrade_and_backup_restore(engines, tmp_path):
+    from app.migrations import expected_metadata
+    from app.models import ApiDataset, Source
+    from datetime import timedelta
+    engine = engines()
+    expected_metadata('0008_artifacts').create_all(engine)
+    with engine.begin() as conn:
+        conn.exec_driver_sql('CREATE TABLE alembic_version (version_num VARCHAR(32) PRIMARY KEY NOT NULL)')
+        conn.exec_driver_sql("INSERT INTO alembic_version VALUES ('0008_artifacts')")
+    populate(engine)
+    assert check(engine)['compatible']
+    upgrade(engine)
+    assert_content(engine)
+    assert check(engine)['current'] == '0009_api_datasets'
+    with Session(engine) as db:
+        source = Source(id='dataset-source', conversation_id='conversation', number=1, fingerprint='f'*64,
+                        content_hash='c'*64, kind='web', excerpt='Dataset preview',
+                        expires_at=datetime.now(timezone.utc) + timedelta(days=1))
+        db.add(source)
+        db.flush()
+        db.add(ApiDataset(id='retained-dataset', source_id=source.id, pages='[{"exact": "123.456"}]'))
+        db.commit()
+    data, bundle = tmp_path / 'dataset-data', tmp_path / 'dataset-backup'
+    data.mkdir()
+    config = tmp_path / 'dataset-config.yml'
+    config.write_text('{}')
+    create_backup(engine, data, config, bundle, stopped=True, pg_bin_dir=os.environ.get('PHLOX_TEST_PG_BIN_DIR'))
+    target = tmp_path / 'restored-dataset'
+    pg_target = engines() if engine.dialect.name == 'postgresql' else None
+    restore_backup(bundle, target, database_url=pg_target.url if pg_target is not None else None,
+                   stopped=True, pg_bin_dir=os.environ.get('PHLOX_TEST_PG_BIN_DIR'))
+    restored = pg_target or sa.create_engine(f'sqlite:///{target / "data/phlox.db"}')
+    with Session(restored) as db:
+        assert db.get(ApiDataset, 'retained-dataset').pages == '[{"exact": "123.456"}]'
+        db.delete(db.get(Conversation, 'conversation'))
+        db.commit()
+        assert not db.query(ApiDataset).count()
+    restored.dispose()

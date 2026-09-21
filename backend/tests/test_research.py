@@ -14,6 +14,7 @@ from app.agent.tools.base import ToolResult
 from app.models import Conversation, Message, PendingApproval
 from app.providers.base import StreamDelta, ToolCall
 from app.research import Research, normalize_domains
+from app import research_analysis
 
 
 def parse(stream):
@@ -80,7 +81,7 @@ def test_stages_reserve_report_call_and_persist_progress(db, monkeypatch):
         )
     )
     assert not provider.seen[0]["tools"] and not provider.seen[-1]["tools"]
-    assert set(provider.seen[1]["tools"]) == {"web_search", "web_fetch"}
+    assert set(provider.seen[1]["tools"]) == {"web_search", "web_fetch", "read_web_source", "query_public_api", "update_research_notebook", "begin_research_analysis"}
     assert [e["phase"] for e in events if e["type"] == "research"][0] == "plan"
     msg = db.query(Message).filter_by(conversation_id=conv.id, role="assistant").one()
     assert msg.usage["research"]["phase"] == "completed"
@@ -114,6 +115,7 @@ def test_document_scope_blocks_web_exec_children_and_mcp(db, monkeypatch):
     calls = [
         ToolCall("w", "web_search", {"query": "private"}),
         ToolCall("f", "web_fetch", {"url": "https://example.com"}),
+        ToolCall("r", "read_web_source", {"label": "S1"}),
         ToolCall("x", "run_shell", {"command": "echo SHOULD_NOT_RUN"}),
         ToolCall("m", "mcp_secret", {}),
         ToolCall("c", "spawn_subagent", {"task": "read anything"}),
@@ -126,8 +128,8 @@ def test_document_scope_blocks_web_exec_children_and_mcp(db, monkeypatch):
     events = parse(
         agent.run([{"role": "system", "content": ""}, {"role": "user", "content": "Research"}])
     )
-    assert all(set(p["tools"]) <= {"search_documents"} for p in provider.seen)
-    assert len([e for e in events if e["type"] == "tool_result" and e["is_error"]]) == 5
+    assert all(set(p["tools"]) <= {"search_documents", "update_research_notebook", "begin_research_analysis"} for p in provider.seen)
+    assert len([e for e in events if e["type"] == "tool_result" and e["is_error"]]) == 6
 
 
 def test_document_tool_intersects_selected_ids(db, monkeypatch, tmp_path):
@@ -215,7 +217,7 @@ def test_approval_preserves_research_counters_and_scope(db, monkeypatch):
     monkeypatch.setattr(REGISTRY.get("web_search"), "run", lambda *a, **kw: ToolResult("discovery"))
     parse(resumed.resume(pending.state, {"search": "allow"}))
     assert resumed.research.state["searches"] == 1
-    assert resumed.allowed_tools == {"web_search", "web_fetch"}
+    assert resumed.allowed_tools == {"web_search", "web_fetch", "read_web_source", "query_public_api", "export_api_dataset", "collect_api_dataset", "analyze_api_dataset", "create_api_report", "update_research_notebook", research_analysis.NAME} | research_analysis.TOOLS
     assert resumed.rounds_used <= 5
 
 
@@ -272,7 +274,11 @@ def test_actual_web_evidence_report_export_and_durable_replay(db, client, monkey
     from app.models import Source
 
     provider = ResearchProvider(
-        [[ToolCall("fetch", "web_fetch", {"url": "https://example.org/policy"})]]
+        [[ToolCall("fetch", "web_fetch", {"url": "https://example.org/policy"})],
+         [ToolCall("reread", "read_web_source", {"label": "S1"}),
+          ToolCall("note", "update_research_notebook", {
+              "findings": [{"text": "The meal allowance is $45.", "sources": ["S1"]}],
+              "disagreements": [], "questions": []})]]
     )
     monkeypatch.setattr("app.routers.chat.build_provider", lambda *a: provider)
     monkeypatch.setattr("app.routers.chat._build_fallback", lambda *a: None)
@@ -309,12 +315,17 @@ def test_actual_web_evidence_report_export_and_durable_replay(db, client, monkey
         worker.step()
         replay = client.get("/api/runs/" + result.json()["id"] + "/events").text
         assert '"phase": "plan"' in replay and '"phase": "completed"' in replay
+        assert '"revision": 1' in replay
     else:
         assert client.post("/api/chat", json=payload).status_code == 200
     messages = client.get(f"/api/conversations/{conv.id}").json()["messages"]
     report = messages[-1]
     assert report["citations"][0]["source_id"]
     assert report["usage"]["research"]["source_count"] == 1
+    assert report["usage"]["research"]["reads"] == 2
+    assert report["usage"]["research"]["notebook"]["context"]["restored_sources"] == ["S1"]
+    assert any(step['name'] == 'read_web_source' and 'not re-fetched' in step['content']
+               for step in report['tool_calls'])
     assert messages[0]["attachments"][0]["type"] == "research"
     assert db.query(Source).filter_by(conversation_id=conv.id).count() == 1
     export = client.get(f"/api/conversations/{conv.id}/export").json()["markdown"]
@@ -359,7 +370,7 @@ def test_regenerate_restores_research_mode(client, monkeypatch):
     response = client.post("/api/chat", json={"conversation_id": conv, "regenerate": True})
     assert '"type": "research"' in response.text
     assert not seen[-1].seen[0]["tools"]
-    assert all(set(round["tools"]) <= {"web_search", "web_fetch"} for round in seen[-1].seen)
+    assert all(set(round["tools"]) <= {"web_search", "web_fetch", "read_web_source", "query_public_api", "update_research_notebook", "begin_research_analysis"} for round in seen[-1].seen)
 
 
 def test_schema_validation_never_fetches_remote_refs(monkeypatch):

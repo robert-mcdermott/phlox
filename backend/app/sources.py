@@ -106,8 +106,16 @@ def capture(db, *, conversation_id, user_id, turn_id, document_id, chunk_id=None
         return ref, f"[{ref['label']}] {row.title} ({location}chunk {chunk.ordinal + 1}):\n{text}{suffix}"
 
 
+def remaining_capacity(db, conversation_id, turn_id):
+    """Conservative room for new evidence, including failure and removed records."""
+    used = db.query(SourceUse).filter_by(turn_id=turn_id).count()
+    highest = db.query(func.max(Source.number)).filter_by(conversation_id=conversation_id).scalar() or 0
+    return max(0, min(MAX_TURN_SOURCES - used, MAX_CONVERSATION_SOURCES - highest))
+
+
 def capture_web(db, *, conversation_id, user_id, turn_id, url, title, text='', content_hash=None,
-                truncated=False, status='fetched', reason=None, http_status=None, cancel=None):
+                truncated=False, status='fetched', reason=None, http_status=None, cancel=None,
+                start_char=0, total_chars=None, provenance=None):
     """Register bounded fetched passages (or a failure record), never discovery snippets.
 
     Repeated page/offset/content reuses labels; revised content receives new identities.
@@ -125,9 +133,14 @@ def capture_web(db, *, conversation_id, user_id, turn_id, url, title, text='', c
         digest = content_hash or hashlib.sha256(text.encode()).hexdigest()
         blocks = []
         now = datetime.now(timezone.utc)
-        for start in range(0, max(1, len(text)), MAX_EXCERPT_CHARS):
-            excerpt = text[start:start + MAX_EXCERPT_CHARS]
+        for offset in range(0, max(1, len(text)), MAX_EXCERPT_CHARS):
+            start = start_char + offset
+            excerpt = text[offset:offset + MAX_EXCERPT_CHARS]
             evidence = ['web', url, digest, start, excerpt, status, http_status]
+            if provenance:
+                # Retry history describes acquisition, not a different piece of evidence.
+                # Keep identities compatible with captures made before attempt tracking.
+                evidence.append({k: v for k, v in provenance.items() if k != 'retrieval'})
             fingerprint = hashlib.sha256(json.dumps(evidence).encode()).hexdigest()
             row = db.query(Source).filter_by(conversation_id=conv.id, fingerprint=fingerprint).first()
             use = db.get(SourceUse, (turn_id, row.id)) if row else None
@@ -149,6 +162,10 @@ def capture_web(db, *, conversation_id, user_id, turn_id, url, title, text='', c
                 row.location = {'status': status, 'reason': (reason or '')[:500], 'http_status': http_status,
                                 'start': start, 'end': start + len(excerpt), 'truncated': truncated,
                                 'fetched_at': now.isoformat()}
+                if total_chars is not None:
+                    row.location = {**row.location, 'total_chars': total_chars}
+                if provenance:
+                    row.location = {**provenance, **row.location}
             else:
                 row.location = {**row.location, 'fetched_at': now.isoformat()}
             row.expires_at = now + timedelta(days=RETENTION_DAYS)
@@ -156,7 +173,7 @@ def capture_web(db, *, conversation_id, user_id, turn_id, url, title, text='', c
                 db.add(SourceUse(turn_id=turn_id, source_id=row.id, query=''))
             ref = f'[S{row.number}]'
             if status == 'fetched':
-                blocks.append(f'{ref} {row.title}\nURL: {url}\nFetched: {now.isoformat()}\n'
+                blocks.append(f'{ref} {row.title}\nURL: {url}\nFetched: {now.isoformat()}\n' + web_locator(row.location) +
                               f'Characters {start + 1}–{start + len(excerpt)} of extracted page text:\n{excerpt}')
             else:
                 blocks.append(f'{ref} Fetch unavailable: {reason}\nURL: {url}\n'
@@ -165,6 +182,64 @@ def capture_web(db, *, conversation_id, user_id, turn_id, url, title, text='', c
             blocks.append('[Page extraction shortened; additional page text was not retained or supplied.]')
         db.commit()
         return blocks
+
+
+def web_locator(location):
+    from app.public_api_transport import summary
+    retrieval = summary(location.get('retrieval', []))
+    if location.get('format') == 'api_record':
+        selection = location['selection']
+        return (retrieval + f"API record detail: {location['adapter']} {location['record_id']} ({location['method']}); "
+                f"{location['section']} [{selection['start']}, {selection['end']}) of {selection['total']} {selection['unit']}. "
+                + ('Selected study evidence only; recruitment and posted results are separate.\n'
+                   if location['adapter'] == 'clinical_trials' else 'Selected evidence only; full article text was not retrieved.\n') +
+                'Request: ' + json.dumps(location['request'], ensure_ascii=False, sort_keys=True) + '\n'
+                f"Record SHA-256: {location['record_hash']}\n")
+    if location.get('format') == 'api':
+        return (retrieval + f"Public API: {location['adapter']} ({location.get('method', 'POST')}); records [{location['offset']}, {location['item_end']}) "
+                f"of {location['total_records']} reported matches. Selected fields only.\n"
+                'Request: ' + json.dumps(location['request'], ensure_ascii=False, sort_keys=True) + '\n'
+                f"Request SHA-256: {location['request_hash']}\n")
+    if location.get('format') == 'pdf':
+        return f"PDF page {location['page']} of {location['page_count']}; character offsets within this page.\n"
+    if location.get('format') == 'json':
+        text = 'JSON pointer: ' + json.dumps(location.get('json_pointer', '')) + ' (empty = root). '
+        if 'item_start' in location:
+            text += f"Array items [{location['item_start']}, {location['item_end']}) of {location['total_items']}. "
+        return text + 'Character offsets within the rendered JSON selection.\n'
+    return ''
+
+
+def read_web(db, *, conversation_id, user_id, turn_id, label, cancel=None, research=None):
+    """Reread an owned retained passage without fetching or extending its retention."""
+    if not isinstance(label, str) or not re.fullmatch(r'S[1-9][0-9]{0,5}', label):
+        return None
+    with LOCK:
+        conv = db.get(Conversation, conversation_id, populate_existing=True)
+        if not conv or conv.user_id != user_id or (cancel and cancel.is_set()):
+            return None
+        row = db.query(Source).filter_by(conversation_id=conv.id, number=int(label[1:]), kind='web').populate_existing().first()
+        if not row:
+            return None
+        use = db.get(SourceUse, (turn_id, row.id))
+        # Research starts with a fresh evidence scope; do not import another attempt's
+        # evidence by guessing its labels. Re-check domains after approval/resume.
+        if research and (not use or research.state['options']['scope'] == 'documents'
+                         or not row.url or not research.url_allowed(row.url)):
+            return None
+        details = inspect_source(db, conv, row.id)
+        if not details['available'] or (cancel and cancel.is_set()):
+            return None
+        if not use:
+            if db.query(SourceUse).filter_by(turn_id=turn_id).count() >= MAX_TURN_SOURCES:
+                return None
+            db.add(SourceUse(turn_id=turn_id, source_id=row.id, query=''))
+        location = row.location
+        block = (f'[{label}] {row.title}\nURL: {row.url}\n'
+                 f"Retained capture (not re-fetched): {location['fetched_at']}\n"
+                 + web_locator(location) + f"Characters {location['start'] + 1}–{location['end']} of extracted page text:\n{row.excerpt}")
+        db.commit()
+        return block
 
 
 def catalog(db, turn_id, conversation_id):
@@ -192,9 +267,13 @@ def inspect_source(db, conv, source_id):
                    'captured_at': utc(row.captured_at), 'expires_at': utc(row.expires_at)}
         if row.location.get('status') != 'fetched' or not row.excerpt:
             return {**details, 'reason': row.location.get('reason') or 'No page evidence captured.'}
-        changed = db.query(Source.id).filter(Source.conversation_id == conv.id, Source.kind == 'web',
+        versions = db.query(Source.id).filter(Source.conversation_id == conv.id, Source.kind == 'web',
             Source.url == row.url, Source.content_hash != row.content_hash, Source.excerpt.isnot(None),
-            Source.expires_at > datetime.now(timezone.utc)).first() is not None
+            Source.expires_at > datetime.now(timezone.utc))
+        if row.location.get('format') in {'api', 'api_record'}:
+            # A different query/page at the same POST endpoint is not a revised source.
+            versions = versions.filter(Source.location['request_hash'].as_string() == row.location['request_hash'])
+        changed = versions.first() is not None
         return {**details, 'available': True, 'excerpt': row.excerpt, 'content_hash': row.content_hash,
                 'changed': changed}
     doc = db.get(Document, row.document_id, populate_existing=True) if row.document_id else None
@@ -210,6 +289,9 @@ def inspect_source(db, conv, source_id):
 def cleanup(db, now=None):
     """Purge snapshot text, retaining label/identity tombstones. Access also checks expiry."""
     now = now or datetime.now(timezone.utc)
+    from app.models import ApiDataset
+    db.query(ApiDataset).filter(ApiDataset.source_id.in_(
+        db.query(Source.id).filter(Source.expires_at <= now))).delete(synchronize_session=False)
     db.execute(update(Source).where(Source.expires_at <= now).values(
         title=None, url=None, excerpt=None, location=None,
     ).execution_options(synchronize_session=False))
@@ -225,6 +307,11 @@ def forget_web(db, conv, source_id):
         row = db.get(Source, source_id, populate_existing=True)
         if not row or row.conversation_id != conv.id or row.kind != 'web':
             raise HTTPException(404, 'Source not found')
+        from app.models import ApiDataset
+        dataset_id = (row.location or {}).get('dataset_id')
+        datasets = db.query(ApiDataset).filter(
+            (ApiDataset.source_id == row.id) | (ApiDataset.id == dataset_id))
+        datasets.delete(synchronize_session=False)
         row.title = row.url = row.excerpt = row.location = None
         db.execute(update(SourceUse).where(SourceUse.source_id == row.id).values(query=''))
         db.commit()
@@ -273,6 +360,8 @@ def export_markdown(db, conv):
             # Normalization percent-encodes markup delimiters before Markdown autolinking.
             blocks.append(f"[{label}] {title} — web page; URL: <{source['url']}>; fetched {location['fetched_at']}; "
                           f"characters {location['start'] + 1}–{location['end']}.")
+            if location.get('format'):
+                blocks.append(html.escape(web_locator(location)))
         else:
             blocks.append(f"[{label}] {title} — {locator}chunk {location['chunk'] + 1}; captured {source['captured_at'].isoformat()}.")
         if source['changed']:

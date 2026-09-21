@@ -44,11 +44,16 @@ async function fixture(t, { approval = null, auth = false, durable = false } = {
     settings: { active_profile: 'test', model: 'test-model', theme: 'phlox-dark', max_tokens: 1000, max_tool_rounds: 3 },
     modelCatalog: { profile: 'test', models: ['test-model'] }, modelReads: 0,
     discoveryRequests: [], profileSaves: [],
-    searchSaves: [], searchTests: [], chatRequests: [], docs: [], retries: [], rebuilds: 0, index: { mode: 'keyword', rebuild_required: true, notice: 'Embedding model changed. Rebuild required.' },
+    searchSaves: [], searchTests: [], researchSaves: [], researchReadError: false, chatRequests: [], docs: [], retries: [], rebuilds: 0, index: { mode: 'keyword', rebuild_required: true, notice: 'Embedding model changed. Rebuild required.' },
     sources: {}, sourceReads: [], exportReads: 0, exportMarkdown: '',
     approval, decisions: [], reject: false, authenticated: false, setup: true,
     run: null, events: [], cursors: [], cancellations: 0, creates: [], loseAcceptance: false,
     config: { providers: [], pricing: {}, resilience: {}, generation: {}, suggestions: [],
+      research: {
+        brief: { rounds: 5, searches: 3, reads: 4, seconds: 120, tokens: 20000 },
+        standard: { rounds: 12, searches: 8, reads: 16, seconds: 900, tokens: 250000 },
+        thorough: { rounds: 24, searches: 24, reads: 48, seconds: 1800, tokens: 1000000 },
+      },
       sandbox: { runner: 'local', container: {} } },
     messages: [{ id: 'user-1', role: 'user', content: 'Save the plan', created_at: '2026-09-07T00:00:00Z' }],
   }
@@ -63,7 +68,7 @@ async function fixture(t, { approval = null, auth = false, durable = false } = {
     const path = new URL(route.request().url()).pathname
     const method = route.request().method()
     const json = (body, status = 200) => route.fulfill({ status, json: body })
-    if (path === '/api/files/alpha/saved/answer-old/0') {
+    if (/^\/api\/files\/alpha\/saved\/answer-old\/\d+$/.test(path)) {
       state.savedFileReads.push(path)
       return route.fulfill({ contentType: 'text/plain', body: '# Original retained report\n\nSaved bytes from the original answer.' })
     }
@@ -80,7 +85,11 @@ async function fixture(t, { approval = null, auth = false, durable = false } = {
       state.contextReads.push('turn-project')
       return json({ project_name: 'Infrastructure', profile: 'test', model: 'test-model', history_messages: 0,
         base_instructions: 'Be helpful.', instructions: 'Prefer repairable equipment.', memories: [],
-        calls: [{ profile: 'test', model: 'test-model', kind: 'chat', source_ids: ['source-project'], project_instructions_present: true }],
+        calls: [{ profile: 'test', model: 'test-model', kind: 'chat', source_ids: ['source-project'], project_instructions_present: true,
+          diagnostics: { stage: 'completion_recovery', status: 'completed', finish_reason: 'stop',
+            input_tokens: 2000, reserved_output_tokens: 4000, max_context_tokens: 32000,
+            max_tool_rounds: 20, trimmed: true, reasoning_tokens: 500,
+            setting_sources: { max_tokens: 'runtime', max_context_tokens: 'assistant' } } }],
         sources: [{ id: 'source-project', label: 'S1', title: 'Network notes', available: true, excerpt: 'Retain local backups for 30 days.' }] })
     }
     if (path.startsWith('/api/conversations/alpha/sources/')) {
@@ -144,8 +153,14 @@ async function fixture(t, { approval = null, auth = false, durable = false } = {
     if (path === '/api/providers') return json({ profiles: [{ name: 'test', label: 'Test', model: 'test-model' }] })
     if (path === '/api/providers/test/models') { state.modelReads++; return json(state.modelCatalog) }
     if (path === '/api/settings/suggestions') return json({ suggestions: [] })
+    if (path === '/api/settings/research') return state.researchReadError ? json({ detail: 'Unavailable' }, 503) : json({ presets: state.config.research, source_limit: 64, conversation_source_limit: 512 })
     if (path === '/api/usage/budget') return json({ budgets: [] })
     if (path === '/api/admin/config') return json(state.config)
+    if (path === '/api/admin/config/research' && method === 'PUT') {
+      state.config.research = route.request().postDataJSON()
+      state.researchSaves.push(state.config.research)
+      return json(state.config)
+    }
     if (path === '/api/admin/config/profiles/discover') {
       state.discoveryRequests.push(route.request().postDataJSON())
       return json(state.modelCatalog)
@@ -273,6 +288,131 @@ async function fixture(t, { approval = null, auth = false, durable = false } = {
 async function openApproval(page) {
   await page.getByText('Approval chat', { exact: true }).click()
   await page.getByText('Approval needed', { exact: true }).waitFor()
+}
+
+test('saved answer outcomes and effective model limits remain inspectable', async (t) => {
+  const { page, state } = await fixture(t)
+  state.messages.push({ id: 'incomplete-answer', role: 'assistant', content: 'Saved partial finding.',
+    usage: { turn_id: 'turn-project', outcome: 'limit_reached', total: 120,
+      completion: { reason: 'length', recovered: false, recovery_calls: 2 } } })
+  await page.getByText('Approval chat', { exact: true }).click()
+  await page.getByText('Response incomplete — limit reached. Saved progress is retained.', { exact: true }).waitFor()
+  await page.getByRole('button', { name: 'Context record', exact: true }).click()
+  await page.getByText('Model calls', { exact: true }).click()
+  await page.getByText(/Output reserve: 4,000 · Context limit: 32,000 · tool output shortened/).waitFor()
+  await page.getByText(/finish: stop/).waitFor()
+  await page.getByText('Output: current settings/defaults', { exact: true }).waitFor()
+  state.messages.at(-1).usage = { ...state.messages.at(-1).usage, outcome: 'completed',
+    completion: { reason: 'length', recovered: true, recovery_calls: 1 } }
+  await page.getByText('Other chat', { exact: true }).click()
+  await page.getByText('Approval chat', { exact: true }).click()
+  await page.getByText('Answer completed after automatic continuation.', { exact: true }).waitFor()
+  assert.equal(await page.getByText('Response incomplete — limit reached. Saved progress is retained.', { exact: true }).count(), 0)
+})
+
+for (const [path, failure] of [['config', '503'], ['me', '503'], ['me', 'network']]) {
+  test(`startup ${path} ${failure} preserves the session until connection retry`, async (t) => {
+    const { page, state, context } = await fixture(t, { auth: true })
+    state.setup = false
+    state.authenticated = true
+    await page.evaluate(async () => {
+      const { setToken } = await import('/src/api/token.js')
+      setToken('synthetic-preserved-token')
+    })
+    let unavailable = true
+    await context.route(`**/api/auth/${path}`, route => {
+      if (!unavailable) return route.fallback()
+      return failure === 'network' ? route.abort() : route.fulfill({ status: 503, json: { detail: 'Restarting' } })
+    })
+    await page.reload()
+    await page.getByRole('button', { name: 'Retry connection', exact: true }).waitFor()
+    assert.equal(await page.evaluate(() => localStorage.getItem('phlox-token')), 'synthetic-preserved-token')
+    assert.equal(await page.getByRole('button', { name: 'Sign in', exact: true }).count(), 0)
+    assert.equal(await page.getByText('Approval chat', { exact: true }).count(), 0)
+    unavailable = false
+    await page.getByRole('button', { name: 'Retry connection', exact: true }).click()
+    await page.getByText('Approval chat', { exact: true }).waitFor()
+    assert.equal(await page.evaluate(() => localStorage.getItem('phlox-token')), 'synthetic-preserved-token')
+  })
+}
+
+test('a delayed 401 cannot clear a newer login even when the token bytes match', async (t) => {
+  const { page, state, context } = await fixture(t, { auth: true })
+  state.setup = false
+  await page.evaluate(async () => {
+    const { useStore } = await import('/src/store/useStore.js')
+    await useStore.getState().login('tester', 'test-password')
+  })
+  let release
+  let received
+  const pending = new Promise(resolve => { received = resolve })
+  const gate = new Promise(resolve => { release = resolve })
+  await context.route('**/api/auth/me', async route => {
+    received()
+    await gate
+    await route.fulfill({ status: 401, json: { detail: 'Old session rejected' } })
+  })
+  await page.evaluate(async () => {
+    const { api } = await import('/src/api/client.js')
+    window.oldSessionRequest = api.me().catch(() => {})
+  })
+  await pending
+  await page.evaluate(async () => {
+    const { useStore } = await import('/src/store/useStore.js')
+    await useStore.getState().login('tester', 'test-password')
+  })
+  release()
+  await page.evaluate(() => window.oldSessionRequest)
+  assert.equal(await page.evaluate(() => localStorage.getItem('phlox-token')), 'synthetic-test-token')
+  await page.getByText('Approval chat', { exact: true }).waitFor()
+  assert.equal(await page.getByRole('button', { name: 'Sign in', exact: true }).count(), 0)
+})
+
+for (const differentOwner of [false, true]) {
+  test(`reauthentication ${differentOwner ? 'does not reopen another owner’s' : 'reconnects to the owner’s'} run without resubmission`, async (t) => {
+    const { page, state, context } = await fixture(t, { auth: true, durable: true })
+    state.setup = false
+    state.run = { id: 'run-1', conversation_id: 'alpha', status: 'running' }
+    state.events = [{ type: 'token', content: 'Retained research progress.' }]
+    const login = async () => {
+      await page.getByLabel('Username', { exact: true }).fill('tester')
+      await page.getByLabel('Password', { exact: true }).fill('test-password')
+      await page.getByRole('button', { name: 'Sign in', exact: true }).click()
+    }
+    await login()
+    await page.getByText('Approval chat', { exact: true }).click()
+    await page.getByText('Retained research progress.', { exact: true }).waitFor()
+    await context.route('**/api/auth/me', route => route.fulfill({ status: 401, json: { detail: 'Session expired' } }))
+    await page.evaluate(async () => {
+      const { api } = await import('/src/api/client.js')
+      await api.me().catch(() => {})
+    })
+    await page.getByText('Your session ended. Sign in again to return to your saved work.', { exact: true }).waitFor()
+    assert.deepEqual(await page.evaluate(async () => {
+      const { useStore } = await import('/src/store/useStore.js')
+      const s = useStore.getState()
+      return [s.run, s.live, s.messages.length, s.conversations.length, s.activeId]
+    }), [null, null, 0, 0, null])
+    if (differentOwner) await context.route('**/api/auth/login', route => route.fulfill({ json: {
+      token: 'synthetic-other-token', user: { id: 'other', username: 'another', role: 'user' },
+    } }))
+    const before = state.cursors.length
+    await login()
+    await page.getByText('Approval chat', { exact: true }).waitFor()
+    if (differentOwner) {
+      assert.equal(await page.evaluate(async () => {
+        const { useStore } = await import('/src/store/useStore.js')
+        return useStore.getState().activeId
+      }), null)
+      assert.equal(state.cursors.length, before)
+    } else {
+      await page.getByText('Retained research progress.', { exact: true }).waitFor()
+      assert.ok(state.cursors.length > before)
+    }
+    assert.equal(state.creates.length, 0)
+    assert.equal(state.cancellations, 0)
+    assert.equal(state.decisions.length, 0)
+  })
 }
 
 test('partial call usage stays visibly unknown in message receipts and chargeback', async (t) => {
@@ -718,6 +858,79 @@ test('failed web citations show an unavailable fetch without an evidence passage
   assert.equal(await page.getByRole('dialog').locator('blockquote').count(), 0)
 })
 
+test('PDF, JSON and public API citations show provenance after reload', async t => {
+  const { page, state } = await fixture(t)
+  state.sources['source-1'] = { ...webSourceFixture(), location: { ...webSourceFixture().location,
+    format: 'pdf', page: 12, page_count: 40 } }
+  state.messages.push({ id: 'format-cited', role: 'assistant', content: 'Funding [S1].', citations: [sourceRef] })
+  await page.getByText('Approval chat', { exact: true }).click()
+  await page.getByRole('button', { name: 'View source S1', exact: true }).click()
+  await page.getByRole('dialog').getByText('Page 12', { exact: true }).waitFor()
+  await page.getByRole('dialog').getByText(/Verify complex tables/).waitFor()
+  await page.keyboard.press('Escape')
+  state.sources['source-1'] = { ...webSourceFixture(), excerpt: '[{"amount":45,"categories":["research"]}]',
+    location: { ...webSourceFixture().location, format: 'json', json_pointer: '/results', item_start: 5, item_end: 6, total_items: 100 } }
+  await page.reload()
+  await page.getByText('Approval chat', { exact: true }).click()
+  await page.getByRole('button', { name: 'View source S1', exact: true }).click()
+  const dialog = page.getByRole('dialog')
+  await dialog.getByText('JSON pointer: /results', { exact: true }).waitFor()
+  await dialog.getByText(/Array items \[5, 6\) of 100/).waitFor()
+  await dialog.getByText(state.sources['source-1'].excerpt, { exact: true }).waitFor()
+  await page.keyboard.press('Escape')
+  state.sources['source-1'] = { ...webSourceFixture(), location: { ...webSourceFixture().location,
+    format: 'api', adapter: 'nih_projects', method: 'POST', offset: 5, item_end: 10, total_records: 15,
+    next_offset: 10, request: { criteria: { org_names: ['Example'], fiscal_years: [2024] }, offset: 5, limit: 5 } } }
+  await page.reload()
+  await page.getByText('Approval chat', { exact: true }).click()
+  await page.getByRole('button', { name: 'View source S1', exact: true }).click()
+  await dialog.getByText(/Records \[5, 10\) of 15/).waitFor()
+  await dialog.getByText(/More API pages remain/).waitFor()
+  await dialog.getByText('Retrieval query', { exact: true }).click()
+  await dialog.locator('pre').filter({ hasText: 'fiscal_years' }).waitFor()
+  await dialog.getByText('Opening the endpoint does not replay the saved query.', { exact: true }).waitFor()
+  await page.keyboard.press('Escape')
+  state.sources['source-1'] = { ...webSourceFixture(), location: { ...webSourceFixture().location,
+    format: 'api', adapter: 'pubmed', method: 'GET', offset: 0, item_end: 2, total_records: 50,
+    next_offset: 2, query_translation: '"asthma"[Title]',
+    request: { query: 'asthma[Title]', sort: 'pub date', offset: 0, limit: 2 } } }
+  await page.reload()
+  await page.getByText('Approval chat', { exact: true }).click()
+  await page.getByRole('button', { name: 'View source S1', exact: true }).click()
+  await dialog.getByText('Public API · pubmed · GET', { exact: true }).waitFor()
+  await dialog.getByText('PubMed interpreted query: "asthma"[Title]', { exact: true }).waitFor()
+  await dialog.getByText('Retrieval query', { exact: true }).click()
+  await dialog.locator('pre').filter({ hasText: 'asthma[Title]' }).waitFor()
+  await page.keyboard.press('Escape')
+  state.sources['source-1'] = { ...webSourceFixture(), excerpt: '{"abstract_status":"available","text":"OBJECTIVE: Example abstract."}',
+    location: { ...webSourceFixture().location, format: 'api_record', adapter: 'pubmed', method: 'GET',
+      record_id: '103', section: 'abstract', selection: { start: 0, end: 4000, total: 6000, next_start: 4000, unit: 'characters' },
+      request: { record_id: '103', section: 'abstract', start: 0, max_chars: 4000 } } }
+  await page.reload()
+  await page.getByText('Approval chat', { exact: true }).click()
+  await page.getByRole('button', { name: 'View source S1', exact: true }).click()
+  await dialog.getByText('API record · pubmed · 103', { exact: true }).waitFor()
+  await dialog.getByText('Selection [0, 4000) of 6000 characters', { exact: true }).waitFor()
+  await dialog.getByText(/More of this selection remains/).waitFor()
+  await dialog.getByText('Record retrieval', { exact: true }).click()
+  await dialog.locator('pre').filter({ hasText: 'max_chars' }).waitFor()
+  await page.keyboard.press('Escape')
+  state.sources['source-1'] = { ...webSourceFixture(), excerpt: '{"has_results":false,"section_status":"missing"}',
+    location: { ...webSourceFixture().location, format: 'api_record', adapter: 'clinical_trials', method: 'GET',
+      record_id: 'NCT00000001', section: 'results', selection: { start: 0, end: 0, total: 0, next_start: null, unit: 'characters' },
+      retrieval: [{ operation: 'detail', attempts: [{ status: 'http_error', http_status: 503, retry_delay_seconds: 1 }, { status: 'ok', http_status: 200 }] }],
+      request: { record_id: 'NCT00000001', section: 'results', start: 0, max_chars: 3000 } } }
+  await page.reload()
+  await page.getByText('Approval chat', { exact: true }).click()
+  await page.getByRole('button', { name: 'View source S1', exact: true }).click()
+  await dialog.getByText('API record · clinical_trials · NCT00000001', { exact: true }).waitFor()
+  await dialog.getByText('API retrieval attempts', { exact: true }).click()
+  await dialog.getByText('detail: 2 HTTP attempt(s), 1 automatic retry/retries.', { exact: true }).waitFor()
+  await dialog.getByText(/Overall recruitment can differ from site status; posted results are separate/).waitFor()
+  assert.equal(await dialog.getByText(/Full article text was not retrieved/).count(), 0)
+  await dialog.getByText(state.sources['source-1'].excerpt, { exact: true }).waitFor()
+})
+
 test('saved citations inspect exact evidence, preserve code, reload and recheck revoked access', async (t) => {
   const { page, state } = await fixture(t)
   state.sources['source-1'] = sourceFixture()
@@ -864,19 +1077,74 @@ test('admin tests unsaved search, sees fallback, and saved keys are masked', asy
   await panel.getByRole('link', { name: 'searx.space', exact: true }).waitFor()
 })
 
+test('admin research allowances update the composer and preserve lower model settings', async (t) => {
+  const { page, state } = await fixture(t)
+  await page.getByText('Approval chat', { exact: true }).click()
+  await page.getByRole('combobox', { name: 'Chat mode', exact: true }).selectOption('research')
+  await page.getByRole('combobox', { name: 'Research depth' }).selectOption('thorough')
+  await page.getByText(/Your Model setting is 3 passes/).waitFor()
+  await page.getByTitle('Settings', { exact: true }).click()
+  await page.getByRole('button', { name: 'Configuration', exact: true }).click()
+  const form = page.getByRole('form', { name: 'Research allowances' })
+  await form.getByRole('spinbutton', { name: 'Thorough Source reads', exact: true }).fill('60')
+  await form.getByRole('spinbutton', { name: 'Thorough Reported token threshold', exact: true }).fill('1500000')
+  await form.getByRole('button', { name: 'Save research allowances' }).click()
+  await form.getByText(/Saved. New research uses these presets/).waitFor()
+  assert.equal(state.researchSaves[0].thorough.reads, 60)
+  assert.equal(state.researchSaves[0].thorough.tokens, 1500000)
+  assert.equal(state.settings.max_tool_rounds, 3)
+  await page.getByRole('heading', { name: 'Settings', exact: true }).locator('..').getByRole('button').click()
+  await page.getByText(/60 source reads · 30 minutes · 1,500,000 reported tokens/).waitFor()
+  await page.getByText(/Your Model setting is 3 passes/).waitFor()
+  assert.equal(state.chatRequests.length, 0)
+  await page.setViewportSize({ width: 390, height: 844 })
+  const bounds = await page.getByLabel('Research budget', { exact: true }).boundingBox()
+  assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= 390)
+})
+
+test('unavailable research settings never display guessed allowances', async (t) => {
+  const { page, state } = await fixture(t)
+  state.researchReadError = true
+  await page.getByText('Approval chat', { exact: true }).click()
+  await page.getByRole('combobox', { name: 'Chat mode', exact: true }).selectOption('research')
+  await page.getByText(/Research allowances could not be loaded/).waitFor()
+  assert.equal(await page.getByLabel('Research budget', { exact: true }).count(), 0)
+})
+
 test('research progress replays after reload with its plan and counters', async (t) => {
   const { page, state } = await fixture(t, { durable: true })
   state.run = { id: 'run-1', conversation_id: 'alpha', status: 'running' }
-  state.events = [{ type: 'research', phase: 'gather', started_at: Date.now()/1000, plan: 'Compare dates and policy allowances.', searches: 2, reads: 1, limits: { searches: 6, reads: 8 }, source_count: 3, usage: {} }]
+  state.events = [{ type: 'research', phase: 'gather', started_at: Date.now()/1000, plan: 'Compare dates and policy allowances.', searches: 2, reads: 1, limits: { searches: 6, reads: 8, tokens: 80000, seconds: 600 }, source_count: 3, source_capacity: 61, rounds_used: 4, effective_rounds: 8, model_round_limit: 12, limits_restricted: true, usage: { total: 0, unknown_usage_calls: 1 } }]
+  state.events[0].notebook = { revision: 2,
+    findings: [{ text: 'The allowance is $45.', sources: ['S1'] }],
+    disagreements: [{ text: 'The older report uses a different period.', sources: ['S1', 'S2'] }],
+    questions: ['Which period applies?'], unavailable_sources: ['S3'],
+    context: { condensed_exchanges: 4, restored_sources: ['S1'], omitted_sources: ['S2'] } }
   await page.getByText('Approval chat', { exact: true }).click()
   await page.getByRole('region', { name: 'Research progress' }).getByText('Gathering evidence', { exact: true }).waitFor()
+  await page.getByText('Research notebook · revision 2', { exact: true }).click()
+  await page.getByText('Which period applies?', { exact: true }).waitFor()
   await page.reload(); await page.getByText('Approval chat', { exact: true }).click()
   const progress = page.getByRole('region', { name: 'Research progress' })
+  await progress.getByText(/4 model passes used · 8 planned including report · 12 total pass ceiling/).waitFor()
+  await progress.getByText(/Stricter administrator limits applied/).waitFor()
+  await progress.getByText(/61 new source records available/).waitFor()
+  await progress.getByText(/Some model usage is unreported/).waitFor()
   await progress.waitFor()
   assert.equal(await progress.count(), 1)
   await progress.getByText('Research plan', { exact: true }).click()
   await progress.getByText('Compare dates and policy allowances.', { exact: true }).waitFor()
   assert.match(await progress.textContent(), /2\/6 searches/)
+  await progress.getByText('Research notebook · revision 2', { exact: true }).click()
+  await progress.getByText('Which period applies?', { exact: true }).waitFor()
+  assert.match(await progress.textContent(), /The allowance is \$45\. \[S1\]/)
+  assert.match(await progress.textContent(), /Notes withheld because their sources are unavailable: S3/)
+  assert.match(await progress.textContent(), /Original passages restored: S1/)
+  assert.match(await progress.textContent(), /context limits: S2/)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.getByTitle('Toggle sidebar', { exact: true }).click()
+  const layout = await progress.evaluate(el => ({ width: el.clientWidth, scroll: el.scrollWidth }))
+  assert.ok(layout.width >= 200 && layout.scroll <= layout.width + 1, JSON.stringify(layout))
 })
 
 test('streaming respects reading position and Jump to latest restores following', async (t) => {
@@ -943,6 +1211,39 @@ test('editing preserves prompt alternatives and a failed retry leaves the old an
   await page.getByText('The original approach.', { exact: true }).waitFor()
 })
 
+
+test('repeated artifact events and historical file updates display one card per path', async t => {
+  const { page, state } = await fixture(t)
+  state.messages.push({ id: 'answer-old', role: 'assistant', content: 'Final files.', artifacts: [
+    ...Array.from({ length: 4 }, (_, i) => ({ name: 'report.md', path: 'report.md', ext: '.md', snapshot_status: 'saved', snapshot_index: i, url: `/api/files/alpha/saved/answer-old/${i}` })),
+    { name: 'report.md', path: 'other/report.md', ext: '.md', snapshot_status: 'saved', url: '/api/files/alpha/saved/answer-old/4' },
+    { name: 'removed.txt', path: 'removed.txt', ext: '.txt', snapshot_status: 'unavailable' },
+  ] })
+  await page.getByText('Approval chat', { exact: true }).click()
+  await page.getByText('Final files.', { exact: true }).waitFor()
+  assert.equal(await page.getByTitle('Open in canvas', { exact: true }).count(), 2)
+  assert.equal(await page.getByText('Saved with this answer', { exact: true }).count(), 2)
+  assert.equal(await page.getByRole('button', { name: 'removed.txt', exact: true }).isDisabled(), true)
+  await page.getByText('Unavailable when this answer was saved · no saved copy', { exact: true }).waitFor()
+  await page.getByTitle('Open in canvas', { exact: true }).first().click()
+  await page.getByRole('heading', { name: 'Original retained report', exact: true }).waitFor()
+  assert.ok(state.savedFileReads.includes('/api/files/alpha/saved/answer-old/3'))
+  await page.getByTitle('Close', { exact: true }).click()
+  await page.reload(); await page.getByText('Approval chat', { exact: true }).click()
+  await page.getByText('Final files.', { exact: true }).waitFor()
+  assert.equal(await page.getByTitle('Open in canvas', { exact: true }).count(), 2)
+  // Existing DB metadata and indices stay intact; rendering alone fixes old answers.
+  assert.equal(state.messages.at(-1).artifacts.length, 6)
+  const paths = await page.evaluate(async () => {
+    const { useStore } = await import('/src/store/useStore.js')
+    useStore.setState({ streaming: true, canvasEditing: true, live: { content: 'Live files', sources: [], toolCalls: [], artifacts: [], thinking: '' } })
+    for (const path of ['game.html', 'game.html', 'other/game.html', 'game.html']) {
+      useStore.getState()._onEvent({ type: 'artifact', name: path, path, ext: '.html' })
+    }
+    return useStore.getState().live.artifacts.map(a => a.path)
+  })
+  assert.deepEqual(paths, ['game.html', 'other/game.html'])
+})
 
 test('saved artifact canvas and download use answer bytes', async t => {
   const { page, state } = await fixture(t)
@@ -1128,4 +1429,28 @@ test('selected revision preserves CRLF outside the passage and keyboard selectio
   await page.getByText('Saved version 2.', { exact: false }).waitFor()
   assert.equal(editor.revisions[0].start, 15)
   assert.equal(editor.saves[0].content, '🌸 First line.\r\nA concise paragraph.\r\nKeep this section.')
+})
+
+
+test('partial research delivery preserves available reports and missing chart details after reload', async (t) => {
+  const { page, state } = await fixture(t)
+  state.messages.push({ id: 'partial-report', role: 'assistant', content: 'Data collected; chart unfinished.',
+    usage: { research: { phase: 'limit_reached', started_at: 1790000000, finished_at: 1790000400,
+      searches: 1, reads: 2, source_count: 2, limits: { searches: 8, reads: 16, tokens: 250000, seconds: 900 },
+      rounds_used: 20, effective_rounds: 20, model_round_limit: 20, analysis_enabled: true,
+      delivery: { status: 'partial', available_files: ['api-dataset-test/report.html', 'api-dataset-test/records.csv'], missing_files: ['chart.png'] },
+    } }, created_at: '2026-09-21T00:00:00Z',
+  })
+  await page.getByText('Approval chat', { exact: true }).click()
+  const delivery = page.getByLabel('Research deliverables', { exact: true })
+  await delivery.getByText('Partially delivered · 2 available · 1 missing').click()
+  await delivery.getByText(/Available: api-dataset-test\/report.html/).waitFor()
+  await delivery.getByText('Missing or empty: chart.png').waitFor()
+  await page.reload()
+  await page.getByText('Approval chat', { exact: true }).click()
+  await delivery.getByText('Partially delivered · 2 available · 1 missing').click()
+  await delivery.getByText('Missing or empty: chart.png').waitFor()
+  await page.setViewportSize({ width: 390, height: 844 })
+  const bounds = await delivery.boundingBox()
+  assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= 390)
 })

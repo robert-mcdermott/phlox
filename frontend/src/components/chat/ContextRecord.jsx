@@ -22,7 +22,15 @@ export default function ContextRecord({ conversationId, turnId }) {
         <p className="text-muted">This records attempted provider calls and complete retained passages found in their fitted input. It does not prove the provider processed them. Shortened or omitted passages are not listed as fully supplied. Guardrails and context limits still apply.</p>
         <p>{data.calls.length} recorded calls · {data.history_messages} prior messages eligible{data.calls_truncated ? ' · Call record limit reached' : ''}</p>
         <details><summary className="cursor-pointer">Prepared instructions</summary><p className="mt-1 whitespace-pre-wrap break-words">{data.base_instructions}</p>{data.instructions && <p className="mt-2 whitespace-pre-wrap break-words">Project: {data.instructions}</p>}</details>
-        <details><summary className="cursor-pointer">Model calls</summary>{data.calls.map((c, i) => <p key={i}>{i + 1}. {c.profile || data.profile} · {c.model} · {c.kind} · {c.source_ids.length} complete passages{c.project_instructions_present ? ' · project instructions present' : ''}</p>)}</details>
+        <details><summary className="cursor-pointer">Model calls</summary>{data.calls.map((c, i) => <div key={i} className="mt-2">
+          <p>{i + 1}. {c.profile || data.profile} · {c.model} · {c.kind} · {c.source_ids.length} complete passages{c.project_instructions_present ? ' · project instructions present' : ''}</p>
+          {c.diagnostics && <>
+            <p className="text-muted">{c.diagnostics.stage?.replaceAll('_', ' ')} · {c.diagnostics.status} · finish: {c.diagnostics.finish_reason || 'not recorded'}</p>
+            <p>Estimated input: {c.diagnostics.input_tokens?.toLocaleString()} · Output reserve: {c.diagnostics.reserved_output_tokens?.toLocaleString()} · Context limit: {c.diagnostics.max_context_tokens?.toLocaleString()}{c.diagnostics.trimmed ? ' · tool output shortened' : ''}{c.diagnostics.profile_context_window != null ? ` · Profile cap: ${c.diagnostics.profile_context_window.toLocaleString()}` : ''}</p>
+            <p className="text-muted">Round limit: {c.diagnostics.max_tool_rounds ?? 'not applicable'}{c.diagnostics.reasoning_tokens != null ? ` · Reported reasoning: ${c.diagnostics.reasoning_tokens.toLocaleString()} (included in output)` : ''}</p>
+            {Object.entries(c.diagnostics.setting_sources || {}).map(([key, source]) => <span key={key} className="mr-3 text-muted">{{ temperature: 'Temperature', max_tokens: 'Output', max_context_tokens: 'Context', max_tool_rounds: 'Rounds' }[key] || key}: {source === 'runtime' ? 'current settings/defaults' : source.replaceAll('_', ' ')}</span>)}
+          </>}
+        </div>)}</details>
         <div><b>Memory</b>{!data.memories.length && <p className="text-muted">No personal memories prepared.</p>}
           {data.memories.map(m => <p key={m.id} className="my-1 break-words">{m.available ? m.content : 'Memory removed.'} <span className="text-muted">{m.supplied ? 'Present in outbound input' : 'Not confirmed in outbound input'}</span></p>)}</div>
         <div><b>Passages supplied to a model call</b>{!data.sources.length && <p className="text-muted">No complete retained source passages confirmed in outbound input.</p>}

@@ -98,9 +98,11 @@ your existing login; a new admin password is not generated on every restart. Do 
 the example over your working config, delete the database, or select a new data directory
 to enable a feature. See [upgrades and backups](#upgrades-and-backups).
 
-In development, omitting `PHLOX_JWT_SECRET` creates an ephemeral signing secret: restarting
-the backend signs you out. Set a strong, stable secret if you want sessions to survive
-restarts. Never commit the secret or your populated config. [AUTH.md](AUTH.md) covers
+The development launchers watch application source only, so agent-generated Python files
+do not restart Phlox. Without a configured signing secret, they generate one secret for
+the launcher lifetime: source reloads keep your login, but stopping and starting the
+launcher signs you out. Set a strong, stable `PHLOX_JWT_SECRET` to retain sessions across
+full restarts. Never commit the secret or your populated config. [AUTH.md](AUTH.md) covers
 accounts, password resets, and Entra ID SSO.
 
 ### Start, stop, and production preparation
@@ -116,6 +118,14 @@ accounts, password resets, and Entra ID SSO.
 Ctrl+C also stops a foreground launcher. Use the chat's **Stop** and wait for active work
 before planned shutdown. Browser disconnection and server shutdown have different effects;
 see [reconnectable runs](#reconnectable-runs-and-stop).
+
+The supported server gives active work and cleanup 30 seconds to stop, then forces process
+exit if necessary. `PHLOX_SHUTDOWN_SECONDS` changes this deadline (1–300 seconds). Keep
+service/container stop timeouts at least five seconds longer. For a manual production
+launch, use `uv run -m app.server --host 127.0.0.1 --port 8000` from `backend/`; existing
+systemd installations should update their [service command](DEPLOYMENT.md). Windows stop
+scripts remain forced termination. Saved progress survives, but interrupted actions are
+never replayed automatically. See [shutdown and restart](RUNS.md#shutdown-and-restart).
 
 Before `prod` with auth enabled, configure `sandbox.runner: container` or `agentcore`, make
 that runner available, and supply **`PHLOX_JWT_SECRET` with at least 32 bytes of high-entropy
@@ -148,7 +158,7 @@ For development, from `backend/` after preparing the config:
 
 ```bash
 uv sync --frozen --inexact
-uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+uv run -m app.dev --host 127.0.0.1 --port 8000
 ```
 
 In another terminal, from `frontend/`:
@@ -162,6 +172,12 @@ Install the backend's `postgres` extra if needed. After dependency updates, reru
 even if `node_modules` exists. In production, build the frontend with `npm run build` and
 run a single backend without `--reload`, with the production environment and security
 settings above. The Linux guide includes the service definition.
+
+Use `app.dev` for manual development startup too. Running raw Uvicorn with unrestricted
+`--reload` from `backend/` also watches generated workspace scripts, which can restart the
+server during an agent task. Source edits still intentionally restart the backend; finish
+or Stop active work before editing server code. The development secret stays in the
+launcher process and its children; it is not written to disk or exported to your shell.
 
 ## Configure model providers
 
@@ -269,6 +285,7 @@ admin panel for sections already managed there. Do not erase your database to re
 | `auth` / Entra settings | File; JWT secret via environment for production | Restart required |
 | `database.url`, `vector_store`, `embeddings` | File; `DATABASE_URL` can override database URL | Restart; index maintenance may be needed |
 | Web search engine | Settings → Configuration → Web search; DDG default, Serper/SearXNG optional | Live |
+| Research presets | Settings → Configuration → Research allowances | New execution snapshots limits; approval resumes may apply stricter limits |
 | `web_fetch` network policy | File | Restart for file changes |
 | `observability.request_logging`, `observability.otel` | File | Restart required |
 | `default_profile` | File | Initial/default selection; does not reset saved selections |
@@ -284,6 +301,33 @@ context limits cover input/history and need room for output and tool schemas. Co
 summarizes older history, and estimated fit checks can reject oversized requests before
 sending. Round limits are cumulative across approval resumes. [MODEL_CALLS.md](MODEL_CALLS.md)
 explains estimation, provider ceilings, retries, fallback, and accounting boundaries.
+
+Generation changes apply to the next turn in existing chats as well as new chats; assistant
+and explicit conversation overrides take precedence. Approval resumes can adopt stricter
+limits but never extend the saved allowance. Ordinary agents reserve a final tool-free pass
+when more than one pass is allowed. Empty/truncated answers can use up to two tool-free
+continuation calls within the effective round limit, retaining the answer and collected
+evidence. No truncated tool request is executed. Stop still prevents further calls.
+When output guardrail rules are active, automatic continuation is unavailable; Phlox keeps
+the partial answer marked incomplete so text cannot bypass checks across joined responses.
+
+Saved answers show whether completion recovered or remains incomplete. Open **Context record
+→ Model calls** for effective output/context/round limits, their setting origins, trimming
+and provider finish reasons. Research's separate gathering presets are admin-editable under
+**Configuration → Research allowances**; increasing Max tool rounds does not enlarge
+search/read/time/token allowances. The composer shows the current presets and flags a lower
+Model setting. Thorough defaults to 24 planned passes, 24 searches, 48 source reads and
+30 minutes/1,000,000 reported tokens before gathering stops; a lower effective Model limit
+still wins. An approved analysis handoff can use remaining Model rounds to create and verify
+files after the evidence-pass allowance ends; it does not add searches, reads, time or tokens.
+Research progress distinguishes available files from missing deliverables. Report writing can add usage, and source storage bounds still apply. See the
+[Research guide](RESEARCH.md#depth-and-limits) for all presets and configuration ranges. If a limit still prevents
+completion, review the saved work and its diagnostic before changing that limit. Continue
+in Chat, or send a new Research prompt in the **same conversation**, explicitly naming the
+retained dataset ID and relevant file paths. A new Research request starts from its own
+question and selected sources; it does not automatically replay the previous transcript.
+See [finishing a report from an earlier collection](RESEARCH.md#finishing-a-report-from-an-earlier-collection)
+for a reusable prompt that avoids downloading complete data again.
 
 ## Appearance
 
@@ -413,8 +457,42 @@ excerpt, filename, available PDF page or section/table location, chunk range, an
 are marked; invented references are unverified. Model-generated citations in older messages
 are not retroactively upgraded. This feature is always available in both chat modes, with
 no separate flag. It currently covers personal documents and assistant knowledge bases;
-successfully fetched HTML/text web pages also use the captured-evidence registry. Search
-snippets remain discovery leads until Phlox fetches their pages.
+successfully fetched HTML/text, PDF and JSON web sources also use the captured-evidence registry. Search
+snippets remain discovery leads until Phlox fetches their pages. For long pages, the agent
+can retrieve a passage matching keywords or read later sections by offset. It can also
+reread retained web citations without fetching again. See [focused reading and saved
+evidence](WEB_SOURCES.md#focused-reading-and-saved-evidence) for scope and limits.
+Public PDFs retain page citations; JSON values and array selections retain field paths
+and record ranges without splitting records or rounding numeric text. See
+[PDF and JSON reading](WEB_SOURCES.md#pdf-and-json-sources) for examples and bounds.
+For structured data, the [public API query tool](PUBLIC_API.md) can read NIH RePORTER
+projects by organization/year, PubMed publications or ClinicalTrials.gov studies, with
+validated, cited pagination. Selected PubMed records can then supply cited abstracts and
+author affiliations. ClinicalTrials.gov supports condition/status/sponsor/location searches
+and cited study sections covering eligibility, interventions, sponsors, sites and posted results.
+Temporary API failures are retried automatically within the existing deadline, with at
+most three attempts per HTTP operation. Stop remains available. Expand **API retrieval
+attempts** in a citation to inspect recovery; see [retry behavior](PUBLIC_API.md#temporary-failures-and-automatic-retries).
+Full article text remains outside this workflow. It preserves
+the query for inspection; sampled NIH pages are not complete annual funding totals.
+When downloadable data is requested, [dataset export](API_DATASETS.md) creates CSV/JSON
+records, an adapter-specific summary and a retrieval manifest from retained API pages. File
+creation uses normal approvals, and incomplete coverage and missing values stay explicit.
+For large queries, [bulk collection](API_DATASETS.md#multi-page-collection) uses an initial
+preview's `source` label, stores larger pages privately and returns a `dataset_id` for
+continuation, inspection and reporting. NIH pages can hold 500 projects; PubMed and
+ClinicalTrials.gov pages can hold 100 records. Each bulk invocation uses one Research read
+and one compact dataset-manifest citation. Stop preserves validated pages for explicit
+resume. The older `labels` path still uses a read/citation per page.
+For requested tables and charts, [dataset reports](DATASET_REPORTS.md) inspect retained
+columns, calculate filtered/grouped counts or exact numeric sums, and deliver a standalone
+HTML report plus data/analysis files. Reports preserve partial coverage, unknown values and
+source references. They need normal file approval and no extra API reads or dependencies.
+For custom scripts and charts, approve the [Research analysis handoff](RESEARCH.md#analysis-handoff);
+normal execution permissions and configured sandbox networking still apply. Declared missing
+output files are reported as a delivery failure. Optional detail exports preserve captured article/study selections separately. See
+the [PubMed demo](PUBLIC_API.md#manual-verification-fred-hutch-demo) and
+[ClinicalTrials.gov demo](PUBLIC_API.md#manual-verification-clinicaltrialsgov-demo).
 
 Access is rechecked on each source read/export. Source excerpts expire 30 days after last
 capture; deletion removes source snapshots and leaves unavailable labels. Historical answer/
@@ -557,7 +635,7 @@ secret environment**. Enabling runs or citations does not require a fresh databa
    frontend (`npm ci` then `npm run build`) for production. The development launcher does
    not refresh existing frontend dependencies automatically after every lockfile change.
 4. Start normally. Checked Alembic migrations run before application bootstrap. Current
-   head is `0008_artifacts`; this includes artifact versions, conversation alternatives, projects and the earlier run/source migrations even with runs
+   head is `0009_api_datasets`; this adds private bulk data and includes artifact versions, conversation alternatives, projects and the earlier run/source migrations even with runs
    disabled. Do not stamp a database manually or overwrite it with an empty one.
 5. Check `/api/readiness`, sign in, and verify an existing conversation and document.
 
@@ -587,7 +665,9 @@ automatic replay. Full commands and limitations: [BACKUP_RESTORE.md](BACKUP_REST
 | Poor document retrieval | Check processing status and extraction quality; an admin can rebuild unknown/changed embedding identities. Keyword-only search may miss paraphrases; see [INGESTION.md](INGESTION.md) |
 | Code import fails | Package exists inside the selected execution environment; ephemeral containers do not retain ad-hoc installs |
 | MCP connection fails | Command/dependencies installed where Phlox runs, correct transport/URL/credentials, current connection state and tool policy |
-| Logged out on restart | Development ephemeral JWT secret; load a stable secret to retain sessions |
+| Logged out after stopping and starting the dev launcher | Set a stable `PHLOX_JWT_SECRET` to retain sessions across full restarts; source reloads through `app.dev` retain the launcher secret |
+| Login/session check cannot reach the server | Use **Retry connection**; network/5xx failures preserve your saved token. A real session rejection requires signing in again |
+| Python execution unexpectedly restarts dev mode | Restart with the updated launcher or `uv run -m app.dev`; unrestricted raw Uvicorn reload watches generated scripts |
 | Unexpected empty app | Check `PHLOX_DATA`, `DATABASE_URL`, mounted storage, and login identity before creating replacement data |
 | Schema check or data lock failure | Preserve data; check the matching upgrade guide and stop the other application process; no manual stamping |
 | Dev page opens but API fails | Backend readiness and Vite proxy target, especially after changing backend ports |
@@ -622,7 +702,13 @@ and a representative document question after setup.
 
 **Chat is the default.** Change **Chat** to **Research** in the composer toolbar for a bounded
 plan/gather/report workflow over selected documents, the web, or both. This is separate
-from the deep-research skill and Agent mode. See [Research mode](RESEARCH.md).
+from the deep-research skill and Agent mode. During longer investigations, expand
+**Research notebook** in the progress panel to inspect source-linked findings, disagreements,
+and open questions. Accepted notes let Phlox condense earlier tool output in model input;
+final writing restores the original cited passages that fit. The full transcript remains
+saved, and the panel identifies unavailable or omitted evidence. Notebook use depends on
+the model. See [Research mode](RESEARCH.md) and its
+[notebook guide](RESEARCH.md#research-notebook-and-working-context).
 
 Unsent text drafts survive chat switches and refresh in the same browser tab; logout clears
 them. Attachments and mode selections are not restored. Scrolling upward during a reply

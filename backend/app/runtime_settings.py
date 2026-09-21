@@ -53,29 +53,20 @@ def get_settings(db: Session, user_id: str | None = None) -> dict[str, Any]:
         v = rows.get(_skey(user_id, k))
         if v is not None:
             merged[k] = v
-    merged["model"] = _heal_model(merged["active_profile"], merged.get("model"))
+    # Catalogs are picker suggestions, not an invocation allowlist. Discovered and
+    # custom IDs must survive even when absent from the profile's static models.
+    pcfg = get_profile(merged["active_profile"]) or {}
+    merged["model"] = rows.get(_skey(user_id, "model")) or pcfg.get("model")
     return merged
 
 
-def _heal_model(profile_name: str, model: str | None) -> str | None:
-    """Keep the active model consistent with the profile catalog.
-
-    If the stored model isn't valid for the active profile (e.g. the profile's models were
-    changed in config.yml, leaving a stale DB value), fall back to the profile's configured
-    model. Prevents a stale DB setting from silently overriding config edits.
-    """
-    pcfg = get_profile(profile_name)
-    if not pcfg:
-        return model
-    known = set(pcfg.get("models") or [])
-    if pcfg.get("model"):
-        known.add(pcfg["model"])
-    if model and known and model not in known:
-        return pcfg.get("model")
-    return model or pcfg.get("model")
-
-
 def update_settings(db: Session, updates: dict[str, Any], user_id: str | None = None) -> dict[str, Any]:
+    updates = dict(updates)
+    profile = updates.get("active_profile")
+    if profile and profile != get_settings(db, user_id)["active_profile"] and not updates.get("model"):
+        # A profile-only switch uses its default rather than carrying the previous
+        # provider's model across. An explicit model in the same update takes priority.
+        updates["model"] = ""
     for key, value in updates.items():
         if key not in _KEYS or value is None:
             continue
@@ -96,3 +87,23 @@ def generation_params(settings: dict[str, Any]) -> dict[str, Any]:
         "max_tool_rounds": settings["max_tool_rounds"],
         "max_context_tokens": settings["max_context_tokens"],
     }
+
+
+def resolve_generation(settings, assistant_params=None, conversation_params=None):
+    """Current settings for each new turn; old conversation params are historical seeds.
+
+    Explicit overrides are marked by the conversation PATCH API so they can be
+    distinguished from the identical-looking snapshots saved when chats were created.
+    """
+    params = generation_params(settings)
+    sources = dict.fromkeys(params, 'runtime')
+    assistant_params = assistant_params or {}
+    params.update(assistant_params)
+    sources.update({key: 'assistant' for key in sources if key in assistant_params})
+    overrides = (conversation_params or {}).get('_generation_overrides', {})
+    for key in sources:
+        if key in overrides:
+            params[key] = overrides[key]
+            sources[key] = 'conversation_override'
+    params['_setting_sources'] = sources
+    return params

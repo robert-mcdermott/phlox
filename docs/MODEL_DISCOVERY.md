@@ -7,6 +7,9 @@ the choices. You can also use **Refresh models**. No Phlox restart is required.
 The same searchable picker is available when editing assistants and choosing a provider's
 default model. Type a name to filter, use arrow keys and Enter to select, or enter an exact
 custom ID. Escape closes the list. Discovery never changes your selected model automatically.
+Your selection is saved even when the ID is absent from the provider's configured list
+or discovery is unavailable. Changing providers selects the new provider's default;
+changing its catalog or default later does not replace your explicit selection.
 
 ## Enable discovery in the admin console
 

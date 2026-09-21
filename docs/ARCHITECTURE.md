@@ -10,7 +10,7 @@
 > opt-in [reconnectable runs](RUNS.md), [document citations](SOURCES.md), and
 > [captured web sources](WEB_SOURCES.md) and private [projects/context records](PROJECTS.md) now ship.
 > [Conversation alternatives](CONVERSATION_ALTERNATIVES.md) and bounded saved answer files now ship.
-> Artifact editing and version diffs remain proposed.
+> [Artifact editing and version diffs](ARTIFACTS.md) also ship.
 
 Phlox is a feature-rich, ChatGPT-style web app. It does
 chat, an agentic tool-using harness (code execution, filesystem, shell, web), document
@@ -40,6 +40,16 @@ OpenAI-compatible endpoint, including local models).
 
 **Two processes.** In dev, Vite (`:5173`) proxies `/api` to FastAPI (`:8000`). In prod,
 FastAPI serves the built SPA from `frontend/dist` (see `backend/app/main.py`).
+
+Both dev launchers call `app.dev`: Uvicorn watches `backend/app` while excluding the
+configured data directory, and reload children inherit one launcher-lifetime JWT secret.
+Generated workspace scripts therefore do not trigger reloads. Real source edits still
+restart the backend; durable runs preserve their existing conservative interruption policy.
+`app.server` wraps Uvicorn with pre-drain cancellation and an overall process shutdown
+watchdog; `app.dev` uses the same wrapper for reload children. `shutdown.py` tracks active
+model/chat cancellation events and rejects new requests during shutdown. The maintenance
+lock remains held through draining and cleanup. A stuck process exits instead of releasing
+its lock while writers remain alive. See [Runs](RUNS.md#shutdown-and-restart).
 
 ## 2. The request lifecycle (most important thing to understand)
 
@@ -128,6 +138,125 @@ supports version comparison/restore, and rejects late proposal events after canc
 See [ARTIFACTS.md](ARTIFACTS.md) for data flow, storage and preview boundaries.
 
 ### Evidence seam
+
+`api_dataset.py` validates and exports retained API pages, using adapter-specific validation/formatting and
+source/request hashes, coverage intervals and duplicate checks. The registered
+`export_api_dataset` tool defaults to Ask and is excluded from read-only children. Research
+advertises it after API capture, with two bounded attempts before synthesis; it consumes
+no read allowance but keeps time/token/pass ceilings. Publication holds the source lock,
+rechecks access/expiry, and atomically renames a fresh staging folder containing the
+bounded data files. Existing artifact events, checkpoints and saved-answer snapshots handle
+delivery. Export itself makes no network/model call and runs no arbitrary code. See [API datasets](API_DATASETS.md).
+
+`api_reports.py` reuses dataset validation, coverage and source authorization for
+`analyze_api_dataset` (Auto-tier column inspection) and `create_api_report` (Ask-tier files).
+`dataset_analysis.py` calculates bounded filters/groups and exact sums over canonical
+retained records, with explicit missing values and overlapping list memberships.
+`dataset_report_html.py` escapes all data and generates static tables and CSS bar charts
+from the same computed values, without scripts or external assets. Report bundles add
+analysis CSV/JSON, recipes/hashes and staged-byte verification to existing atomic publication.
+Research allows four inspections and two reports without new read charges, preserving
+time/token/pass limits and approval counters. Workspace files are not analysis inputs.
+See [Dataset reports](DATASET_REPORTS.md) for limits and remaining delivery boundaries.
+
+`api_collection.py` preserves legacy `labels` acquisition from an existing validated query-page prefix.
+The Ask-tier `collect_api_dataset` tool uses `public_api.capture_query`, per-page Research
+read admission and the shared transport/parser to follow saved continuation recipes.
+Cross-page identity/order/cursor and bundle-size checks run before capturing each new
+page. Committed Source rows are the progress checkpoints; ordered labels are the explicit
+continuation input. No model call is needed between pages, and records are not returned
+in the collection tool result. Progress uses existing tool events; publication uses the
+existing dataset exporter and adds collection status/limits to its manifest. Stop retains
+committed sources without publishing files; failed/limited acquisition can publish a
+reauthorized partial prefix. The legacy path has no separate dataset table, arbitrary HTTP interface or
+automatic replay after process loss. Source expiry, Research-attempt isolation and
+permission checks remain authoritative, including after retries and before publication.
+
+`bulk_datasets.py` handles the `source`/`dataset_id` collection path. Additive migration
+`0009_api_datasets` stores normalized page text and request/retrieval hashes in private
+`ApiDataset` rows anchored to a Source. Pages commit individually; one compact immutable
+manifest citation describes each published revision. Shared transport and validators use
+larger server-selected page sizes; their records bypass model context and per-page citation
+charges. One bounded collection invocation charges one Research read. Scope, Stop, current
+permissions, ownership, expiry, quotas and cross-page consistency are checked throughout.
+The report/export seams accept dataset IDs under a separate 32 MiB bundle bound. Source
+removal/expiry and conversation deletion purge retained datasets; independent saved files
+remain. Revision 0008 metadata is frozen separately so populated upgrades/backups remain valid.
+
+`research_analysis.py` and `begin_research_analysis` provide an Ask-tier capability handoff.
+Existing execution/file tools are eligible but not advertised/admitted before approval;
+afterward each still traverses the ordinary permission gate. Their runner/network policy
+is unchanged and independent of Research fetch domain filters. Declared output paths are
+checked before synthesis; missing/empty files produce an incomplete outcome, with existing
+files listed separately. Existence is not semantic or visual verification. New turns snapshot
+the analysis-pass policy: an approved handoff can use remaining Model rounds after evidence
+passes end, but then evidence tools close. Time/token limits and per-tool permissions still
+apply. Legacy approval snapshots retain their original pass ceilings. Current capability facts are transient per-call
+instructions and advertised tool names are persisted in call diagnostics.
+
+`public_api_adapters.py` defines adapter contracts (identity, endpoint, page validator,
+record key, ordering, notice, output formatter and explicit `retry_safe` review). `api_dataset_formats.py` keeps NIH
+funding calculations separate from PubMed bibliographic projections. Shared export logic
+owns source reauthorization, conflict/coverage checks, manifests and atomic publication;
+existing NIH snapshots remain readable/exportable without a migration.
+
+`public_api.py` orchestrates fixed NIH RePORTER, PubMed and ClinicalTrials.gov read queries.
+The `query_public_api` registry tool accepts bounded filters or a retained source label
+for continuation; it never accepts arbitrary URLs or POST bodies. `web_fetch.read_api_query` (and its POST wrapper)
+reuses DNS pinning, cancellation and byte limits while rejecting redirects. The existing
+parser subprocess validates filters, types, counts and adapter-specific ordering before
+capture. PubMed uses ESearch followed by ESummary within one deadline/read allowance;
+only matched complete metadata pages are captured. It retains query translation and
+bibliographic fields, with no study-finding claims. Web
+source location JSON retains the canonical request, hash and pagination state; continuation
+reauthorizes the source and current Research attempt/domain scope. The tool counts as a
+Research read and uses the shared permission, notebook, source and replay seams. See
+[public API queries](PUBLIC_API.md); bulk acquisition and aggregation remain later work.
+
+`public_api_transport.py` wraps individual reviewed HTTP reads with at most three attempts
+for transient connection/incomplete-response failures and HTTP 408/429/500/502/503/504.
+Exponential backoff, jitter and server `Retry-After` waits share the existing Deadline;
+server cooldowns extend the per-adapter process pacing clock. Successful PubMed ESearch
+is not repeated when ESummary retries. Each attempt reauthorizes source access/capacity/
+scope and repeats DNS/private-network checks; TLS and policy failures stay non-retryable.
+Validation remains outside the retry loop. Captured source location JSON and exported
+manifests retain safe operation/attempt metadata, displayed by the source panel. These
+retries are internal to one Research read and do not replay unrelated tools or actions.
+
+ClinicalTrials.gov uses fixed v2 GET queries, saved opaque page tokens and a small study
+projection. Cursor values are part of per-page provenance, not dataset query identity.
+Its study-detail adapter selects bounded JSON text sections from a single NCT record;
+full-record hashes guard chained selections. Recruitment and posted results are distinct,
+missing fields remain unknown, and the shared source panel/export uses study-specific notices.
+The bounded parser subprocess receives input through a single communication call in an
+exchange thread, avoiding partial-input stalls after polling timeouts. The caller checks
+Stop/deadlines, kills and reaps the child on exit, and joins the exchange before releasing
+one of the two parser slots.
+
+`public_api_details.py` implements retained-source-to-record reading through adapter-owned
+endpoint, request and parser contracts. The query tool's `record_from` mode selects a
+validated ID from a query/detail snapshot, reauthorizes before and after network work,
+and captures an `api_record` source. PubMed EFetch is the first detail adapter: its isolated
+Expat parser rejects entity declarations/resolution, preserves abstract headings and
+per-author affiliation mappings, and exposes bounded text/author selections. Chaining from
+a detail snapshot checks the normalized record hash across subsequent selections. Rereads
+use existing sources without refetching. XML support is internal to reviewed API reads;
+generic web fetching remains unchanged. Dataset `detail_labels` add a separate JSON file
+and manifest provenance, reusing file approval/publication/snapshot handling. No database
+migration, new tool permission or dependency is required.
+
+`web_fetch.py` performs the same DNS-pinned, bounded GET for HTML/text, PDF and JSON.
+PDF/JSON bytes are passed to `web_formats.py`, which admits at most two cancellable parser
+subprocesses sharing the fetch deadline. `web_extract_worker.py` has no application config,
+database or network calls. PDF layout extraction uses the existing pypdf dependency with
+decoder/cumulative expansion bounds and no external image decoder; OS CPU limits apply
+where supported and an address-space limit additionally applies on Linux. JSON selection
+uses strict decoding, depth limits, exact numeric spellings and bounded complete-value
+rendering. It never resolves schema references or API pagination. Source snapshots stay
+`kind=web`; their existing location JSON adds PDF page/count or JSON pointer/array ranges.
+Those fields participate in source identity and survive inspection, rereads, exports,
+approvals, and Research notebook restoration. No schema change or ingestion side effect
+is required; original binaries/raw responses are not saved. See [web sources](WEB_SOURCES.md).
 
 `projects.py` resolves the conversation's pinned project, selected library documents,
 per-turn context options and history compatibility key. `routers/projects.py` exposes
@@ -497,6 +626,21 @@ Quick end-to-end checks that the foundation passed (reproduce any of these):
 
 ## Research and search configuration
 
+`research_notebook.py` holds the turn-local notebook contract and transient provider-input
+projection. The Research-only `update_research_notebook` registry tool validates bounded
+notes against current-attempt sources and applies output rules to visible note text.
+An accepted revision records server-observed call IDs completed before the model response
+that authored the update (not unseen sibling results, even across approvals); normal consolidation
+omits only complete covered exchanges, preserving tool-call/result pairing. Revoked
+notebook evidence also withdraws older complete exchanges and paraphrases. Gathering keeps its last
+two reading results; synthesis restores original cited excerpts within the effective
+context allowance. Source access is rechecked under the existing mutation lock. Notes
+and source text enter as untrusted data, before the usual input guardrail/accounting seam.
+The full canonical messages/tool steps remain saved. Notebook state travels in existing
+approval snapshots, Research events and answer usage; no schema migration or separate
+worker is involved. New attempts do not inherit old notebooks. See the
+[notebook contract and limitations](RESEARCH.md#research-notebook-and-working-context).
+
 [Research mode](RESEARCH.md) is an explicit `ChatRequest.research` option; null preserves
 normal chat. `app/research.py` owns scope, stage, and budget state; `AgentSession` applies
 it to planning/gathering/synthesis and persists it in approvals and message usage metadata.
@@ -504,6 +648,15 @@ The same events use legacy SSE or durable run replay. Selected-source research e
 prior chat history and memory injection. Document filters and redirect URL policy enforce
 the selection at the read seams. Tool arguments are validated against registry schemas
 before approval/dispatch; malformed provider JSON remains invalid.
+
+`research_config.py` validates Brief/Standard/Thorough deployment presets, supplied through
+`config.get_research_config()` and the admin DB overlay. Read-only numerical presets are
+available at `/api/settings/research`; `/api/admin/config/research` requires admin access.
+New execution snapshots limits into Research state, and approval resumes intersect saved
+limits with current policy. Legacy approvals keep their old preset ceilings. Generic Model
+rounds and per-call context/output fitting remain independent. The harness checks remaining
+source-record capacity before gathering and each read so a full evidence store leads to
+synthesis rather than more uncapturable reads. Progress records expose both allowances.
 
 `app/search.py` routes search through the admin DB overlay: DDG, Serper, or SearXNG, with
 a bounded DDG fallback and process-local pacing/cooldown. No new tables or migration are

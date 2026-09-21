@@ -109,7 +109,7 @@ def validate_record(db, conversation, data):
             raise HTTPException(409, 'Selected memory was removed. Start a new turn.')
 
 
-def record_call(scope, provider, messages):
+def record_call(scope, provider, messages, *, call_id=None):
     """Record evidence present in the fitted outbound input, never an entire raw prompt.
 
     Dispatch is an attempt, not proof of provider processing. Guardrail-redacted excerpts
@@ -138,7 +138,7 @@ def record_call(scope, provider, messages):
         sources = db.query(Source).filter_by(conversation_id=conv.id).filter(Source.excerpt.isnot(None)).all()
         seen = [s.id for s in sources if present(s.excerpt)]
         memory_seen = [mid for mid, content in data.get('memories', {}).items() if present(content)]
-        call = {'profile': getattr(provider, 'profile_name', None), 'model': provider.model,
+        call = {'call_id': call_id, 'profile': getattr(provider, 'profile_name', None), 'model': provider.model,
                 'kind': scope.kind, 'source_ids': seen, 'memory_ids': memory_seen,
                 'project_instructions_present': present(data.get('instructions'))}
         calls = data.get('calls', [])
@@ -153,7 +153,20 @@ def record_call(scope, provider, messages):
 
 def public_record(db, conv, row):
     from app.sources import inspect_source
+    from app.models import UsageLedger
     data = deepcopy(row.data)
+    call_ids = [call['call_id'] for call in data.get('calls', []) if call.get('call_id')]
+    ledgers = {call.message_id: call for call in db.query(UsageLedger).filter(
+        UsageLedger.message_id.in_(call_ids), UsageLedger.turn_id == row.turn_id,
+        UsageLedger.conversation_id == conv.id, UsageLedger.user_id == conv.user_id,
+    ).all()}
+    for call in data.get('calls', []):
+        ledger = ledgers.get(call.get('call_id'))
+        if ledger:
+            details = ledger.usage_details or {}
+            call['diagnostics'] = {**details.get('call', {}), 'status': ledger.status,
+                                   'usage_status': ledger.usage_status,
+                                   'reasoning_tokens': details.get('reasoning')}
     memory_ids = {mid for call in data.get('calls', []) for mid in call['memory_ids']}
     memory = []
     for mid, content in data.pop('memories', {}).items():

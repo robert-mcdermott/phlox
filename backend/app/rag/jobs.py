@@ -71,9 +71,12 @@ class Worker:
         self.thread = threading.Thread(target=self.loop, name='phlox-documents', daemon=True)
         self.thread.start()
 
-    def stop(self):
+    def request_stop(self):
         self.stopping.set()
         self.wake.set()
+
+    def stop(self):
+        self.request_stop()
         if self.thread:
             self.thread.join()
             self.thread = None

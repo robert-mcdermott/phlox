@@ -1,13 +1,13 @@
 // Stream an SSE POST endpoint and dispatch events to a handler.
 // onEvent receives the parsed event object ({type, ...}). Returns an abort fn.
-import { authHeaders } from './token'
+import { authHeaders, authFetch } from './token'
 
 export function streamChat(payload, onEvent, onDone, onError, path = '/api/chat') {
   const controller = new AbortController()
 
   ;(async () => {
     try {
-      const res = await fetch(path, {
+      const res = await authFetch(path, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify(payload),

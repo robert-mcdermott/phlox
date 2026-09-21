@@ -40,6 +40,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped
+    stop_grace_period: 40s
 
   # ── Optional: run Qdrant as a server instead of embedded ───────────────────
   # Enable with:  docker compose --profile with-qdrant up -d --build

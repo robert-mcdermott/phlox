@@ -6,6 +6,7 @@ import {
 import { api } from '../../api/client'
 import { useStore } from '../../store/useStore'
 import SearchSettings from './SearchSettings'
+import ResearchSettings from './ResearchSettings'
 import ModelPicker from '../models/ModelPicker'
 
 // Admin-only deployment configuration: a live overlay on backend/config.yml. Each section
@@ -51,6 +52,7 @@ export default function ConfigPanel() {
 
       <ProvidersCard cfg={cfg} onSaved={onSaved} />
       <SearchSettings config={cfg.web_search} onSaved={onSaved} />
+      <ResearchSettings config={cfg.research} onSaved={onSaved} />
       <PricingCard cfg={cfg} onSaved={onSaved} />
       <RuntimeCard cfg={cfg} onSaved={onSaved} />
       <SuggestionsCard cfg={cfg} onSaved={onSaved} />

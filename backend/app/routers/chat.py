@@ -361,6 +361,8 @@ async def chat(
 
 @branches.serialized
 def prepare_chat(req, db, user, cancel_event, run_id=None, tool_observer=None):
+    from app import shutdown
+    shutdown.reject_new_work()
     if not req.conversation_id and (req.edit_message_id or req.regenerate_message_id or req.regenerate):
         raise HTTPException(400, 'Select an existing conversation before editing or regenerating.')
     settings = get_settings(db, user.id)
@@ -578,13 +580,8 @@ def prepare_chat(req, db, user, cancel_event, run_id=None, tool_observer=None):
             accounting.turn_id,
         )
 
-    params = {
-        **generation_params(settings),
-        **((assistant.params if assistant else None) or {}),
-        "max_tool_rounds": (conversation.params or {}).get(
-            "max_tool_rounds", settings["max_tool_rounds"]
-        ),
-    }
+    from app.runtime_settings import resolve_generation
+    params = resolve_generation(settings, assistant.params if assistant else None, conversation.params)
 
     if research and int(params['max_tool_rounds']) < 3:
         raise HTTPException(422, 'Research needs at least three model passes. Increase Max tool rounds in Settings → Model.')
@@ -685,7 +682,8 @@ def prepare_chat(req, db, user, cancel_event, run_id=None, tool_observer=None):
             # Compact long histories to stay within the per-user context budget.
             compacted, did = compact_history(
                 ScopedProvider(provider, replace(accounting, kind="compaction"), cancel_event=cancel_event),
-                history, int(settings["max_context_tokens"]),
+                history, min(int(params["max_context_tokens"]),
+                             int(getattr(provider, 'context_window', None) or params['max_context_tokens'])),
             )
             if did:
                 yield events.status("Summarizing earlier context…")
@@ -694,6 +692,11 @@ def prepare_chat(req, db, user, cancel_event, run_id=None, tool_observer=None):
             enabled_tools = gate.enabled_names()
             if not web_search_allowed:
                 enabled_tools.discard("web_search")
+                enabled_tools.discard("query_public_api")
+                enabled_tools.discard("export_api_dataset")
+                enabled_tools.discard("collect_api_dataset")
+                enabled_tools.discard("analyze_api_dataset")
+                enabled_tools.discard("create_api_report")
             # The assistant's knowledge base force-enables document search — it is the
             # point of attaching one.
             if not (document_search_requested or referenced_docs or assistant_has_kb):
@@ -730,7 +733,7 @@ def prepare_chat(req, db, user, cancel_event, run_id=None, tool_observer=None):
 
     if not run_id:
         branches.ACTIVE.add(conversation.id)
-    return stream()
+    return shutdown.track(stream(), cancel_event)
 
 
 @router.get("/chat/approvals/{conversation_id}")
@@ -804,6 +807,8 @@ async def approve(
 
 def prepare_approval(req, db, user, cancel_event, validate_only=False, tool_observer=None):
     """Validate current policy, then claim once before any tool dispatch."""
+    from app import shutdown
+    shutdown.reject_new_work()
     pending, conversation = approvals.owned_approval(db, req.pending_id, user)
     approvals.validate_resume(pending, req.decisions)
     state = pending.state
@@ -850,20 +855,28 @@ def prepare_approval(req, db, user, cancel_event, validate_only=False, tool_obse
     caps = (assistant.capabilities or {}) if assistant else {}
     if not caps.get("web_search", True):
         allowed_tools.discard("web_search")
+        allowed_tools.discard("query_public_api")
+        allowed_tools.discard("export_api_dataset")
+        allowed_tools.discard("collect_api_dataset")
+        allowed_tools.discard("analyze_api_dataset")
+        allowed_tools.discard("create_api_report")
     if not caps.get("document_search", True):
         allowed_tools.discard("search_documents")
     if not caps.get("tools", True):
         allowed_tools &= {"web_search", "search_documents"}
-    # A newly lowered per-user round limit can restrict a paused run, never extend it.
+    # A newly lowered effective limit can restrict a paused run, never extend it.
     params = dict(state.get("params", {}))
     current_settings = get_settings(db, user.id)
-    params["max_context_tokens"] = min(
-        int(params.get("max_context_tokens", current_settings.get("max_context_tokens", 16000))),
-        int(current_settings.get("max_context_tokens", 16000)),
-    )
-    params["max_tool_rounds"] = min(
-        int(params.get("max_tool_rounds", 12)), int(current_settings["max_tool_rounds"])
-    )
+    assistant_limits = (assistant.params if assistant else None) or {}
+    overrides = (conversation.params or {}).get('_generation_overrides', {})
+    origins = dict.fromkeys(('temperature', 'max_tokens', 'max_context_tokens', 'max_tool_rounds'), 'approval_snapshot')
+    for key, default in [('max_context_tokens', 16000), ('max_tokens', 4096), ('max_tool_rounds', 12)]:
+        saved = int(params.get(key, current_settings.get(key, default)))
+        params[key] = min(saved, int(current_settings.get(key, saved)),
+                          int(assistant_limits.get(key, saved)), int(overrides.get(key, saved)))
+        if params[key] < saved:
+            origins[key] = 'current_limit'
+    params['_setting_sources'] = origins
     from app.model_calls import CallScope
 
     accounting = CallScope(state.get("turn_id") or pending.id, conversation.id, user.id)
@@ -904,4 +917,4 @@ def prepare_approval(req, db, user, cancel_event, validate_only=False, tool_obse
             db.rollback()
             approvals.finish_claim(db, req.pending_id, terminal)
 
-    return stream()
+    return shutdown.track(stream(), cancel_event)

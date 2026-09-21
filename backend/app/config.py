@@ -155,6 +155,15 @@ def get_web_search_config() -> dict[str, Any]:
     return cfg
 
 
+def get_research_config() -> dict[str, Any]:
+    """Admin-managed presets, validated on read as well as write. No file edits needed."""
+    from app import app_config
+    from app.research_config import DEFAULT_PRESETS, ResearchConfig
+
+    overlay = app_config.get_section('research')
+    return ResearchConfig.model_validate(DEFAULT_PRESETS if overlay is None else overlay).model_dump()
+
+
 def get_web_fetch_config() -> dict[str, Any]:
     """``web_fetch`` SSRF guard settings.
 

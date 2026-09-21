@@ -65,7 +65,9 @@ cd /opt/phlox/app/backend
 sudo -u phlox uv sync --frozen --no-dev
 ```
 
-This produces `backend/.venv/bin/uvicorn`, which the systemd unit calls directly.
+This creates the backend virtual environment. The systemd unit uses `uv run --no-sync -m app.server`
+to start the supported server with bounded shutdown. Locate `uv` with `command -v uv`;
+the example below assumes `/usr/local/bin/uv`, readable/executable by the service user.
 
 ## 4. Build the frontend SPA
 
@@ -204,10 +206,10 @@ EnvironmentFile=/etc/phlox/phlox.env
 Environment=PHLOX_ENV=production
 # Bind to loopback and put a TLS reverse proxy in front (see §7).
 # To expose Phlox directly instead, change 127.0.0.1 to 0.0.0.0 and open the firewall.
-ExecStart=/opt/phlox/app/backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+ExecStart=/usr/local/bin/uv run --no-cache --no-sync -m app.server --host 127.0.0.1 --port 8000
 Restart=on-failure
 RestartSec=3
-TimeoutStopSec=20
+TimeoutStopSec=40
 
 # --- Hardening (relax if you enable the podman sandbox; see §8) ---
 NoNewPrivileges=true
@@ -222,6 +224,13 @@ RestrictSUIDSGID=true
 [Install]
 WantedBy=multi-user.target
 ```
+
+The supported server allows **30 seconds** for active work and cleanup before a forced
+exit (code 75). Set `PHLOX_SHUTDOWN_SECONDS` in the service environment to change this
+(1–300 seconds); keep `TimeoutStopSec` at least five seconds longer. Existing installations
+should update `ExecStart` and `TimeoutStopSec`, then reload systemd. Direct Uvicorn commands
+do not provide this process deadline. Interrupted work is recovered for inspection without
+automatically replaying tool actions; see [Runs](RUNS.md#shutdown-and-restart).
 
 Enable and start:
 

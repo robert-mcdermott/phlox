@@ -135,3 +135,7 @@ guards for mutations and preserve the original answer snapshot. See [docs/ARTIFA
 Current schema head is `0009_api_datasets`; older revision metadata must remain checkable. Bulk API pages live in private `ApiDataset`
 rows anchored to revocable sources, separate from citation excerpts. Research execution
 requires `begin_research_analysis` plus normal per-tool permissions; preserve both gates.
+
+Use `app.server` for manual production startup (`app.dev` for development), so pre-drain
+cancellation and the overall shutdown deadline apply. Never release the maintenance lock
+while a live worker can still write; see [RUNS.md](docs/RUNS.md#shutdown-and-restart).

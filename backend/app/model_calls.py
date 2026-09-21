@@ -144,6 +144,12 @@ class _Call:
 
 
 def stream_model(provider, messages, tools, params, scope, *, cancel_event=None, call_id=None):
+    from app.shutdown import active
+    with active(cancel_event) as event:
+        yield from _stream_model(provider, messages, tools, params, scope, cancel_event=event, call_id=call_id)
+
+
+def _stream_model(provider, messages, tools, params, scope, *, cancel_event=None, call_id=None):
     from app.agent.context import fit_context
 
     params = dict(params)
@@ -252,6 +258,9 @@ def stream_model(provider, messages, tools, params, scope, *, cancel_event=None,
         status = "failed"
         raise
     finally:
+        from app.shutdown import interrupted
+        if status == "cancelled" and interrupted(cancel_event):
+            status = "interrupted"
         current.save(status)
 
 

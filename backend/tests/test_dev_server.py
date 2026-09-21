@@ -46,10 +46,10 @@ async def app(scope, receive, send):
     launcher = tmp_path / 'serve.py'
     launcher.write_text(f'''from pathlib import Path
 from app.dev import prepare_environment, server_options
-import uvicorn
+from app.server import run
 if __name__ == '__main__':
     prepare_environment()
-    uvicorn.run('probe:app', lifespan='off', **server_options('127.0.0.1', int(__import__('sys').argv[1]), Path({str(source)!r}), Path({str(data)!r})))
+    run('probe:app', lifespan='off', **server_options('127.0.0.1', int(__import__('sys').argv[1]), Path({str(source)!r}), Path({str(data)!r})))
 ''')
     with socket.socket() as sock:
         sock.bind(('127.0.0.1', 0))

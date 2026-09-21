@@ -119,6 +119,14 @@ Ctrl+C also stops a foreground launcher. Use the chat's **Stop** and wait for ac
 before planned shutdown. Browser disconnection and server shutdown have different effects;
 see [reconnectable runs](#reconnectable-runs-and-stop).
 
+The supported server gives active work and cleanup 30 seconds to stop, then forces process
+exit if necessary. `PHLOX_SHUTDOWN_SECONDS` changes this deadline (1–300 seconds). Keep
+service/container stop timeouts at least five seconds longer. For a manual production
+launch, use `uv run -m app.server --host 127.0.0.1 --port 8000` from `backend/`; existing
+systemd installations should update their [service command](DEPLOYMENT.md). Windows stop
+scripts remain forced termination. Saved progress survives, but interrupted actions are
+never replayed automatically. See [shutdown and restart](RUNS.md#shutdown-and-restart).
+
 Before `prod` with auth enabled, configure `sandbox.runner: container` or `agentcore`, make
 that runner available, and supply **`PHLOX_JWT_SECRET` with at least 32 bytes of high-entropy
 secret material**. Generate a secret once, store it securely, and load the same value on

@@ -58,6 +58,11 @@ their normal permissions and configured sandbox/network. Prefer analysis of expo
 data. Code networking is separate from the reviewed fetch domain filter. Never invent network
 restrictions or claim connectivity without testing. Event annotations need evidence and must
 not imply causality from trends alone. Check requested files before claiming delivery.
+Do not assume plotting libraries or package installers exist. For self-contained reports,
+Python's standard library can aggregate exported JSON/CSV and write HTML with inline SVG
+bars and trend lines without extra packages. Check required imports before choosing a
+library-based approach. Never silently drop a requested chart, trend or table because a
+dependency is missing; use an available approach or explain the incomplete deliverable.
 After approved analysis begins, remaining Model rounds can finish files beyond the evidence
 pass allowance; evidence tools then close. Time/token/Model limits do not reset. Local
 analysis/report/export remain available after read capacity is exhausted, subject to time,

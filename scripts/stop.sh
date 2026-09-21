@@ -46,6 +46,18 @@ done
 log() { [ "$QUIET" = true ] || echo "$@"; }
 
 ANY_KILLED=false
+STOP_PIDS=()
+STOP_COMMANDS=()
+
+stop_pid() {
+  local target="$1" command
+  command="$(ps -p "$target" -o command= 2>/dev/null || true)"
+  [ -n "$command" ] || return 0
+  STOP_PIDS+=("$target")
+  STOP_COMMANDS+=("$command")
+  kill "$target" 2>/dev/null || true
+  ANY_KILLED=true
+}
 
 port_pids() {
   command -v lsof >/dev/null 2>&1 && lsof -nP -iTCP:"$1" -sTCP:LISTEN -t 2>/dev/null || true
@@ -59,8 +71,7 @@ for name in backend frontend; do
   pid="$(cat "$pidfile" 2>/dev/null || true)"
   if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
     log "Stopping PID $pid (from $name.pid)"
-    kill "$pid" 2>/dev/null || true
-    ANY_KILLED=true
+    stop_pid "$pid"
   fi
   rm -f "$pidfile"
 done
@@ -74,7 +85,7 @@ if ! command -v lsof >/dev/null 2>&1; then
 else
   looks_like_ours() {
     case "$1" in
-      *uvicorn*|*app.main*|*vite*|*"npm-cli"*|*" npm "*|*uv\ run*) return 0 ;;
+      *uvicorn*|*app.main*|*app.server*|*app.dev*|*vite*|*"npm-cli"*|*" npm "*|*uv\ run*) return 0 ;;
       *) return 1 ;;
     esac
   }
@@ -91,28 +102,42 @@ else
         [ -n "$cmd" ] || break
         if [ "$cur" = "$pid" ] || looks_like_ours "$cmd"; then
           log "Stopping PID $cur on port $port ($cmd)"
-          kill "$cur" 2>/dev/null || true
-          ANY_KILLED=true
+          stop_pid "$cur"
+        else
+          # Do not cross an unrelated process to reach a coincidentally matching ancestor.
+          break
         fi
         cur="$(ps -o ppid= -p "$cur" 2>/dev/null | tr -d ' ')"
       done
       # Also kill direct children (covers the case where $pid is the supervisor).
       for child in $(ps -eo pid,ppid 2>/dev/null | awk -v p="$pid" '$2==p{print $1}'); do
-        kill "$child" 2>/dev/null || true
-        ANY_KILLED=true
+        stop_pid "$child"
       done
     done
   done
 
-  # Give processes a moment to exit gracefully, then escalate to SIGKILL.
-  sleep 1
-  for port in "${PORTS[@]}"; do
-    for pid in $(port_pids "$port"); do
-      kill -9 "$pid" 2>/dev/null || true
-    done
-  done
-  sleep 0.3
 fi
+
+# Wait for writers, even after they close their listening socket. Give app.server's
+# deadline time to run before escalating; never kill a new process that takes the port.
+grace="$(awk -v n="${PHLOX_SHUTDOWN_SECONDS:-30}" 'BEGIN { if (n !~ /^[0-9]+([.][0-9]+)?$/ || n < 1 || n > 300) n=30; print int(n)+6 }')"
+deadline=$((SECONDS + grace))
+while [ ${#STOP_PIDS[@]} -gt 0 ] && [ "$SECONDS" -lt "$deadline" ]; do
+  alive=false
+  for pid in "${STOP_PIDS[@]}"; do
+    state="$(ps -p "$pid" -o stat= 2>/dev/null || true)"
+    case "$state" in ""|*Z*) ;; *) alive=true ;; esac
+  done
+  [ "$alive" = true ] || break
+  sleep 0.2
+done
+for ((i=0; i<${#STOP_PIDS[@]}; i++)); do
+  pid="${STOP_PIDS[$i]}"
+  command="$(ps -p "$pid" -o command= 2>/dev/null || true)"
+  if [ -n "$command" ] && [ "$command" = "${STOP_COMMANDS[$i]}" ]; then
+    kill -9 "$pid" 2>/dev/null || true
+  fi
+done
 
 for port in "${PORTS[@]}"; do
   if [ -n "$(port_pids "$port")" ]; then

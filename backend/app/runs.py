@@ -22,7 +22,7 @@ from app import approvals
 from app.auth.deps import LOCAL_USER_ID, _dev_admin, require_owned_conversation
 from app.config import get_auth_config, runs_enabled
 from app.database import SessionLocal
-from app.models import Conversation, PendingApproval, Run, RunEvent, ToolExecution, User
+from app.models import Conversation, Message, PendingApproval, Run, RunEvent, ToolExecution, User
 from app.schemas import ApproveRequest, ChatRequest
 
 logger = logging.getLogger(__name__)
@@ -309,6 +309,22 @@ class Worker:
     def recover(self):
         with LOCK, self.factory() as db:
             for row in db.query(Run).filter(Run.status.in_(BUSY | {'awaiting_approval'})).all():
+                # The answer transaction can commit before the worker records terminal status.
+                # Preserve confirmed work across that crash window, but never conceal an unknown action.
+                unknown = db.query(ToolExecution.id).filter(
+                    ToolExecution.run_id == row.id,
+                    ToolExecution.status.in_(['started', 'outcome_unknown']),
+                ).first()
+                answer = db.query(Message).filter(Message.conversation_id == row.conversation_id,
+                    Message.role == 'assistant', Message.usage['turn_id'].as_string() == row.id).first()
+                outcome = (answer.usage or {}).get('outcome') if answer else None
+                if not unknown and outcome in {'completed', 'failed', 'limit_reached', 'cancelled', 'interrupted'}:
+                    row.message_id = answer.id
+                    _close(row, outcome, 'Server restarted after the answer was saved; nothing was replayed.')
+                    for claim in linked_approvals(db, row):
+                        if claim.status == 'claimed':
+                            claim.status = 'completed' if outcome == 'completed' else 'interrupted'
+                    continue
                 # A crash after saving the pause but before its event can still recover it.
                 pending = db.query(PendingApproval).filter_by(conversation_id=row.conversation_id, status='pending').all()
                 pause = next((p for p in pending if p.state.get('turn_id') == row.id), None)
@@ -337,13 +353,16 @@ class Worker:
         self.thread = threading.Thread(target=self.loop, name='phlox-run-worker', daemon=True)
         self.thread.start()
 
+    def request_stop(self):
+        self.stopping.set()
+        self.cancel_event.set()
+        self.wake.set()
+
     def stop(self):
         from app.observability import lifecycle
 
         lifecycle('worker_shutdown_requested', run=self.run_id or '-')
-        self.stopping.set()
-        self.cancel_event.set()
-        self.wake.set()
+        self.request_stop()
         if self.thread:
             # Keep the deployment maintenance lock until all writers have actually left.
             self.thread.join()
@@ -430,6 +449,8 @@ class Worker:
                 if pending and pending.status == 'pending':
                     pending.status = 'dismissed'
                 outcome = 'cancelled'
+            if outcome == 'interrupted' and self.stopping.is_set():
+                reason = 'Server shutdown interrupted execution. Inspect saved progress before continuing; nothing was replayed.'
             if outcome == 'cancelled':
                 if row.status == 'cancel_requested':
                     reason = 'Stopped by user request. Completed actions were not undone.'
@@ -472,8 +493,9 @@ def subscribe(run_id, user_id, after=0):
             raise HTTPException(400, 'Invalid event cursor.')
 
     async def stream():
+        from app.shutdown import stopping
         cursor = after
-        while True:
+        while not stopping.is_set():
             with SessionLocal() as db:
                 row = owned(db, run_id, user_id)
                 current_user(db, user_id)

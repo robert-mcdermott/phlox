@@ -38,6 +38,9 @@ everyday use, upgrades, and troubleshooting.
   [citation](docs/SOURCES.md), including document locations or web URLs and fetch times.
   Choose [Research mode](docs/RESEARCH.md) for a bounded plan, evidence gathering, and report;
   configure Serper or public SearXNG search in the admin console, with DuckDuckGo fallback.
+- **Public data to reports** — query [NIH RePORTER, PubMed and ClinicalTrials.gov](docs/PUBLIC_API.md),
+  collect and resume [retained datasets](docs/API_DATASETS.md), and export reproducible tables
+  and reports. Research can hand off to approved code execution for custom charts and analysis.
 - **Reconnectable runs** — optional [persistent execution](docs/RUNS.md) continues across
   browser refreshes and chat switches, with explicit Stop, saved approvals, and recovery.
 - **Custom assistants and skills** — create specialized assistants with their own prompts,

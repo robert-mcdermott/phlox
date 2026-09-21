@@ -40,8 +40,8 @@ from the repository root after editing the file. The `prod` launcher also requir
 [production secret and sandbox setup](USER_GUIDE.md#start-stop-and-production-preparation).
 
 Use **one application process** per database/data directory. The existing maintenance
-lock is held until the worker and tool threads finish. Shutdown asks active work to stop
-and waits for it; an unresponsive custom tool can delay shutdown. Do not add Uvicorn workers.
+lock is held until writers finish or the process exits. The supported server cancels work
+before draining connections and enforces an overall shutdown deadline (see below). Do not add Uvicorn workers.
 There is no broker, distributed lease, scheduled execution, or automatic action retry.
 The OpenAI-compatible gateway keeps its existing request/response contract.
 
@@ -133,11 +133,37 @@ again. Explicit logout or reloading the login page clears the return hint; reope
 manually in that case. Temporary startup/network failures preserve the login token and show
 a connection retry action.
 
-Worker shutdown cancellation is recorded as `interrupted` with a server-shutdown reason;
-an explicit user Stop remains `cancelled` with a user-request reason. Unknown tool outcomes
-still take precedence, and previously completed runs remain completed. This does not make
-in-flight execution restartable: connection draining and unresponsive tools can still delay
-shutdown. Full process-level shutdown/deadline improvements remain part of Wave 14.
+## Shutdown and restart
+
+The macOS/Linux launchers, dev reload child, production container and documented systemd
+service use `app.server`. It stops admitting requests, signals active model calls and chat
+work, and closes durable event subscriptions **before** Uvicorn drains connections. A
+shutdown response is HTTP 503, not an authentication failure. Gateway clients receive a
+terminal error if shutdown interrupts a response, rather than a successful partial answer.
+
+The overall deadline is **30 seconds**, including connection draining, worker joins, MCP
+cleanup and executor teardown. Set `PHLOX_SHUTDOWN_SECONDS` to a value from 1–300 seconds
+before launch to change it. If work or cleanup remains stuck, the server exits with code
+**75** and a `shutdown_deadline_exceeded` diagnostic. It keeps the maintenance lock until
+writers finish or the process dies. Set an external supervisor/container stop timeout at
+least five seconds longer; Compose and the systemd example allow 40 seconds by default.
+Direct `uvicorn app.main:app` does not install this deadline.
+
+Cooperative server cancellation is recorded as `interrupted`; an explicit user Stop remains
+`cancelled`. On restart, unfinished durable runs retain saved evidence and expose interruption
+for inspection. A tool that started without a confirmed result becomes `outcome_unknown`;
+Phlox never automatically repeats it. Pending approvals remain pending. Completed answers
+remain completed, including a crash after answer persistence but before the worker updates
+its run, provided no tool outcome is unknown.
+
+Request-bound chat can save partial progress on cooperative shutdown, but a forced kill
+cannot recover unsaved tokens or an active generator. Durable runs retain their already
+persisted events and sources; they do not resume execution automatically. Review the chat,
+files and tool results before starting a follow-up. External side effects cannot be rolled back.
+
+Windows stop scripts still terminate the process tree forcibly. Use chat **Stop** and wait
+for work to finish before a planned Windows stop. The POSIX signal/deadline behavior is
+covered by process tests; Windows termination is not a graceful-shutdown guarantee.
 
 ## Limits, retention, and evidence
 

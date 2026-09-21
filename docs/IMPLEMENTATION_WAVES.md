@@ -456,7 +456,7 @@ version expiry remain outside this wave.
 ## Wave 14 — General reliability and task completion
 
 **Status:** in progress; first through third increments implemented 2026-09-09,
-fourth through fourteenth increments implemented 2026-09-20. **Scope:** application/session/run
+fourth through fifteenth increments implemented 2026-09-20; sixteenth increment implemented 2026-09-21. **Scope:** application/session/run
 reliability across Chat and Research, M2.3 evidence quality and completion budgets, with a
 bounded bridge to M3 deliverables. Schedule ahead of output inspection and portable exports.
 The delivery record below distinguishes implemented changes from the remaining plan.
@@ -1064,12 +1064,80 @@ explicitly reusing the retained dataset and requesting a self-contained HTML cha
 completed successfully. The Research guide now documents this recovery workflow and a
 reusable prompt; this is a reported successful example, not a general live-model benchmark.
 
-**Still pending:** remaining W14.1/W14.5 stage allowances, live calibration and recovery UX, further W14.2 extraction quality, broader W14.3 API coverage and W14.4 quality evaluation, and
-broader W14.6–W14.8 work (extraction, working context and analysis/deliverables), plus full process-level signal/draining/deadline work in
-W14.11. A stalled tool or open event stream can still delay graceful shutdown. No automatic
-replay of uncertain actions, session refresh protocol, durable return hint or distributed
-worker has been introduced. Future increments should address acquisition beyond the separate bulk quotas, live-model
-calibration, and semantic/visual deliverable verification beyond declared file existence (W14.6–W14.8).
+**Sixteenth increment — release lifecycle hardening:**
+
+- The supported `app.server` entry point and dev reload children cancel active work before
+  draining HTTP/SSE connections. New requests receive 503, without invalidating login.
+  Model calls, request-bound chat, durable workers and document workers share shutdown
+  signaling. Gateway responses terminate with an error instead of a successful partial answer.
+- A signal-time watchdog bounds the whole shutdown (default 30 seconds, configurable from
+  1–300). Stalled providers/tools, blocked event loops, MCP cleanup or executor teardown
+  trigger exit 75. Maintenance remains locked while writers are alive. Repeated signals
+  do not bypass cleanup. The macOS/Linux stop script respects this deadline and stops
+  walking ancestors at an unrelated process; Windows scripts remain forced termination.
+- Recovery preserves completed answers across the gap before the worker commits terminal
+  run status. Started or already-unknown tool outcomes prevent that reconciliation. Pending
+  approvals and saved progress survive restart, with no automatic replay.
+- Research guidance recommends checking plotting dependencies and using standard-library
+  JSON/CSV with inline SVG when packages are unavailable, preserving requested chart features.
+- Compatible frontend dependency updates and removal of unused React Router clear the npm
+  audit. Setup guides now use the supported production command and longer supervisor grace.
+
+**Sixteenth-increment verification (2026-09-21):** the full backend suite passed **1,048
+tests**, with **25 optional Postgres cases skipped**. After the final refinements, **45
+focused shutdown/watcher/recovery/gateway/analysis tests** passed. Separate SQLite and
+disposable PostgreSQL 16 upgrade/backup/restore drills passed **59 tests**, with one
+SQLite-only case skipped on Postgres, using the matching PostgreSQL 16 client. All **46
+Chromium regressions**, the frontend build, Ruff, shell syntax and diff checks passed.
+The npm audit reported zero vulnerabilities. Existing Python deprecation and frontend
+chunk-size warnings remain.
+
+The production image was built and tested with isolated fresh data: uid/gid 10001,
+writable data, read-only application code, SPA serving, v0.4.0 API, readiness, schema head
+and graceful shutdown passed. This caught and fixed a non-root uv cache startup error;
+the image now uses `uv run --no-cache --no-sync -m app.server`. CI gains an actual container
+startup/readiness/shutdown check. The new code had not yet run on GitHub CI at this local
+verification point. Native Windows execution was not tested; Windows stop remains forced.
+
+Process tests use real servers/open SSE connections and scripted providers, including
+cooperative and stalled model/tool work in both execution modes, blocked event loops,
+stalled cleanup, forced loss during model/tool/approval stages, completed-answer recovery
+and the macOS/Linux stop script. They assert retained maintenance locks and no automatic
+tool replay. The user's active database was not used as a test target.
+
+**Live-provider verification:** a fresh prompt requested Fred Hutch's FY2016–2025 RePORTER
+records, complete collection, an HTML report with annual bars and a linear trend, and a
+supporting CSV. Settings were Standard Research, 50 Model rounds, 32,768 output tokens,
+128,000 context tokens, local execution and explicit auto-approval in isolated test data.
+
+- `kiro-acp` / `claude-sonnet-5` refused before using tools. Its cause was not established;
+ this was a failed functional check despite the model-turn completion status.
+- An initial `local-ollama` / `gemma4:31b-cloud` run collected 3,047 records and made files,
+ but omitted the trend after missing plotting dependencies. This led to the new
+ dependency-aware Research guidance.
+- A fresh run with the same Ollama model and original prompt collected all **3,047**
+ reported records and produced CSV, HTML and inline SVG bars/trend through the analysis
+ handoff and Python, without extra packages, a follow-up prompt or a reused dataset.
+ It took **35 seconds**, **9 calls** and **62,875 reported tokens**; cost was unavailable.
+- Independent checks found unique project IDs, no missing award amounts, all ten annual
+ totals/counts matching the retained records, and matching bar heights/linear-fit
+ coordinates. Chromium rendering showed a clipped axis label and missing charset
+ metadata. The report called its totals “NIH funding” although the agency set included
+ FDA, and collapsed two returned organization names in its prose.
+
+This is evidence of the collection-to-execution path for one configured model/task, not
+a quality benchmark or independently verified funding analysis. Generated reports still
+require scope, citation and visual review; file existence checks cannot detect those
+defects. Provider-refusal diagnosis, agency/scope verification and semantic/visual report
+checks remain follow-up work.
+
+**Deferred beyond the v0.4.0 release scope:** remaining W14.1/W14.5 stage-specific budget
+calibration and recovery UX, further W14.2 extraction quality, broader W14.3 API coverage,
+W14.4 context quality evaluation and broader W14.6–W14.8 capability routing and semantic/
+visual verification. File existence does not prove that a requested chart, citation or
+scientific claim is correct. General API discovery, acquisitions beyond bulk quotas,
+Windows graceful stop, a session refresh protocol, a persisted return hint and distributed
+workers remain future work. No automatic replay of uncertain actions is introduced.
 
 **Remaining public API work (W14.3/W14.7):** NIH RePORTER, PubMed bibliography/article
 details and ClinicalTrials.gov study search/details now use shared source and export

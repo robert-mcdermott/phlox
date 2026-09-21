@@ -155,6 +155,12 @@ Legacy `labels` collection retains its per-page source/read costs. See
 
 ## Analysis handoff
 
+Plotting packages are not guaranteed in a sandbox. Self-contained HTML charts can use
+inline SVG generated with Python's standard library, without package installation. The
+handoff now reminds the model to check dependencies and preserve requested chart/table
+features. Open the report and compare its values with the retained data: file existence
+checks do not prove that a trend line, citation or calculation is correct.
+
 The model can call **`begin_research_analysis`** when your request needs custom analysis,
 plots, trend lines, annotations or other files beyond the built-in report. The handoff
 states its purpose and requested relative output paths, and defaults to **Ask**. Once

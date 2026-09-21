@@ -50,6 +50,12 @@ The fourteenth increment adds column inspection and permission-controlled HTML r
 over those retained datasets: filtered grouped counts, exact sums, tables/bar charts and
 reproducible analysis files with coverage and provenance. General execution, additional
 chart types and semantic deliverable tracking remain open; see [Dataset reports](DATASET_REPORTS.md).
+The fifteenth increment separates bulk acquisition from citation-preview limits, adds
+checkpointed dataset storage and an approval-controlled Research-to-code handoff. Late
+analysis can use remaining Model passes; available and missing files are shown separately.
+The sixteenth increment adds pre-drain cancellation, bounded process shutdown and restart
+regressions. See the [Wave 14 delivery record](IMPLEMENTATION_WAVES.md#wave-14--general-reliability-and-task-completion)
+for verified scope, release checks and live-provider results. Wave 14's broader quality ambitions continue after this release.
 Full article text, broader API discovery and larger acquisition beyond these bounds remain planned; see the
 Wave 14 backlog for scope.
 The wave log records verification and remaining limits. M3 has an initial delivery; M4–M5 remain proposed. Existing features and

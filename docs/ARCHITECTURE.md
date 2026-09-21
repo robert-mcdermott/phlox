@@ -10,7 +10,7 @@
 > opt-in [reconnectable runs](RUNS.md), [document citations](SOURCES.md), and
 > [captured web sources](WEB_SOURCES.md) and private [projects/context records](PROJECTS.md) now ship.
 > [Conversation alternatives](CONVERSATION_ALTERNATIVES.md) and bounded saved answer files now ship.
-> Artifact editing and version diffs remain proposed.
+> [Artifact editing and version diffs](ARTIFACTS.md) also ship.
 
 Phlox is a feature-rich, ChatGPT-style web app. It does
 chat, an agentic tool-using harness (code execution, filesystem, shell, web), document
@@ -45,6 +45,11 @@ Both dev launchers call `app.dev`: Uvicorn watches `backend/app` while excluding
 configured data directory, and reload children inherit one launcher-lifetime JWT secret.
 Generated workspace scripts therefore do not trigger reloads. Real source edits still
 restart the backend; durable runs preserve their existing conservative interruption policy.
+`app.server` wraps Uvicorn with pre-drain cancellation and an overall process shutdown
+watchdog; `app.dev` uses the same wrapper for reload children. `shutdown.py` tracks active
+model/chat cancellation events and rejects new requests during shutdown. The maintenance
+lock remains held through draining and cleanup. A stuck process exits instead of releasing
+its lock while writers remain alive. See [Runs](RUNS.md#shutdown-and-restart).
 
 ## 2. The request lifecycle (most important thing to understand)
 

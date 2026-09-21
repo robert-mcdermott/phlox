@@ -8,7 +8,7 @@ from pathlib import Path
 
 def prepare_environment() -> None:
     # Set this before reading auth configuration. This entry point is explicitly dev-only;
-    # production continues to use Uvicorn directly and its existing secret preflight.
+    # production uses app.server and retains its existing secret preflight.
     os.environ["PHLOX_ENV"] = "development"
     from app.config import get_auth_config
 
@@ -35,9 +35,9 @@ def main() -> None:
     args = parser.parse_args()
     prepare_environment()
     from app.config import DATA_DIR
-    import uvicorn
+    from app.server import run
 
-    uvicorn.run("app.main:app", **server_options(args.host, args.port, Path(__file__).parent, DATA_DIR))
+    run("app.main:app", **server_options(args.host, args.port, Path(__file__).parent, DATA_DIR))
 
 
 if __name__ == "__main__":

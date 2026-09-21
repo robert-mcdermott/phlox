@@ -361,6 +361,8 @@ async def chat(
 
 @branches.serialized
 def prepare_chat(req, db, user, cancel_event, run_id=None, tool_observer=None):
+    from app import shutdown
+    shutdown.reject_new_work()
     if not req.conversation_id and (req.edit_message_id or req.regenerate_message_id or req.regenerate):
         raise HTTPException(400, 'Select an existing conversation before editing or regenerating.')
     settings = get_settings(db, user.id)
@@ -731,7 +733,7 @@ def prepare_chat(req, db, user, cancel_event, run_id=None, tool_observer=None):
 
     if not run_id:
         branches.ACTIVE.add(conversation.id)
-    return stream()
+    return shutdown.track(stream(), cancel_event)
 
 
 @router.get("/chat/approvals/{conversation_id}")
@@ -805,6 +807,8 @@ async def approve(
 
 def prepare_approval(req, db, user, cancel_event, validate_only=False, tool_observer=None):
     """Validate current policy, then claim once before any tool dispatch."""
+    from app import shutdown
+    shutdown.reject_new_work()
     pending, conversation = approvals.owned_approval(db, req.pending_id, user)
     approvals.validate_resume(pending, req.decisions)
     state = pending.state
@@ -913,4 +917,4 @@ def prepare_approval(req, db, user, cancel_event, validate_only=False, tool_obse
             db.rollback()
             approvals.finish_claim(db, req.pending_id, terminal)
 
-    return stream()
+    return shutdown.track(stream(), cancel_event)

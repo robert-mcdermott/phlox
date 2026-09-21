@@ -142,7 +142,7 @@ export PHLOX_CONFIG=/srv/phlox-restored/config.yml
 # Restore PHLOX_JWT_SECRET and other required secrets through your normal secret manager.
 uv run -m app.ops db check
 uv run -m app.ops reindex
-uv run uvicorn app.main:app --host 127.0.0.1 --port 8001
+uv run -m app.server --host 127.0.0.1 --port 8001
 ```
 
 `reindex` is offline and rebuilds the configured vector collection from saved embeddings,

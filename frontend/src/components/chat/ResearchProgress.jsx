@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 
-const labels = { plan: 'Planning research', gather: 'Gathering evidence', synthesize: 'Writing report', completed: 'Research complete', cancelled: 'Research stopped', failed: 'Research incomplete', paused: 'Research awaiting approval', blocked: 'Research blocked', limit_reached: 'Research limit reached' }
+const labels = { plan: 'Planning research', gather: 'Gathering evidence', synthesize: 'Writing report', completed: 'Research complete', cancelled: 'Research stopped', interrupted: 'Research interrupted', failed: 'Research incomplete', paused: 'Research awaiting approval', blocked: 'Research blocked', limit_reached: 'Research limit reached' }
 export default function ResearchProgress({ research }) {
   const [, tick] = useState(0)
   const active = ['plan', 'gather', 'synthesize'].includes(research?.phase)

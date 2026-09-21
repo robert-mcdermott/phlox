@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import logging
 import time
+import threading
 import uuid
 from collections.abc import Iterator
 from contextlib import closing
@@ -164,7 +165,7 @@ def chat_completions(
     except ContextLimitError as e:
         return _err(400, str(e), etype="context_length_exceeded")
     provider = ScopedProvider(provider, CallScope(request_id, None, user.id, kind="gateway"),
-                              call_id=request_id)
+                              call_id=request_id, cancel_event=threading.Event())
     created = int(time.time())
     # The id clients see uses the model string they sent; ledger uses our resolved model.
     advertised_model = req.model
@@ -201,6 +202,8 @@ def _buffered(
         logger.exception("Gateway model call failed")
         return _err(502, f"Upstream model error: {e}", etype="api_error")
 
+    if getattr(provider, 'cancel_event', None) is not None and provider.cancel_event.is_set():
+        return _err(503, 'Server shutdown interrupted the model response. Nothing was retried.', etype='server_error')
 
     if out_rules:
         res = apply_rules(text, out_rules)
@@ -290,6 +293,10 @@ def _stream(
         yield "data: [DONE]\n\n"
         return
 
+    if getattr(provider, 'cancel_event', None) is not None and provider.cancel_event.is_set():
+        yield 'data: ' + json.dumps({'error': {'message': 'Server shutdown interrupted the model response. Nothing was retried.', 'type': 'server_error'}}) + '\n\n'
+        yield "data: [DONE]\n\n"
+        return
     if redactor:
         tail = redactor.flush()
         if redactor.blocked:

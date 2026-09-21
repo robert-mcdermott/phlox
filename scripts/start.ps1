@@ -221,7 +221,7 @@ $backendLog = Join-Path $logDir 'backend.log'
 "" | Out-File -FilePath $backendLog -Encoding utf8
 
 Write-Step "Starting the backend on :$backendPort..."
-$backendArgs = @('run', 'uvicorn', 'app.main:app', '--host', '127.0.0.1', '--port', "$backendPort")
+$backendArgs = @('run', '-m', 'app.server', '--host', '127.0.0.1', '--port', "$backendPort")
 if ($Mode -eq 'dev') { $backendArgs = @('run', '-m', 'app.dev', '--host', '127.0.0.1', '--port', "$backendPort") }
 
 # uvicorn logs mostly go to stderr, so both streams are captured (to backend.log and

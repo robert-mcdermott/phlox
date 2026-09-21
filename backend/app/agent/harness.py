@@ -952,7 +952,8 @@ class AgentSession:
 
     def _finalize(self, final_text: str, tool_steps: list[dict], all_artifacts: list[dict]) -> Iterator[str]:
         if self._cancelled():
-            self.outcome = "cancelled"
+            from app.shutdown import interrupted
+            self.outcome = "interrupted" if interrupted(self.cancel_event) else "cancelled"
         elif self.outcome == "running":
             self.outcome = "completed"
         if self.ephemeral:
@@ -977,7 +978,7 @@ class AgentSession:
             import time
             from app.research_analysis import deliverables
             deliverables(self.ctx)
-            if self.outcome in {'cancelled', 'failed', 'limit_reached'} and self.research.phase != 'synthesize':
+            if self.outcome in {'cancelled', 'interrupted', 'failed', 'limit_reached'} and self.research.phase != 'synthesize':
                 refs = self._source_refs()
                 final_text = ('Research ended before a complete report was written. '
                               'The collected passages remain available for inspection: '

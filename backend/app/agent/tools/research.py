@@ -45,4 +45,5 @@ class BeginResearchAnalysis(Tool):
         return ToolResult('Research analysis enabled. Eligible tools: ' + ', '.join(sorted(names)) + '. '
                           + research_analysis.capabilities() + ' Existing files (use these exact paths; no extra export or file search): '
                           + json.dumps(files) + '. Reuse existing reports in output_paths; declare only additional files still needed. '
+                          'Plotting packages are not guaranteed. Standard-library JSON/CSV plus HTML/inline SVG can produce charts without installation. '
                           'Verify requested outputs before the final report. File existence checks do not verify scientific correctness.')

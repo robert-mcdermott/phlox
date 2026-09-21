@@ -122,7 +122,7 @@ def assemble(pages, details=None):
     return files, coverage
 
 
-def publish(ctx, files):
+def publish(ctx, files, *, verify=False):
     root = workspace_dir(ctx.conversation_id).resolve()
     staging = Path(tempfile.mkdtemp(prefix='.api-export-', dir=root))
     destination = root / ('api-dataset-' + uuid.uuid4().hex[:12])
@@ -131,6 +131,12 @@ def publish(ctx, files):
             check_stop(ctx)
             (staging / name).write_text(text, encoding='utf-8', newline='')
         check_stop(ctx)
+        if verify:
+            for name, text in files.items():
+                check_stop(ctx)
+                if (staging / name).read_bytes() != text.encode('utf-8'):
+                    raise DatasetError('Staged report verification failed. No files published.')
+            check_stop(ctx)
         staging.rename(destination)
     finally:
         if staging.exists():

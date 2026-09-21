@@ -21,8 +21,9 @@ Research uses a model with tool calling enabled and at least three allowed model
 (**Settings → Model → Max tool rounds**). Assistant restrictions and tool permissions still
 apply. Eligible tools include `web_search`, `web_fetch`, `read_web_source`, `query_public_api`,
 `search_documents` and the research notebook. After API evidence is captured,
-`export_api_dataset` can create [validated data files](API_DATASETS.md) when the user requests
-them, under the normal file-write permission gate (Ask by default). Research does not enable
+`export_api_dataset`/`collect_api_dataset` can create [validated data files](API_DATASETS.md),
+and `analyze_api_dataset`/`create_api_report` support [tables and HTML reports](DATASET_REPORTS.md).
+Requested file creation uses normal file-write permission (Ask by default). Research does not enable
 general shell/code execution, arbitrary file mutation, MCP, memory tools or child agents.
 Approvals still appear when the effective permission for an eligible tool is Ask.
 
@@ -69,9 +70,13 @@ One long page can consume several records; failures also consume records. Once r
 new records is exhausted, Research stops gathering and writes from retained evidence,
 including when a batch requests more reads than can be captured. This conservative check
 does not attempt to predict whether another page might reuse an existing record.
-An available dataset export can still use retained API pages after reads or source storage
-are exhausted, within the remaining time/token/pass ceilings. Export before the synthesis
-handoff; it does not create extra model passes or extend a hard budget.
+Available dataset export, column inspection and [HTML reports](DATASET_REPORTS.md) can
+still use retained API pages after reads or source storage are exhausted, within the
+remaining time/token/pass ceilings. Create requested files before the synthesis handoff;
+these tools do not create extra model passes or extend a hard budget. Inspection defaults
+to Auto and reports to Ask. Reports support filtered grouped counts and exact known-value
+sums, with tables, bar charts and downloadable data/analysis files. General code execution
+and other chart types remain outside Research. See the [report demo](DATASET_REPORTS.md#manual-verification).
 
 Presets are saved as the `research` database configuration section. The admin form accepts
 3–100 planned passes, 1–100 searches, 1–100 source reads, 30–7,200 gathering seconds, and

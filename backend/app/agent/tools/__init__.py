@@ -12,6 +12,7 @@ def register_builtin_tools(registry: "ToolRegistry") -> None:
     from app.agent.tools import (
         api_collection,
         api_dataset,
+        api_reports,
         checkpoint,
         code,
         docs,
@@ -42,6 +43,8 @@ def register_builtin_tools(registry: "ToolRegistry") -> None:
         public_api.QueryPublicApi(),
         api_dataset.ExportApiDataset(),
         api_collection.CollectApiDataset(),
+        api_reports.AnalyzeApiDataset(),
+        api_reports.CreateApiReport(),
         research.UpdateResearchNotebook(),
         memory.SaveMemory(),
         skills.UseSkill(),

@@ -143,6 +143,17 @@ rechecks access/expiry, and atomically renames a fresh staging folder containing
 bounded data files. Existing artifact events, checkpoints and saved-answer snapshots handle
 delivery. There is no network/model call, arbitrary code or new schema. See [API datasets](API_DATASETS.md).
 
+`api_reports.py` reuses dataset validation, coverage and source authorization for
+`analyze_api_dataset` (Auto-tier column inspection) and `create_api_report` (Ask-tier files).
+`dataset_analysis.py` calculates bounded filters/groups and exact sums over canonical
+retained records, with explicit missing values and overlapping list memberships.
+`dataset_report_html.py` escapes all data and generates static tables and CSS bar charts
+from the same computed values, without scripts or external assets. Report bundles add
+analysis CSV/JSON, recipes/hashes and staged-byte verification to existing atomic publication.
+Research allows four inspections and two reports without new read charges, preserving
+time/token/pass limits and approval counters. Workspace files are not analysis inputs.
+See [Dataset reports](DATASET_REPORTS.md) for limits and remaining delivery boundaries.
+
 `api_collection.py` adds bounded acquisition from an existing validated query-page prefix.
 The Ask-tier `collect_api_dataset` tool uses `public_api.capture_query`, per-page Research
 read admission and the shared transport/parser to follow saved continuation recipes.

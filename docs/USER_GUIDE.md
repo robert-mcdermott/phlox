@@ -469,6 +469,10 @@ small verified preview, saves progress and delivers the files in one tool call. 
 counts and continuation labels instead of filling the model's context with raw records.
 Each page observes the usual Research read allowance; Stop preserves saved pages for
 explicit continuation. See the [collection demo](API_DATASETS.md#manual-verification-collect-and-continue).
+For requested tables and charts, [dataset reports](DATASET_REPORTS.md) inspect retained
+columns, calculate filtered/grouped counts or exact numeric sums, and deliver a standalone
+HTML report plus data/analysis files. Reports preserve partial coverage, unknown values and
+source references. They need normal file approval and no extra API reads or dependencies.
 Optional detail exports preserve captured article/study selections separately. See
 the [PubMed demo](PUBLIC_API.md#manual-verification-fred-hutch-demo) and
 [ClinicalTrials.gov demo](PUBLIC_API.md#manual-verification-clinicaltrialsgov-demo).

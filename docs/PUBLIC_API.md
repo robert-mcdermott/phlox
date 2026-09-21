@@ -213,6 +213,8 @@ query. Opening the bare API endpoint does not replay the saved operation. PubMed
 records its search parameters; the retained PMIDs identify the ESummary request. Source
 inspection, rereads and Markdown exports do not contact the API again.
 
+For charts and tables, [dataset reports](DATASET_REPORTS.md) analyze retained query records
+and create a standalone HTML report with explicit coverage and source references.
 When files are requested, [dataset export](API_DATASETS.md) creates records CSV/JSON,
 an adapter-specific summary and a provenance manifest from available source labels.
 Optional `detail_labels` add the captured article/study selections in `record_details.json`.

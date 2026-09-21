@@ -16,7 +16,8 @@ RePORTER, PubMed or ClinicalTrials.gov query pages into four base files in a new
 The tool reads existing source snapshots. It makes no network requests, installs nothing,
 and runs no model-generated code. For multiple pages, `collect_api_dataset` combines
 validated acquisition and export as described below. Neither tool enables arbitrary
-shell execution or chart creation.
+shell execution. For tables and bar charts, use the separate
+[dataset report workflow](DATASET_REPORTS.md) with the retained source labels.
 
 ## Multi-page collection
 

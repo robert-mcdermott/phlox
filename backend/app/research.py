@@ -12,6 +12,10 @@ from app.public_api import NAME as API_TOOL
 from app.public_api_adapters import ADAPTERS
 EXPORT_TOOL = 'export_api_dataset'
 COLLECT_TOOL = 'collect_api_dataset'
+ANALYZE_TOOL = 'analyze_api_dataset'
+REPORT_TOOL = 'create_api_report'
+LOCAL_DATA_TOOLS = {EXPORT_TOOL: ('export_attempts', 2), ANALYZE_TOOL: ('analysis_attempts', 4),
+                    REPORT_TOOL: ('report_attempts', 2)}
 PAGE_READ_TOOLS = {'web_fetch', 'read_web_source', API_TOOL}
 READ_TOOLS = {'web_search', 'search_documents'} | PAGE_READ_TOOLS
 INSTRUCTIONS = """
@@ -48,8 +52,17 @@ retrieval manifest from saved query source labels, without refetching. Include o
 detail_labels to export captured abstract/author selections as record_details.json. Export only when files
 were requested; normal file-write approvals apply. A sample stays partial. Leave a tool
 pass for this export before synthesis; at most two export attempts are available. Do not
-claim files were delivered unless the tool succeeded. General code execution and charts
-remain unavailable in Research; explain this early if the requested output requires them.
+claim files were delivered unless the tool succeeded.
+For requested charts or HTML reports, inspect saved page columns with analyze_api_dataset,
+then use create_api_report with source labels, a title and count/sum sections. It creates
+a self-contained HTML report with tables, bar charts, data/analysis CSV and JSON and a
+manifest. No arbitrary code is needed. Use meaningful numeric quantities for sums, never
+identifiers or dates. List categories support overlapping counts only; missing values
+remain unknown. Filter/group only columns inspection reports. Four analysis and two report
+attempts are available, even after read/source storage allowances are full. Time, token and
+pass limits still apply. Reserve a gathering pass for requested deliverables, prioritize
+them before more optional reads, and report actual file creation failures honestly.
+General code execution and other chart types remain unavailable in Research.
 For multi-page data files, inspect a small query_public_api page first, then use
 collect_api_dataset with all retained page labels in order. It collects additional pages
 and exports files without sending raw records into context. Each page still consumes a
@@ -117,7 +130,7 @@ class Research:
         if not any(self.url_allowed(adapter.endpoint) for adapter in ADAPTERS.values()):
             allowed.discard(API_TOOL)
         if API_TOOL in allowed:
-            allowed.add(EXPORT_TOOL)
+            allowed.update(LOCAL_DATA_TOOLS)
             allowed.add(COLLECT_TOOL)
         return allowed
 
@@ -150,7 +163,7 @@ class Research:
         self.state['rounds_used'] = rounds_used
         self.state['effective_rounds'] = max_rounds
         reason = self.exhausted(tokens)
-        if reason and EXPORT_TOOL in self.available_tools():
+        if reason and set(LOCAL_DATA_TOOLS) & self.available_tools():
             # Full citation storage stops new reads, not export of already retained data.
             # Time/token ceilings still stop gathering, including export preparation.
             reason = self.exhausted(tokens, source_capacity=False)
@@ -170,22 +183,23 @@ class Research:
                 f"{max(0, self.limits['tokens'] - tokens):,} reported tokens and "
                 f"{max(0, int(self.limits['seconds'] - (time.time() - self.state['started_at'])))} seconds "
                 'until gathering stops; report writing follows. '
-                'If data files were requested, export retained API pages before the handoff. '
+                'If files or charts were requested, analyze and create the report from retained API pages before the handoff. '
                 'When ready, give a short handoff for final synthesis.')
 
     def available_tools(self):
         if self.exhausted(source_capacity=False):
             return set()
-        reads = {name for name in self.allowed_tools() - {NOTEBOOK_TOOL, EXPORT_TOOL, COLLECT_TOOL}
+        reads = {name for name in self.allowed_tools() - {NOTEBOOK_TOOL, COLLECT_TOOL} - set(LOCAL_DATA_TOOLS)
                 if self.state['reads' if name in PAGE_READ_TOOLS else 'searches']
                 < self.limits['reads' if name in PAGE_READ_TOOLS else 'searches']
                 and self.state.get('source_capacity', 1) > 0}
         available = reads | {NOTEBOOK_TOOL} if reads else set()
         if API_TOOL in reads and self.state.get('api_data_available'):
             available.add(COLLECT_TOOL)
-        if (EXPORT_TOOL in self.allowed_tools() and self.state.get('api_data_available')
-                and self.state.get('export_attempts', 0) < 2):
-            available.add(EXPORT_TOOL)
+        for name, (counter, limit) in LOCAL_DATA_TOOLS.items():
+            if (name in self.allowed_tools() and self.state.get('api_data_available')
+                    and self.state.get(counter, 0) < limit):
+                available.add(name)
         return available
 
     def advance(self, text):
@@ -199,16 +213,17 @@ class Research:
             return 'Tool is outside this research stage or source scope. Not executed.'
         if self.state.get('rounds_used', 0) >= self.state.get('effective_rounds', self.limits['rounds']):
             return 'Research pass allowance reached. Use the retained evidence for the report.'
-        if reason := self.exhausted(source_capacity=name != EXPORT_TOOL):
+        if reason := self.exhausted(source_capacity=name not in LOCAL_DATA_TOOLS):
             self.state['reason'] = reason
             return reason
         if name == 'web_fetch' and not self.url_allowed(arguments.get('url', '')):
             return 'URL is outside the selected research domains. Not fetched.'
-        if name == EXPORT_TOOL:
-            if not self.state.get('api_data_available') or self.state.get('export_attempts', 0) >= 2:
-                return 'No API pages available or dataset export attempts exhausted.'
-            self.state['export_attempts'] = self.state.get('export_attempts', 0) + 1
-            return None  # Local file export; no new search/read or model allowance.
+        if name in LOCAL_DATA_TOOLS:
+            counter, limit = LOCAL_DATA_TOOLS[name]
+            if not self.state.get('api_data_available') or self.state.get(counter, 0) >= limit:
+                return 'No API pages available or local dataset tool attempts exhausted.'
+            self.state[counter] = self.state.get(counter, 0) + 1
+            return None  # Local analysis/export; no new search/read or model allowance.
         if name == COLLECT_TOOL:
             if not self.state.get('api_data_available') or self.state['reads'] >= self.limits['reads']:
                 return 'Inspect an API page first; collection requires remaining read allowance.'

@@ -190,13 +190,13 @@ def test_export_remains_available_after_read_or_source_capacity_exhaustion(ctx):
     label = capture(ctx, [record(1)])
     research = ctx.research
     research.state.update(reads=research.limits['reads'], searches=research.limits['searches'], source_capacity=0)
-    assert research.available_tools() == {'export_api_dataset'}
+    assert research.available_tools() == {'export_api_dataset', 'analyze_api_dataset', 'create_api_report'}
     research.before_round(2, 6, 0)
     assert research.phase == 'gather'
     assert research.admit('export_api_dataset', {'labels': [label]}) is None
     assert research.admit('export_api_dataset', {'labels': [label]}) is None
     assert research.admit('export_api_dataset', {'labels': [label]}) is not None
-    assert not research.available_tools()
+    assert research.available_tools() == {'analyze_api_dataset', 'create_api_report'}
 
 
 def test_approval_resume_revalidates_sources_before_export(db, monkeypatch):

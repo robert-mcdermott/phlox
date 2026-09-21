@@ -456,7 +456,7 @@ version expiry remain outside this wave.
 ## Wave 14 — General reliability and task completion
 
 **Status:** in progress; first through third increments implemented 2026-09-09,
-fourth through thirteenth increments implemented 2026-09-20. **Scope:** application/session/run
+fourth through fourteenth increments implemented 2026-09-20. **Scope:** application/session/run
 reliability across Chat and Research, M2.3 evidence quality and completion budgets, with a
 bounded bridge to M3 deliverables. Schedule ahead of output inspection and portable exports.
 The delivery record below distinguishes implemented changes from the remaining plan.
@@ -958,8 +958,43 @@ passed. All **45 Chromium regressions**, lint, production build and diff checks 
 existing deprecation and bundle-size warnings remain. See the
 [collect-and-continue demo](API_DATASETS.md#manual-verification-collect-and-continue).
 
+**Fourteenth increment — Retained-data analysis and HTML reports (2026-09-20):**
+
+- **Bounded W14.6/W14.8 delivery:** `analyze_api_dataset` inspects retained query-page
+  columns, types, missing counts and coverage. `create_api_report` uses those same source
+  labels for filtered grouped counts or exact known-value sums, then creates a standalone
+  HTML report with tables/bar charts, original data, analysis CSV/JSON and a manifest.
+  The model supplies a bounded recipe, not file contents or executable expressions.
+- **Accuracy and scope:** original coverage stays separate from report filters. Partial
+  samples, unknown amounts, overlapping list categories and source references are explicit.
+  List grouping supports counts only. Tables, chart labels and files share computed
+  results; the report's numeric values remain exact and bar lengths are approximations.
+  Limits are six sections, fifty groups each, eight filters and a 2 MiB complete bundle.
+- **Permissions and delivery:** inspection defaults to Auto, reports to Ask. Disabled export
+  cannot be bypassed through reports. Source ownership, expiry, current Research attempt
+  and domain scope are rechecked before publication; Stop prevents new file publication.
+  Existing checkpoints, saved answer files, preview/downloads and durable replay are reused.
+  Staged bytes are verified before atomic publication. The manifest does not claim live
+  visual review. No server, package installation, new dependency or schema is needed.
+- **Research:** inspection and reports become available after a validated API page. Four
+  inspections and two report attempts remain possible after read/source capacity is full,
+  within existing time/token/pass ceilings. Instructions prioritize requested reports
+  before synthesis. General task-completion tracking, arbitrary code and richer charts
+  remain future work; this does not guarantee any selected model follows the workflow.
+
+**Fourteenth-increment verification:** the full suite passed **983 backend tests, with
+24 skipped**. After final publication-time Stop and missing-category refinements, all
+**53 report/export tests** passed. All **45 Chromium regressions**, lint, production
+build and diff checks passed. Synthetic reports were visually inspected at desktop and
+phone widths; long hashes wrap and wide tables scroll within the report. Fixtures cover
+all three adapters, exact decimals/nulls, filters/list membership, escaping, size limits,
+approval/resume, revocation, Stop, saved downloads and ordinary/durable Research delivery.
+Tests use scripted providers and local API fixtures, not a live provider/model or public
+API account. Existing deprecation and build-size warnings remain. See the
+[manual report demo](DATASET_REPORTS.md#manual-verification).
+
 **Still pending:** remaining W14.1/W14.5 stage allowances, live calibration and recovery UX, further W14.2 extraction quality, broader W14.3 API coverage and W14.4 quality evaluation, and
-W14.6–W14.8 (extraction, working context and analysis/deliverables), plus full process-level signal/draining/deadline work in
+broader W14.6–W14.8 work (extraction, working context and analysis/deliverables), plus full process-level signal/draining/deadline work in
 W14.11. A stalled tool or open event stream can still delay graceful shutdown. No automatic
 replay of uncertain actions, session refresh protocol, durable return hint or distributed
 worker has been introduced. Future increments should address acquisition beyond the

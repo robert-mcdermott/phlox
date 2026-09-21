@@ -35,7 +35,7 @@ The seventh increment adds a scoped NIH RePORTER POST-query adapter, validated A
 pagination and inspectable retrieval recipes. Broader API coverage, context quality
 evaluation and analysis improvements remain planned. The eighth increment adds permission-gated
 retained-page dataset exports, exact known-amount summaries and coverage/provenance manifests;
-bulk acquisition, general analysis/charts and semantic deliverable tracking remain planned. See the wave's
+larger acquisitions, general analysis and semantic deliverable tracking remain planned. See the wave's
 delivery record for verification and remaining restart boundaries.
 The ninth increment adds PubMed bibliographic search, cited pagination and exports through
 shared API/source/dataset components. NIH funding calculations are now adapter-specific.
@@ -46,6 +46,10 @@ The twelfth increment adds shared bounded retries for temporary failures across 
 API adapters, server-directed cooldowns, Stop/access rechecks and inspectable attempt history.
 The thirteenth increment adds bounded multi-page collection from a validated preview,
 per-page checkpoints/read accounting, compact results, partial exports and explicit continuation.
+The fourteenth increment adds column inspection and permission-controlled HTML reports
+over those retained datasets: filtered grouped counts, exact sums, tables/bar charts and
+reproducible analysis files with coverage and provenance. General execution, additional
+chart types and semantic deliverable tracking remain open; see [Dataset reports](DATASET_REPORTS.md).
 Full article text, broader API discovery and larger acquisition beyond these bounds remain planned; see the
 Wave 14 backlog for scope.
 The wave log records verification and remaining limits. M3 has an initial delivery; M4–M5 remain proposed. Existing features and

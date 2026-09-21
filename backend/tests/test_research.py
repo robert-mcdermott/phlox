@@ -216,7 +216,7 @@ def test_approval_preserves_research_counters_and_scope(db, monkeypatch):
     monkeypatch.setattr(REGISTRY.get("web_search"), "run", lambda *a, **kw: ToolResult("discovery"))
     parse(resumed.resume(pending.state, {"search": "allow"}))
     assert resumed.research.state["searches"] == 1
-    assert resumed.allowed_tools == {"web_search", "web_fetch", "read_web_source", "query_public_api", "export_api_dataset", "collect_api_dataset", "update_research_notebook"}
+    assert resumed.allowed_tools == {"web_search", "web_fetch", "read_web_source", "query_public_api", "export_api_dataset", "collect_api_dataset", "analyze_api_dataset", "create_api_report", "update_research_notebook"}
     assert resumed.rounds_used <= 5
 
 

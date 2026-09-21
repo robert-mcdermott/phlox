@@ -183,6 +183,11 @@ def capture_web(db, *, conversation_id, user_id, turn_id, url, title, text='', c
 
 
 def web_locator(location):
+    if location.get('format') == 'api':
+        return (f"Public API: {location['adapter']} (POST); records [{location['offset']}, {location['item_end']}) "
+                f"of {location['total_records']} reported matches. Selected fields only.\n"
+                'Request: ' + json.dumps(location['request'], ensure_ascii=False, sort_keys=True) + '\n'
+                f"Request SHA-256: {location['request_hash']}\n")
     if location.get('format') == 'pdf':
         return f"PDF page {location['page']} of {location['page_count']}; character offsets within this page.\n"
     if location.get('format') == 'json':
@@ -250,9 +255,13 @@ def inspect_source(db, conv, source_id):
                    'captured_at': utc(row.captured_at), 'expires_at': utc(row.expires_at)}
         if row.location.get('status') != 'fetched' or not row.excerpt:
             return {**details, 'reason': row.location.get('reason') or 'No page evidence captured.'}
-        changed = db.query(Source.id).filter(Source.conversation_id == conv.id, Source.kind == 'web',
+        versions = db.query(Source.id).filter(Source.conversation_id == conv.id, Source.kind == 'web',
             Source.url == row.url, Source.content_hash != row.content_hash, Source.excerpt.isnot(None),
-            Source.expires_at > datetime.now(timezone.utc)).first() is not None
+            Source.expires_at > datetime.now(timezone.utc))
+        if row.location.get('format') == 'api':
+            # A different query/page at the same POST endpoint is not a revised source.
+            versions = versions.filter(Source.location['request_hash'].as_string() == row.location['request_hash'])
+        changed = versions.first() is not None
         return {**details, 'available': True, 'excerpt': row.excerpt, 'content_hash': row.content_hash,
                 'changed': changed}
     doc = db.get(Document, row.document_id, populate_existing=True) if row.document_id else None

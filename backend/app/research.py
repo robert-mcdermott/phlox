@@ -8,7 +8,8 @@ from urllib.parse import urlsplit
 
 from app.research_config import LEGACY_PRESETS
 from app.research_notebook import NAME as NOTEBOOK_TOOL
-PAGE_READ_TOOLS = {'web_fetch', 'read_web_source'}
+from app.public_api import NAME as API_TOOL, ENDPOINT as API_ENDPOINT
+PAGE_READ_TOOLS = {'web_fetch', 'read_web_source', API_TOOL}
 READ_TOOLS = {'web_search', 'search_documents'} | PAGE_READ_TOOLS
 INSTRUCTIONS = """
 Research mode was explicitly selected. Research only the current question, using the
@@ -24,8 +25,12 @@ web_fetch also reads public PDFs with page citations and JSON values/array recor
 pdf_page for a specific PDF page. For JSON, follow structure previews with json_pointer
 and json_start/json_limit; array selection is within one response, not API pagination.
 Do not guess that omitted records are absent or that requested API filters were honored.
-Scanned PDFs need OCR; complex table extraction needs verification. POST APIs are not yet
-supported by this research workflow. Report these capability gaps instead of retrying guessed GET URLs.
+Scanned PDFs need OCR; complex table extraction needs verification. query_public_api supports
+NIH RePORTER parent-project searches by organization/year through its fixed POST adapter.
+Start with a small page. Continue with its S-label to reuse the saved recipe; each page is
+one source read. No other POST endpoints are supported. API pages are partial datasets,
+not annual totals: check scope, duplicates, missing amounts and completeness before aggregation.
+Report unsupported API capabilities instead of retrying guessed GET URLs.
 When update_research_notebook is available, maintain concise source-linked findings,
 disagreements and unresolved questions after every few reads and before the final handoff.
 Supply the full notebook, preserving still-relevant findings. Batch an update with your next
@@ -82,8 +87,11 @@ class Research:
 
     def allowed_tools(self):
         scope = self.state['options']['scope']
-        return ({'search_documents'} if scope != 'web' else set()) | (
+        allowed = ({'search_documents'} if scope != 'web' else set()) | (
             {'web_search'} | PAGE_READ_TOOLS if scope != 'documents' else set()) | {NOTEBOOK_TOOL}
+        if not self.url_allowed(API_ENDPOINT):
+            allowed.discard(API_TOOL)
+        return allowed
 
     def url_allowed(self, url):
         try:
@@ -156,6 +164,8 @@ class Research:
             return reason
         if name == 'web_fetch' and not self.url_allowed(arguments.get('url', '')):
             return 'URL is outside the selected research domains. Not fetched.'
+        if name == API_TOOL and not self.url_allowed(API_ENDPOINT):
+            return 'API is outside the selected research domains. Not queried.'
         if name == NOTEBOOK_TOOL:
             return None  # Local notes use model passes/tokens, not search/read allowances.
         kind = 'reads' if name in PAGE_READ_TOOLS else 'searches'

@@ -108,8 +108,9 @@ external `$ref` links are never followed automatically.
 Array selection operates on **one downloaded response**. It does not follow API pagination,
 submit POST bodies, supply credentials, prove that server-side filters were honored, or
 infer that omitted records are absent. Each subsequent selection downloads the current
-response again, so records/indices can change between reads. Large API datasets and
-POST-based queries remain work for a later increment.
+response again, so records/indices can change between reads. For supported POST queries,
+the separate [public API tool](PUBLIC_API.md) now provides a scoped NIH RePORTER adapter
+with validated pages and saved-query continuation. Bulk datasets remain later work.
 
 PDF and JSON passages use the existing web-source permissions, ownership, retention and
 source limits. Research notebook findings can reference their citations; final synthesis

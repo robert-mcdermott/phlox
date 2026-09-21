@@ -134,6 +134,16 @@ See [ARTIFACTS.md](ARTIFACTS.md) for data flow, storage and preview boundaries.
 
 ### Evidence seam
 
+`public_api.py` defines fixed read-query adapters, initially NIH RePORTER project search.
+The `query_public_api` registry tool accepts bounded filters or a retained source label
+for continuation; it never accepts arbitrary URLs or POST bodies. `web_fetch.post_read_query`
+reuses DNS pinning, cancellation and byte limits while rejecting redirects. The existing
+parser subprocess validates filters, types, counts and ID ordering before capture. Web
+source location JSON retains the canonical request, hash and pagination state; continuation
+reauthorizes the source and current Research attempt/domain scope. The tool counts as a
+Research read and uses the shared permission, notebook, source and replay seams. See
+[public API queries](PUBLIC_API.md); bulk acquisition and aggregation remain later work.
+
 `web_fetch.py` performs the same DNS-pinned, bounded GET for HTML/text, PDF and JSON.
 PDF/JSON bytes are passed to `web_formats.py`, which admits at most two cancellable parser
 subprocesses sharing the fetch deadline. `web_extract_worker.py` has no application config,

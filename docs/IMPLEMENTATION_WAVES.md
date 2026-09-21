@@ -456,7 +456,7 @@ version expiry remain outside this wave.
 ## Wave 14 — General reliability and task completion
 
 **Status:** in progress; first through third increments implemented 2026-09-09,
-fourth through sixth increments implemented 2026-09-20. **Scope:** application/session/run
+fourth through seventh increments implemented 2026-09-20. **Scope:** application/session/run
 reliability across Chat and Research, M2.3 evidence quality and completion budgets, with a
 bounded bridge to M3 deliverables. Schedule ahead of output inspection and portable exports.
 The delivery record below distinguishes implemented changes from the remaining plan.
@@ -680,12 +680,46 @@ and a scripted HTML/PDF/JSON research task with notebook restoration. Browser co
 verifies page and JSON record provenance after reload. No live-provider or external-site
 quality evaluation was performed. No database migration or new configuration is required.
 
-**Still pending:** remaining W14.1/W14.5 stage allowances, live calibration and recovery UX, further W14.2 extraction quality, W14.3 controlled POST/API pagination and broader W14.4 quality evaluation, and
+**Seventh increment — controlled public API queries and pagination (2026-09-20):**
+
+- **W14.3 further delivery:** `query_public_api` introduces a fixed NIH RePORTER parent-project
+  search adapter. Organization/year filters produce one bounded POST response per call;
+  pagination uses a retained S-label to reuse the exact query and next offset. No arbitrary
+  endpoints, headers, credentials, request bodies, redirects or bulk downloads are exposed.
+- **W14.7 foundation:** strict response parsing checks returned filters, field types,
+  page counts/offsets, parent-project status and ascending unique application IDs. Repeated
+  pages, changing totals and mismatches yield explicit errors with no new evidence/cursor.
+  Selected fields preserve numeric spellings/nulls and include organization/agency data.
+  Source inspection and exports retain the request and range; a page is not an annual total.
+- **Continuity:** ownership, retention, current-attempt/domain scope and source capacity
+  are checked before continuation. Each attempt uses a Research source read; permissions,
+  approval resume, notebooks, Stop and durable replay use their existing seams. Pacing,
+  shared DNS-pinned transport and the isolated parser bound resource use. No migration,
+  new configuration or new dependency is required.
+- **Tool exposure:** ordinary Chat advertises the adapter when Web search is enabled;
+  Research includes it for allowed web scope/domains. Other chats retain their prior tool
+  schema overhead. Assistant web-capability restrictions also apply on approval resume.
+- **Boundaries:** only this reviewed POST search adapter is supported. Large datasets,
+  cross-query deduplication, entity/funding-scope validation, aggregate calculations and
+  deliverable generation remain future work. Offset pagination is not a frozen snapshot;
+  the API window and source/read limits can require narrower queries. See [the guide](PUBLIC_API.md).
+
+**Seventh-increment verification:** backend lint and full suite (692 passed, 24 skipped),
+production frontend build and all 45 Chromium regressions. Local HTTP/parser tests cover
+validated pagination, ignored filters, malformed/oversized responses, null/precise numbers,
+redirect rejection, DNS policy, Stop during reads/pacing, private retained cursors,
+approval resume, notebook restoration and request-bound/durable replay. Browser coverage
+checks query/range inspection after reload. Two one-record pages also passed through the
+actual adapter against the public NIH API; no live model, bulk retrieval or annual-total
+quality evaluation was performed. Ordinary chats without Web search retain their existing
+tool overhead, including the image-and-project-context regression.
+
+**Still pending:** remaining W14.1/W14.5 stage allowances, live calibration and recovery UX, further W14.2 extraction quality, broader W14.3 API coverage and W14.4 quality evaluation, and
 W14.6–W14.8 (extraction, working context and analysis/deliverables), plus full process-level signal/draining/deadline work in
 W14.11. A stalled tool or open event stream can still delay graceful shutdown. No automatic
 replay of uncertain actions, session refresh protocol, durable return hint or distributed
-worker has been introduced. The next increment should address controlled read-query API
-adapters and pagination before extending the research-to-analysis workflow.
+worker has been introduced. The next increment should address bounded structured-data
+acquisition and validation for the research-to-analysis workflow (W14.6–W14.8).
 
 **Motivation:** a reviewed long-running research task exposed an empty synthesis saved as
 completed, exhausted search/read allowances, repeated context trimming, and useful financial

@@ -24,10 +24,10 @@ from app.agent.tools.base import Tool, ToolContext, ToolResult
 SUBAGENT_TOOLS = {
     "read_file", "write_file", "edit_file", "list_dir", "glob_search", "grep_search",
     "run_shell", "execute_python", "execute_node", "search_documents", "web_fetch",
-    "update_todos", "read_web_source",
+    "update_todos", "read_web_source", "query_public_api",
 }
 READ_ONLY_TOOLS = {
-    "read_file", "list_dir", "glob_search", "grep_search", "search_documents", "web_fetch", "read_web_source",
+    "read_file", "list_dir", "glob_search", "grep_search", "search_documents", "web_fetch", "read_web_source", "query_public_api",
 }
 
 SUBAGENT_SYSTEM = (

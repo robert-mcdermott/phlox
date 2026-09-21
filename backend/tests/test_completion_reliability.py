@@ -227,7 +227,7 @@ def test_compaction_does_not_replace_history_with_a_truncated_summary():
 def test_research_removes_exhausted_tools_and_checks_usage_before_tool_admission():
     r = Research({'scope': 'web', 'depth': 'brief', 'domains': []})
     r.state.update(phase='gather', searches=3)
-    assert r.available_tools() == {'web_fetch', 'read_web_source', 'update_research_notebook'}
+    assert r.available_tools() == {'web_fetch', 'read_web_source', 'query_public_api', 'update_research_notebook'}
     r.before_round(2, 5, r.limits['tokens'])
     assert r.phase == 'synthesize'
     assert r.admit('web_fetch', {'url': 'https://example.org'})

@@ -111,11 +111,13 @@ def test_chat_web_search_advertised_only_when_requested(client, monkeypatch):
     r = client.post("/api/chat", json={"message": "hello"})
     assert r.status_code == 200
     assert seen_tools and "web_search" not in seen_tools[-1]
+    assert "query_public_api" not in seen_tools[-1]
     assert "search_documents" not in seen_tools[-1]
 
     r = client.post("/api/chat", json={"message": "hello", "web_search": True})
     assert r.status_code == 200
     assert "web_search" in seen_tools[-1]
+    assert "query_public_api" in seen_tools[-1]
     assert "search_documents" not in seen_tools[-1]
 
     r = client.post("/api/chat", json={"message": "hello", "document_search": True})

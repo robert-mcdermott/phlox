@@ -47,7 +47,7 @@ export default function SourcePanel({ conversationId, reference, onClose }) {
       {source && !source.available && <p role="status">{source.reason || 'Source unavailable.'}</p>}
       {source?.kind === 'web' && <>
         <p className="text-xs text-muted">Fetched web source · {source.location?.status === 'fetched' ? 'Retained evidence' : 'No supporting passage captured'}</p>
-        {source.url && /^https?:\/\//i.test(source.url) && <a href={source.url} target="_blank" rel="noopener noreferrer" className="block break-all text-accent underline">Open original page: {source.url}</a>}
+        {source.url && /^https?:\/\//i.test(source.url) && <a href={source.url} target="_blank" rel="noopener noreferrer" className="block break-all text-accent underline">{source.location?.format === 'api' ? 'API endpoint' : 'Open original page'}: {source.url}</a>}
         {source.location?.fetched_at && <p className="text-muted">Fetched {new Date(source.location.fetched_at).toLocaleString()}</p>}
         <button disabled={forgetting} onClick={async () => {
           setForgetting(true); setError(null)
@@ -67,6 +67,16 @@ export default function SourcePanel({ conversationId, reference, onClose }) {
           <p className="break-all text-muted">JSON pointer: {source.location.json_pointer || '(root)'}</p>
           {source.location.item_start != null && <p className="text-muted">Array items [{source.location.item_start}, {source.location.item_end}) of {source.location.total_items} · zero-based indices</p>}
           <p className="text-muted">Complete JSON selection · offsets within its rendered text</p>
+        </>}
+        {source.location.format === 'api' && <>
+          <p className="text-muted">Public API · {source.location.adapter} · {source.location.method}</p>
+          <p className="text-muted">Records [{source.location.offset}, {source.location.item_end}) of {source.location.total_records} reported matches · selected fields</p>
+          <p className="text-muted">{source.location.window_exhausted ? 'API page window reached. More records remain; narrow the query.' : source.location.next_offset != null ? 'More API pages remain.' : 'End of this query according to the API.'} A page is not a verified annual total.</p>
+          <details className="rounded border border-border p-2">
+            <summary className="cursor-pointer">Retrieval query</summary>
+            <p className="my-2 text-xs text-muted">Opening the endpoint does not replay this POST query.</p>
+            <pre className="whitespace-pre-wrap break-all text-xs">{JSON.stringify(source.location.request, null, 2)}</pre>
+          </details>
         </>}
         {source.location.section && <p className="text-muted">Section: {source.location.section}</p>}
         {source.location.table_row && <p className="text-muted">Table {source.location.table || ''} row {source.location.table_row}</p>}

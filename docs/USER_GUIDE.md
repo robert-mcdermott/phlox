@@ -451,6 +451,9 @@ evidence](WEB_SOURCES.md#focused-reading-and-saved-evidence) for scope and limit
 Public PDFs retain page citations; JSON values and array selections retain field paths
 and record ranges without splitting records or rounding numeric text. See
 [PDF and JSON reading](WEB_SOURCES.md#pdf-and-json-sources) for examples and bounds.
+For structured data, the [public API query tool](PUBLIC_API.md) can read NIH RePORTER
+projects by organization/year and continue through validated, cited pages. It preserves
+the query for inspection; sampled pages are not complete annual funding totals.
 
 Access is rechecked on each source read/export. Source excerpts expire 30 days after last
 capture; deletion removes source snapshots and leaves unavailable labels. Historical answer/

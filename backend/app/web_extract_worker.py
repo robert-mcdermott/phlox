@@ -102,7 +102,7 @@ def object_pairs(pairs):
     return result
 
 
-def structured(body, pointer, start, limit, max_chars):
+def decode_json(body):
     def reject_constant(value):
         raise ValueError('Nonstandard JSON constant')
 
@@ -115,6 +115,11 @@ def structured(body, pointer, start, limit, max_chars):
             raise ExtractionError('malformed_json', 'JSON nesting exceeds 64 levels.')
         if isinstance(item, (dict, list)):
             stack.extend((v, depth + 1) for v in (item.values() if isinstance(item, dict) else item))
+    return value
+
+
+def structured(body, pointer, start, limit, max_chars):
+    value = decode_json(body)
     if pointer:
         for segment in pointer[1:].split('/'):
             key = segment.replace('~1', '/').replace('~0', '~')
@@ -168,6 +173,65 @@ def structured(body, pointer, start, limit, max_chars):
     return {'text': text, 'location': location, 'notice': notice, 'truncated': bool(pointer)}
 
 
+def nih_projects(body, request, previous=None):
+    """Validate a bounded page before it becomes evidence or a continuation recipe."""
+    def fail(message):
+        raise ExtractionError('invalid_api_response', message + ' No evidence or continuation captured.')
+
+    def integer(value):
+        if not isinstance(value, Number) or not value.isascii() or not value.isdigit():
+            fail('Expected an unsigned integer in API metadata or record identifiers.')
+        return int(value)
+
+    value = decode_json(body)
+    if not isinstance(value, dict) or not isinstance(value.get('meta'), dict) or not isinstance(value.get('results'), list):
+        fail('Expected RePORTER meta and results fields.')
+    meta, records = value['meta'], value['results']
+    total, offset, limit = (integer(meta.get(k)) for k in ('total', 'offset', 'limit'))
+    if offset != request['offset'] or limit != request['limit'] or offset > total:
+        fail('API pagination metadata does not match the requested page.')
+    if len(records) != min(limit, total - offset):
+        fail('API record count disagrees with its pagination metadata.')
+    if previous is not None and total != previous['total']:
+        fail('API total changed between pages; restart with a narrower query.')
+    criteria, ids, selected = request['criteria'], [], []
+    names = [name.casefold() for name in criteria['org_names']]
+    fields = ('appl_id', 'subproject_id', 'fiscal_year', 'project_num', 'project_title', 'award_amount')
+    for record in records:
+        if not isinstance(record, dict) or not isinstance(record.get('organization'), dict):
+            fail('API project or organization has an unexpected type.')
+        identifier, year = integer(record.get('appl_id')), integer(record.get('fiscal_year'))
+        org = record['organization'].get('org_name')
+        if type(org) is not str or not any(name in org.casefold() for name in names):
+            fail('Returned organization does not match the requested name filters.')
+        if year not in criteria['fiscal_years']:
+            fail('Returned fiscal year does not match the requested filters.')
+        if 'subproject_id' not in record or record['subproject_id'] is not None:
+            fail('Expected a parent project with no subproject ID.')
+        if identifier in ids or (previous and identifier in previous['ids']):
+            fail('Duplicate project ID or repeated adjacent API page detected.')
+        if (ids and identifier <= ids[-1]) or (previous and previous['ids'] and identifier <= previous['ids'][-1]):
+            fail('API project identifiers are not in the requested ascending order; pagination cannot be trusted.')
+        if any(type(record.get(k)) is not str or not record[k].strip() for k in ('project_num', 'project_title')):
+            fail('Project number or title is missing or has an unexpected type.')
+        if 'award_amount' not in record or (record['award_amount'] is not None
+                                           and not isinstance(record['award_amount'], Number)):
+            fail('Award amount is missing or is not a number/null.')
+        ids.append(identifier)
+        selected.append({**{key: record[key] for key in fields},
+                         'organization': {key: record['organization'].get(key) for key in ('org_name', 'org_ipf_code', 'primary_uei')},
+                         'agency_ic_admin': record.get('agency_ic_admin'),
+                         'agency_ic_fundings': record.get('agency_ic_fundings')})
+    text = ''.join(encode_json({'meta': {k: meta[k] for k in ('total', 'offset', 'limit')}, 'results': selected}))
+    if len(text) > 6000:
+        raise ExtractionError('selection_empty', 'API page exceeds the 6,000-character evidence allowance. '
+                              'Start a query with a smaller limit; no partial records or continuation captured.')
+    end = offset + len(records)
+    return {'text': text, 'ids': ids, 'total': total, 'offset': offset, 'end': end,
+            'next_offset': end if end < total and end <= 14999 else None,
+            'window_exhausted': end < total and end > 14999}
+
+
 def main():
     # Hard CPU/address-space bounds where supported; the parent enforces wall time and Stop.
     try:
@@ -183,6 +247,8 @@ def main():
         body = base64.b64decode(request['body'], validate=True)
         if request['format'] == 'pdf':
             result = pdf(body, request.get('pdf_page'))
+        elif request['format'] == 'nih_projects':
+            result = nih_projects(body, request['request'], request.get('previous'))
         else:
             result = structured(body, request['json_pointer'], request['json_start'],
                                 request['json_limit'], request['max_chars'])

@@ -339,23 +339,7 @@ def fetch(url, cancel=None, url_policy=None, *, query='', start_char=0, max_char
                         ctype == 'application/json' or (ctype.startswith('application/') and ctype.endswith('+json'))) else None
                     if not format and ctype not in {'text/html', 'text/plain', 'text/markdown', 'application/xhtml+xml'}:
                         raise FetchError('unsupported_type', 'Unsupported source type. Use HTML, text, PDF or JSON.', resp.status)
-                    if resp.getheader('Content-Encoding', 'identity').lower() != 'identity':
-                        raise FetchError('unsupported_encoding', 'Server returned compressed content despite an identity request.', resp.status)
-                    length = resp.getheader('Content-Length')
-                    if length and (len(length) > 10 or not length.isdigit() or int(length) > MAX_BYTES):
-                        raise FetchError('too_large', 'Page exceeds the 2 MiB download limit.', resp.status)
-                    body = bytearray()
-                    while True:
-                        deadline.check()
-                        block = resp.read1(min(65536, MAX_BYTES + 1 - len(body)))
-                        if not block:
-                            break
-                        body.extend(block)
-                        if len(body) > MAX_BYTES:
-                            raise FetchError('too_large', 'Page exceeds the 2 MiB download limit.', resp.status)
-                    deadline.check()
-                    if length and len(body) != int(length):
-                        raise FetchError('incomplete', 'Page download ended before its declared length. No evidence captured.', resp.status)
+                    body = read_body(resp, deadline)
                     if format:
                         return web_formats.page(bytes(body), format, current, resp.status, deadline,
                             query=query, start_char=start_char, max_chars=max_chars, pdf_page=pdf_page,
@@ -387,3 +371,60 @@ def fetch(url, cancel=None, url_policy=None, *, query='', start_char=0, max_char
         except (OSError, http.client.HTTPException):
             deadline.check()
             raise FetchError('connection_error', 'Fetch connection failed or timed out. No page evidence captured.') from None
+
+
+def read_body(resp, deadline):
+    """Shared download bounds for web pages and fixed-endpoint read-query adapters."""
+    if resp.getheader('Content-Encoding', 'identity').lower() != 'identity':
+        raise FetchError('unsupported_encoding', 'Server returned compressed content despite an identity request.', resp.status)
+    length = resp.getheader('Content-Length')
+    if length and (len(length) > 10 or not length.isdigit() or int(length) > MAX_BYTES):
+        raise FetchError('too_large', 'Page exceeds the 2 MiB download limit.', resp.status)
+    body = bytearray()
+    while True:
+        deadline.check()
+        block = resp.read1(min(65536, MAX_BYTES + 1 - len(body)))
+        if not block:
+            break
+        body.extend(block)
+        if len(body) > MAX_BYTES:
+            raise FetchError('too_large', 'Page exceeds the 2 MiB download limit.', resp.status)
+    deadline.check()
+    if length and len(body) != int(length):
+        raise FetchError('incomplete', 'Page download ended before its declared length. No evidence captured.', resp.status)
+    return bytes(body)
+
+
+def post_read_query(url, body, deadline, url_policy=None):
+    """Transport for trusted read adapters, never exposed as an arbitrary POST tool.
+
+    The adapter owns the endpoint and request schema. Redirects are rejected rather than
+    forwarding a query to a different path/host or changing the method. No retries.
+    """
+    current = normalize_url(url)
+    if len(body) > 8192:
+        raise FetchError('invalid_selection', 'Read query exceeds the 8 KiB request limit.')
+    deadline.check()
+    if url_policy is not None and not url_policy(current):
+        raise FetchError('scope_blocked', 'API is outside the selected research domains.')
+    conn = connection(current, checked_addresses(current, deadline), deadline)
+    try:
+        parts = urlsplit(current)
+        conn.request('POST', parts.path + ('?' + parts.query if parts.query else ''), body=body,
+                     headers={'User-Agent': USER_AGENT, 'Accept': 'application/json',
+                              'Accept-Encoding': 'identity', 'Content-Type': 'application/json',
+                              'Connection': 'close'})
+        resp = conn.getresponse()
+        if 300 <= resp.status < 400:
+            raise FetchError('redirect_error', 'Read-query redirects are not followed. No evidence captured.', resp.status)
+        if not 200 <= resp.status < 300:
+            raise FetchError('http_error', f'HTTP {resp.status}: API query failed. No evidence captured.', resp.status)
+        ctype = resp.headers.get_content_type()
+        if ctype != 'application/json' and not (ctype.startswith('application/') and ctype.endswith('+json')):
+            raise FetchError('unsupported_type', 'Read-query API did not return JSON.', resp.status)
+        return read_body(resp, deadline), resp.status
+    except (OSError, http.client.HTTPException):
+        deadline.check()
+        raise FetchError('connection_error', 'API connection failed or timed out. No evidence captured.') from None
+    finally:
+        conn.close()

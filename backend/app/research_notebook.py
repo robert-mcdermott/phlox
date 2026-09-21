@@ -125,7 +125,7 @@ def prepare(ctx, messages, tools, params, provider):
     view['unavailable_sources'] = sorted(missing)
     covered = set(notebook.get('covered_calls', []))
     recent = [m.get('tool_call_id') for m in messages if m['role'] == 'tool'
-              and m.get('name') in {'web_fetch', 'read_web_source', 'search_documents'}][-2:]
+              and m.get('name') in {'web_fetch', 'read_web_source', 'search_documents', 'query_public_api'}][-2:]
     projected, index, condensed = [], 0, 0
     while index < len(messages):
         msg = deepcopy(messages[index])

@@ -80,7 +80,7 @@ def test_stages_reserve_report_call_and_persist_progress(db, monkeypatch):
         )
     )
     assert not provider.seen[0]["tools"] and not provider.seen[-1]["tools"]
-    assert set(provider.seen[1]["tools"]) == {"web_search", "web_fetch", "read_web_source", "update_research_notebook"}
+    assert set(provider.seen[1]["tools"]) == {"web_search", "web_fetch", "read_web_source", "query_public_api", "update_research_notebook"}
     assert [e["phase"] for e in events if e["type"] == "research"][0] == "plan"
     msg = db.query(Message).filter_by(conversation_id=conv.id, role="assistant").one()
     assert msg.usage["research"]["phase"] == "completed"
@@ -216,7 +216,7 @@ def test_approval_preserves_research_counters_and_scope(db, monkeypatch):
     monkeypatch.setattr(REGISTRY.get("web_search"), "run", lambda *a, **kw: ToolResult("discovery"))
     parse(resumed.resume(pending.state, {"search": "allow"}))
     assert resumed.research.state["searches"] == 1
-    assert resumed.allowed_tools == {"web_search", "web_fetch", "read_web_source", "update_research_notebook"}
+    assert resumed.allowed_tools == {"web_search", "web_fetch", "read_web_source", "query_public_api", "update_research_notebook"}
     assert resumed.rounds_used <= 5
 
 
@@ -369,7 +369,7 @@ def test_regenerate_restores_research_mode(client, monkeypatch):
     response = client.post("/api/chat", json={"conversation_id": conv, "regenerate": True})
     assert '"type": "research"' in response.text
     assert not seen[-1].seen[0]["tools"]
-    assert all(set(round["tools"]) <= {"web_search", "web_fetch", "read_web_source", "update_research_notebook"} for round in seen[-1].seen)
+    assert all(set(round["tools"]) <= {"web_search", "web_fetch", "read_web_source", "query_public_api", "update_research_notebook"} for round in seen[-1].seen)
 
 
 def test_schema_validation_never_fetches_remote_refs(monkeypatch):

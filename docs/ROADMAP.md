@@ -42,6 +42,8 @@ shared API/source/dataset components. NIH funding calculations are now adapter-s
 The tenth increment adds separately cited PubMed abstracts and author affiliations,
 version-checked detail paging and optional captured-detail exports. The eleventh increment
 adds ClinicalTrials.gov search, cursor pagination and cited study sections/exports.
+The twelfth increment adds shared bounded retries for temporary failures across all three
+API adapters, server-directed cooldowns, Stop/access rechecks and inspectable attempt history.
 Full article text, broader API discovery and bulk acquisition remain planned; see the
 Wave 14 backlog for scope.
 The wave log records verification and remaining limits. M3 has an initial delivery; M4–M5 remain proposed. Existing features and

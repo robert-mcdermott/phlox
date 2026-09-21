@@ -918,11 +918,14 @@ test('PDF, JSON and public API citations show provenance after reload', async t 
   state.sources['source-1'] = { ...webSourceFixture(), excerpt: '{"has_results":false,"section_status":"missing"}',
     location: { ...webSourceFixture().location, format: 'api_record', adapter: 'clinical_trials', method: 'GET',
       record_id: 'NCT00000001', section: 'results', selection: { start: 0, end: 0, total: 0, next_start: null, unit: 'characters' },
+      retrieval: [{ operation: 'detail', attempts: [{ status: 'http_error', http_status: 503, retry_delay_seconds: 1 }, { status: 'ok', http_status: 200 }] }],
       request: { record_id: 'NCT00000001', section: 'results', start: 0, max_chars: 3000 } } }
   await page.reload()
   await page.getByText('Approval chat', { exact: true }).click()
   await page.getByRole('button', { name: 'View source S1', exact: true }).click()
   await dialog.getByText('API record · clinical_trials · NCT00000001', { exact: true }).waitFor()
+  await dialog.getByText('API retrieval attempts', { exact: true }).click()
+  await dialog.getByText('detail: 2 HTTP attempt(s), 1 automatic retry/retries.', { exact: true }).waitFor()
   await dialog.getByText(/Overall recruitment can differ from site status; posted results are separate/).waitFor()
   assert.equal(await dialog.getByText(/Full article text was not retrieved/).count(), 0)
   await dialog.getByText(state.sources['source-1'].excerpt, { exact: true }).waitFor()

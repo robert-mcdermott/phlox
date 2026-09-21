@@ -199,7 +199,8 @@ compression is rejected. Enterprise proxy-only networks need a future controlled
 integration; do not disable address checks as a workaround. Search-provider requests keep
 their existing separate implementation. The reviewed [public API adapters](PUBLIC_API.md)
 reuse the same connection checks and download bounds, with fixed request contracts and
-no redirects.
+no redirects. Those adapters have [bounded transient retries](PUBLIC_API.md#temporary-failures-and-automatic-retries)
+within their shared deadline; ordinary `web_fetch` does not automatically retry.
 
 | Bound | Value |
 |---|---|

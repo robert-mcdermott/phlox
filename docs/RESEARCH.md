@@ -128,6 +128,12 @@ recruitment, site recruitment and results availability stay distinct; see the
 [study demo](PUBLIC_API.md#manual-verification-clinicaltrialsgov-demo). Other POST APIs and bulk data acquisition remain unsupported. See
 [PDF and JSON sources](WEB_SOURCES.md#pdf-and-json-sources) for limits and manual checks.
 
+The three API adapters retry temporary failures up to three attempts per HTTP operation,
+honoring server delays within the original 30-second deadline. These retries stay within
+one Research read and do not repeat successful operations or make additional model calls.
+Stop interrupts backoff; citation inspection and dataset manifests retain attempt history.
+See [API recovery and its limits](PUBLIC_API.md#temporary-failures-and-automatic-retries).
+
 ## Research notebook and working context
 
 During gathering, the model can maintain a **Research notebook** containing concise

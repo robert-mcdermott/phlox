@@ -36,9 +36,10 @@ _DNS_SLOTS = threading.BoundedSemaphore(4)
 
 
 class FetchError(ValueError):
-    def __init__(self, status, message, http_status=None):
+    def __init__(self, status, message, http_status=None, *, retry_after=None):
         super().__init__(message)
         self.status, self.http_status = status, http_status
+        self.retry_after = retry_after
 
 
 def normalize_url(url):
@@ -200,7 +201,13 @@ def connection(url, addresses, deadline):
             conn.auto_open = 0  # no reconnect (and hence no second hostname resolution)
             conn.sock = sock
             return conn
-        except (OSError, FetchError) as exc:
+        except FetchError:
+            sock.close()
+            raise
+        except ssl.SSLError:
+            sock.close()
+            raise FetchError('tls_error', 'HTTPS verification or negotiation failed.') from None
+        except OSError as exc:
             sock.close()
             last = exc
     deadline.check()
@@ -428,13 +435,17 @@ def read_api_query(url, deadline, url_policy=None, *, body=None, response_format
         if 300 <= resp.status < 400:
             raise FetchError('redirect_error', 'Read-query redirects are not followed. No evidence captured.', resp.status)
         if not 200 <= resp.status < 300:
-            raise FetchError('http_error', f'HTTP {resp.status}: API query failed. No evidence captured.', resp.status)
+            raise FetchError('http_error', f'HTTP {resp.status}: API query failed. No evidence captured.', resp.status,
+                             retry_after=resp.getheader('Retry-After'))
         ctype = resp.headers.get_content_type()
         supported = (ctype in {'application/xml', 'text/xml'} if response_format == 'xml' else
                      ctype == 'application/json' or (ctype.startswith('application/') and ctype.endswith('+json')))
         if not supported:
             raise FetchError('unsupported_type', f'Read-query API did not return {response_format.upper()}.', resp.status)
         return read_body(resp, deadline), resp.status
+    except ssl.SSLError:
+        deadline.check()
+        raise FetchError('tls_error', 'HTTPS verification or negotiation failed.') from None
     except (OSError, http.client.HTTPException):
         deadline.check()
         raise FetchError('connection_error', 'API connection failed or timed out. No evidence captured.') from None

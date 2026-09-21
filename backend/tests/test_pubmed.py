@@ -30,7 +30,7 @@ ARGS = {'adapter': 'pubmed', 'query': 'asthma[Title] AND 2024[pdat]', 'limit': 2
 
 @pytest.fixture
 def pubmed_site(monkeypatch):
-    state = SimpleNamespace(requests=[], headers=[], status=200, summary_status=200,
+    state = SimpleNamespace(requests=[], headers=[], statuses={}, retry_after=None, status=200, summary_status=200,
                             mutate_search=lambda v: None, mutate_summary=lambda v: None,
                             kind='application/json', raw=None, wait=None,
                             ids=['103', '101', '104', '102', '106', '105'])
@@ -62,7 +62,10 @@ def pubmed_site(monkeypatch):
                     'volume': '12', 'issue': '2', 'pages': '1-5'} for i in ids}}}
                 state.mutate_summary(value)
             body = state.raw if state.raw is not None else json.dumps(value).encode()
-            self.send_response(status)
+            responses = state.statuses.get(parts.path, [])
+            self.send_response(responses.pop(0) if responses else status)
+            if state.retry_after is not None:
+                self.send_header('Retry-After', state.retry_after)
             self.send_header('Content-Type', state.kind)
             self.send_header('Content-Length', str(len(body)))
             self.send_header('Location', 'http://169.254.169.254/private')
@@ -194,10 +197,10 @@ def test_empty_result_and_api_window_are_explicit(ctx, pubmed_site):
 
 
 @pytest.mark.parametrize('summary,status', [(False, 302), (False, 429), (False, 500), (True, 403), (True, 302)])
-def test_http_failures_no_retries_or_partial_evidence(ctx, pubmed_site, summary, status):
+def test_http_failures_bounded_retries_no_partial_evidence(ctx, pubmed_site, summary, status):
     setattr(pubmed_site, 'summary_status' if summary else 'status', status)
     assert QueryPublicApi().run(ctx, **ARGS).is_error
-    assert not rows(ctx) and len(pubmed_site.requests) == (2 if summary else 1)
+    assert not rows(ctx) and len(pubmed_site.requests) == ((1 if summary else 0) + (3 if status in (429, 500) else 1))
 
 
 def test_ownership_scope_retention_and_cursor_integrity(ctx, pubmed_site):

@@ -456,6 +456,9 @@ projects by organization/year, PubMed publications or ClinicalTrials.gov studies
 validated, cited pagination. Selected PubMed records can then supply cited abstracts and
 author affiliations. ClinicalTrials.gov supports condition/status/sponsor/location searches
 and cited study sections covering eligibility, interventions, sponsors, sites and posted results.
+Temporary API failures are retried automatically within the existing deadline, with at
+most three attempts per HTTP operation. Stop remains available. Expand **API retrieval
+attempts** in a citation to inspect recovery; see [retry behavior](PUBLIC_API.md#temporary-failures-and-automatic-retries).
 Full article text remains outside this workflow. It preserves
 the query for inspection; sampled NIH pages are not complete annual funding totals.
 When downloadable data is requested, [dataset export](API_DATASETS.md) creates CSV/JSON

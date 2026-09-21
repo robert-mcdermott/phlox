@@ -40,6 +40,7 @@ class Adapter:
     detail_response_format: str = 'xml'
     detail_path: bool = False
     detail_notice: str | None = None
+    retry_safe: bool = False  # Explicit semantic review, not inferred from HTTP method.
 
     def record_endpoint(self, identifier):
         return self.detail_endpoint + '/' + identifier if self.detail_path else self.detail_endpoint
@@ -62,15 +63,15 @@ class Adapter:
 
 ADAPTERS = {
     'nih_projects': Adapter('nih_projects', 'NIH RePORTER project query', 'POST', 'appl_id',
-                            nih_projects, NIH_NOTICE, nih_files, 'ENDPOINT', ascending_ids=True),
+                            nih_projects, NIH_NOTICE, nih_files, 'ENDPOINT', ascending_ids=True, retry_safe=True),
     'pubmed': Adapter('pubmed', 'PubMed publication query', 'GET', 'pmid', pubmed_records,
                       PUBMED_NOTICE, pubmed_files, 'PUBMED_ENDPOINT',
                       detail_endpoint_setting='PUBMED_DETAIL_ENDPOINT', detail_format='pubmed_detail',
-                      detail_parameters=lambda identifier: {'db': 'pubmed', 'id': identifier, 'retmode': 'xml', 'tool': 'phlox'}),
+                      detail_parameters=lambda identifier: {'db': 'pubmed', 'id': identifier, 'retmode': 'xml', 'tool': 'phlox'}, retry_safe=True),
     'clinical_trials': Adapter('clinical_trials', 'ClinicalTrials.gov study query', 'GET', 'nct_id',
                               trial_records, TRIAL_NOTICE, trial_files, 'CLINICAL_TRIALS_ENDPOINT',
                               detail_endpoint_setting='CLINICAL_TRIALS_ENDPOINT', detail_format='clinical_trials_detail',
-                              detail_response_format='json', detail_path=True, detail_notice=TRIAL_DETAIL_NOTICE),
+                              detail_response_format='json', detail_path=True, detail_notice=TRIAL_DETAIL_NOTICE, retry_safe=True),
 }
 
 

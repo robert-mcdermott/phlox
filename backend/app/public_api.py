@@ -9,7 +9,7 @@ from urllib.parse import urlencode
 
 from app import public_api_adapters as adapters
 
-from app import sources, web_fetch, web_formats
+from app import public_api_transport, sources, web_fetch, web_formats
 from app.models import Conversation, Source, SourceUse
 
 NAME = 'query_public_api'
@@ -154,6 +154,31 @@ def continuation(ctx, label, turn_id, adapter_name=None):
         return adapter, request, previous
 
 
+def authorize_read(ctx, turn_id, label=None):
+    """Recheck access/capacity after waits; retrying never grants fresh authority."""
+    with sources.LOCK:
+        conv = ctx.db.get(Conversation, ctx.conversation_id, populate_existing=True)
+        if not conv or conv.user_id != ctx.user_id or sources.remaining_capacity(ctx.db, conv.id, turn_id) < 1:
+            raise web_fetch.FetchError('invalid_selection', 'API conversation or source allowance unavailable.')
+        if ctx.research and ctx.research.state['options']['scope'] == 'documents':
+            raise web_fetch.FetchError('scope_blocked', 'API is outside the selected research source scope.')
+        if label:
+            from app.public_api_details import load_source
+            load_source(ctx, label, turn_id)
+
+
+def defer(adapter_name, seconds):
+    global _NEXT_REQUEST, _PUBMED_NEXT_REQUEST, _CLINICAL_TRIALS_NEXT_REQUEST
+    with _PACE_LOCK:
+        until = time.monotonic() + seconds
+        if adapter_name == 'pubmed':
+            _PUBMED_NEXT_REQUEST = max(_PUBMED_NEXT_REQUEST, until)
+        elif adapter_name == 'clinical_trials':
+            _CLINICAL_TRIALS_NEXT_REQUEST = max(_CLINICAL_TRIALS_NEXT_REQUEST, until)
+        else:
+            _NEXT_REQUEST = max(_NEXT_REQUEST, until)
+
+
 def pace(deadline, adapter_name='nih_projects'):
     global _NEXT_REQUEST, _PUBMED_NEXT_REQUEST, _CLINICAL_TRIALS_NEXT_REQUEST
     # No queued thread holds the lock or reserves future slots while waiting. Stop and
@@ -172,22 +197,25 @@ def pace(deadline, adapter_name='nih_projects'):
                 else:
                     _NEXT_REQUEST = now + MIN_INTERVAL
                 return
+            if wait >= deadline.until - now:
+                raise web_fetch.FetchError('retry_deferred', 'API pacing or Retry-After delay exceeds the remaining time; try again later.')
         if deadline.cancel:
             deadline.cancel.wait(min(wait, 0.05))
         else:
             time.sleep(min(wait, 0.05))
 
 
-def query(ctx, request, previous=None, adapter_name='nih_projects'):
+def query(ctx, request, previous=None, adapter_name='nih_projects', authorize=None):
     adapter = adapters.get(adapter_name)
     endpoint = adapter.endpoint
     policy = ctx.research.url_allowed if ctx.research else None
     if ctx.research and (ctx.research.state['options']['scope'] == 'documents' or not policy(endpoint) or (adapter_name == 'pubmed' and not policy(PUBMED_SUMMARY_ENDPOINT))):
         raise web_fetch.FetchError('scope_blocked', 'API is outside the selected research source scope.')
     payload = json.dumps(request, sort_keys=True, separators=(',', ':'), ensure_ascii=False).encode()
+    retrieval = []
     with web_fetch.Deadline(ctx.cancel_event) as deadline:
         if adapter_name == 'pubmed':
-            page, status = query_pubmed(request, previous, deadline, policy)
+            page, status = query_pubmed(request, previous, deadline, policy, authorize, retrieval)
         elif adapter_name == 'clinical_trials':
             parameters = {'format': 'json', 'countTotal': 'true', 'pageSize': request['limit'],
                           'sort': request['sort'], 'fields': TRIAL_FIELDS}
@@ -197,30 +225,31 @@ def query(ctx, request, previous=None, adapter_name='nih_projects'):
                     parameters[wire] = request[key]
             if request['statuses']:
                 parameters['filter.overallStatus'] = '|'.join(request['statuses'])
-            pace(deadline, adapter_name)
-            body, status = web_fetch.read_api_query(endpoint + '?' + urlencode(parameters), deadline, policy)
+            body, status = public_api_transport.read(adapter_name, 'search', endpoint + '?' + urlencode(parameters),
+                deadline, policy, authorize=authorize, retrieval=retrieval)
             page = web_formats.extract(body, 'clinical_trials_search', deadline, request=request, previous=previous)
         else:
-            pace(deadline)
-            body, status = web_fetch.post_read_query(endpoint, payload, deadline, policy)
+            body, status = public_api_transport.read(adapter_name, 'search', endpoint, deadline, policy,
+                body=payload, authorize=authorize, retrieval=retrieval)
             page = web_formats.extract(body, adapter_name, deadline, request=request, previous=previous)
         deadline.check()
+    page['retrieval'] = retrieval
     # The API mints a new search_id on every request. Identity follows the retained
     # fields and pagination metadata, not that transient server token.
     return page, status, hashlib.sha256(page['text'].encode()).hexdigest(), hashlib.sha256(payload).hexdigest()
 
 
-def query_pubmed(request, previous, deadline, policy):
-    def read(endpoint, parameters):
-        pace(deadline, 'pubmed')
-        return web_fetch.read_api_query(endpoint + '?' + urlencode(
-            {'db': 'pubmed', 'retmode': 'json', 'tool': 'phlox', **parameters}), deadline, policy)
+def query_pubmed(request, previous, deadline, policy, authorize=None, retrieval=None):
+    def read(endpoint, parameters, operation):
+        return public_api_transport.read('pubmed', operation, endpoint + '?' + urlencode(
+            {'db': 'pubmed', 'retmode': 'json', 'tool': 'phlox', **parameters}), deadline, policy,
+            authorize=authorize, retrieval=retrieval)
 
     body, status = read(PUBMED_ENDPOINT, {'term': request['query'], 'sort': request['sort'],
-        'retstart': request['offset'], 'retmax': min(request['limit'], 10000 - request['offset'])})
+        'retstart': request['offset'], 'retmax': min(request['limit'], 10000 - request['offset'])}, 'search')
     search = web_formats.extract(body, 'pubmed_search', deadline, request=request, previous=previous)
     if search['ids']:
-        body, status = read(PUBMED_SUMMARY_ENDPOINT, {'id': ','.join(search['ids'])})
+        body, status = read(PUBMED_SUMMARY_ENDPOINT, {'id': ','.join(search['ids'])}, 'summary')
     else:
         body = b'{"result":{"uids":[]}}'
     page = web_formats.extract(body, 'pubmed_summary', deadline, request=request, search=search)

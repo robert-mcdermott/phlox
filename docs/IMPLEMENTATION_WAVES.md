@@ -456,7 +456,7 @@ version expiry remain outside this wave.
 ## Wave 14 — General reliability and task completion
 
 **Status:** in progress; first through third increments implemented 2026-09-09,
-fourth through eleventh increments implemented 2026-09-20. **Scope:** application/session/run
+fourth through twelfth increments implemented 2026-09-20. **Scope:** application/session/run
 reliability across Chat and Research, M2.3 evidence quality and completion budgets, with a
 bounded bridge to M3 deliverables. Schedule ahead of output inspection and portable exports.
 The delivery record below distinguishes implemented changes from the remaining plan.
@@ -879,6 +879,43 @@ checks passed. Existing deprecation and bundle-size warnings remain. The earlier
 timeout failures led to the reproduced input-handoff fix described above; the final full
 suite passes with the original deadlines and a blocked-input cancellation regression.
 
+**Twelfth increment — Shared public API recovery (2026-09-20):**
+
+- **W14.3/W14.7 delivery:** NIH RePORTER, PubMed and ClinicalTrials.gov use a shared
+  per-operation retry layer. Reviewed repeatable reads get at most three HTTP attempts
+  for connection/incomplete-response failures or HTTP 408/429/500/502/503/504. Backoff
+  starts at 1 then 2 seconds plus small jitter. Valid `Retry-After` sets a minimum wait
+  and an in-process per-adapter cooldown that subsequent tool calls cannot bypass.
+- **Preserved progress and budgets:** successful PubMed search is not repeated when
+  metadata retrieval fails; pagination retries retain the same request/cursor. All waits,
+  requests and parsing share the original 30-second deadline and one Research read.
+  Delays that cannot fit return an explicit temporary failure. No new model calls,
+  duplicated source captures or expanded source/byte limits are introduced.
+- **Access and Stop:** waits remain cancellable. Every attempt rechecks ownership,
+  source availability/capacity and Research scope; transport repeats DNS/address checks.
+  TLS and policy failures are not reclassified as transient connection errors. Redirects,
+  permanent HTTP errors, DNS errors, wrong content types and invalid data are not retried.
+  Evidence capture reauthorizes again after retrieval/validation.
+- **Inspection:** successful citations expose per-operation attempts and retry counts;
+  dataset manifests retain safe attempt status/delay history. Failed operations create
+  no evidence/cursor. Existing captures remain readable and exportable.
+- **Boundaries:** retry safety is opt-in in the adapter contract. These changes do not
+  retry arbitrary POSTs, generic web fetches, tool mutations or uncertain run outcomes.
+  Cooldowns do not survive process restart. No configuration, dependency or schema change.
+
+**Twelfth-increment verification:** local HTTP fixtures exercise all three adapters,
+PubMed metadata-only retry, study cursor/detail recovery, exhausted and permanent failures,
+server delays, cancellation, revocation/scope/capacity checks and address revalidation.
+Attempt history round-trips through retained citations and dataset manifests without
+changing evidence identity, including older captures. Scripted request-bound and durable
+Research runs recover a transient study-search failure and still count three logical
+reads for search plus two detail selections. Chromium verifies citation attempt counts
+after reload. No public rate limits are deliberately triggered; see
+[manual verification and recovery behavior](PUBLIC_API.md#temporary-failures-and-automatic-retries).
+Final verification: **910 backend tests passed, 24 skipped**; all **45 Chromium
+regressions**, lint, frontend production build and diff checks passed. Existing
+deprecation and bundle-size warnings remain.
+
 **Still pending:** remaining W14.1/W14.5 stage allowances, live calibration and recovery UX, further W14.2 extraction quality, broader W14.3 API coverage and W14.4 quality evaluation, and
 W14.6–W14.8 (extraction, working context and analysis/deliverables), plus full process-level signal/draining/deadline work in
 W14.11. A stalled tool or open event stream can still delay graceful shutdown. No automatic
@@ -888,7 +925,7 @@ and broader research-to-analysis execution/deliverable verification (W14.6–W14
 
 **Remaining public API work (W14.3/W14.7):** NIH RePORTER, PubMed bibliography/article
 details and ClinicalTrials.gov study search/details now use shared source and export
-contracts. Full article text, general API discovery, retry/backoff and bounded bulk
+contracts and bounded transient retries. Full article text, general API discovery and bounded bulk
 retrieval remain open. Continue testing common components against all three adapters;
 this does not promise arbitrary public API access.
 

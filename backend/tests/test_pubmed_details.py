@@ -41,7 +41,7 @@ DETAIL = {'record_from': 'S1', 'record_id': '103'}
 
 @pytest.fixture
 def detail_site(monkeypatch):
-    state = SimpleNamespace(requests=[], headers=[], status=200, kind='text/xml',
+    state = SimpleNamespace(requests=[], headers=[], statuses=[], retry_after=None, status=200, kind='text/xml',
                             xml=lambda i: XML.format(id=i).encode(), wait=None)
 
     class Handler(BaseHTTPRequestHandler):
@@ -55,7 +55,9 @@ def detail_site(monkeypatch):
             if state.wait:
                 state.wait.wait(3)
             body = state.xml(params['id'])
-            self.send_response(state.status)
+            self.send_response(state.statuses.pop(0) if state.statuses else state.status)
+            if state.retry_after is not None:
+                self.send_header('Retry-After', state.retry_after)
             self.send_header('Content-Type', state.kind)
             self.send_header('Content-Length', str(len(body)))
             self.send_header('Location', 'http://169.254.169.254/private')
@@ -192,10 +194,10 @@ def test_malformed_mismatched_unsafe_xml_never_becomes_evidence(searched, detail
 
 
 @pytest.mark.parametrize('status,kind', [(302, 'text/xml'), (403, 'text/xml'), (429, 'text/xml'), (200, 'text/html'), (200, 'application/json')])
-def test_transport_errors_and_wrong_media_fail_without_retry(searched, detail_site, status, kind):
+def test_transport_errors_retry_only_transient_status(searched, detail_site, status, kind):
     detail_site.status, detail_site.kind = status, kind
     assert QueryPublicApi().run(searched, **DETAIL).is_error
-    assert len(detail_site.requests) == 1 and len(rows(searched)) == 1
+    assert len(detail_site.requests) == (3 if status == 429 else 1) and len(rows(searched)) == 1
 
 
 def test_revocation_during_fetch_prevents_capture(searched, detail_site, monkeypatch):

@@ -138,7 +138,9 @@ def capture_web(db, *, conversation_id, user_id, turn_id, url, title, text='', c
             excerpt = text[offset:offset + MAX_EXCERPT_CHARS]
             evidence = ['web', url, digest, start, excerpt, status, http_status]
             if provenance:
-                evidence.append(provenance)
+                # Retry history describes acquisition, not a different piece of evidence.
+                # Keep identities compatible with captures made before attempt tracking.
+                evidence.append({k: v for k, v in provenance.items() if k != 'retrieval'})
             fingerprint = hashlib.sha256(json.dumps(evidence).encode()).hexdigest()
             row = db.query(Source).filter_by(conversation_id=conv.id, fingerprint=fingerprint).first()
             use = db.get(SourceUse, (turn_id, row.id)) if row else None
@@ -183,16 +185,18 @@ def capture_web(db, *, conversation_id, user_id, turn_id, url, title, text='', c
 
 
 def web_locator(location):
+    from app.public_api_transport import summary
+    retrieval = summary(location.get('retrieval', []))
     if location.get('format') == 'api_record':
         selection = location['selection']
-        return (f"API record detail: {location['adapter']} {location['record_id']} ({location['method']}); "
+        return (retrieval + f"API record detail: {location['adapter']} {location['record_id']} ({location['method']}); "
                 f"{location['section']} [{selection['start']}, {selection['end']}) of {selection['total']} {selection['unit']}. "
                 + ('Selected study evidence only; recruitment and posted results are separate.\n'
                    if location['adapter'] == 'clinical_trials' else 'Selected evidence only; full article text was not retrieved.\n') +
                 'Request: ' + json.dumps(location['request'], ensure_ascii=False, sort_keys=True) + '\n'
                 f"Record SHA-256: {location['record_hash']}\n")
     if location.get('format') == 'api':
-        return (f"Public API: {location['adapter']} ({location.get('method', 'POST')}); records [{location['offset']}, {location['item_end']}) "
+        return (retrieval + f"Public API: {location['adapter']} ({location.get('method', 'POST')}); records [{location['offset']}, {location['item_end']}) "
                 f"of {location['total_records']} reported matches. Selected fields only.\n"
                 'Request: ' + json.dumps(location['request'], ensure_ascii=False, sort_keys=True) + '\n'
                 f"Request SHA-256: {location['request_hash']}\n")

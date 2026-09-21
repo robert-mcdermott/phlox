@@ -238,7 +238,7 @@ or environment proxies, and a 2 MiB limit per response. The deadline covers paci
 network reads and isolated parsing; Stop interrupts these operations. NIH requests start
 at most once per second; PubMed starts are spaced by at least 0.4 seconds within Phlox's
 single process. ClinicalTrials.gov requests are spaced by at least 0.5 seconds. Other applications sharing the same public IP may also consume NCBI's
-rate allowance. There is no API-key configuration or automatic retry in this slice.
+rate allowance. No API-key configuration is required.
 Compression and redirects are rejected; search responses must be JSON;
 detail responses are PubMed XML or ClinicalTrials.gov JSON; failures reveal no response bodies
 and create no usable evidence/cursor.
@@ -246,7 +246,44 @@ and create no usable evidence/cursor.
 These are reviewed adapters, not arbitrary public API access. New adapters must define
 endpoints, request policy, validation, pagination and export fields. Generic `web_fetch`
 remains GET-only. Full article text, bulk acquisition, configurable
-retry/backoff and general API discovery remain backlog work.
+retry settings and general API discovery remain backlog work.
+
+### Temporary failures and automatic retries
+
+All three adapters automatically retry connection failures, incomplete responses, and
+HTTP 408, 429, 500, 502, 503 or 504. Each HTTP operation gets at most **three attempts**,
+with waits of **1 then 2 seconds**, plus up to 0.25 seconds of jitter. A valid server
+`Retry-After` header (seconds or an HTTP date) sets a minimum wait. The wait also applies
+to subsequent calls to that adapter within the same Phlox process. If it cannot fit in
+the remaining deadline, Phlox reports a temporary failure immediately instead of
+retrying early. These cooldowns are not persisted across process restarts.
+
+Retries share the existing **30-second tool deadline**, response-size limits and Research
+read allowance; they do not restart the clock or consume additional model calls. A PubMed
+metadata failure retries ESummary only, preserving the successful ESearch result. A page
+retry reuses the same filters and cursor. Only validated successful data becomes evidence.
+Stop interrupts the wait, and ownership, retained-source access, source capacity and
+Research scope are checked again before another request and before saving evidence.
+
+Redirects, TLS verification/negotiation errors, DNS failures, unsupported response types,
+invalid data and other HTTP errors are not automatically retried. The NIH POST endpoint
+is explicitly approved as a repeatable read; this does not enable retries of arbitrary
+POSTs, other tools, or actions whose outcome is uncertain. Generic `web_fetch` is unchanged.
+
+Open a successful API citation and expand **API retrieval attempts** to inspect request
+and retry counts. Tool responses note recovery when retries occurred. Dataset manifests
+also retain the operation, attempt statuses and delays; older captures have no attempt
+history. Identical evidence reuses its existing citation and original capture history;
+retry counts do not create duplicate sources. Exhausted retries create no new evidence
+or usable continuation cursor.
+
+To verify normal behavior, run one of the demos above, inspect the citation, then export
+the retained sources and compare the manifest. Healthy requests normally show one attempt
+per operation. Deterministic failure, recovery, Stop and revocation tests use local fixture
+servers: from `backend`, run `uv run pytest tests/test_public_api_retries.py`.
+There is no need to provoke rate limits on a public API.
+
+Retry header semantics follow [HTTP Retry-After](https://www.rfc-editor.org/rfc/rfc9110.html#name-retry-after).
 
 References: [NIH RePORTER API](https://api.reporter.nih.gov/),
 [NCBI E-utilities parameters and usage guidance](https://www.nlm.nih.gov/dataguide/eutilities/utilities.html),

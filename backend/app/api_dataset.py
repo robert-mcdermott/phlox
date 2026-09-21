@@ -87,7 +87,8 @@ def assemble(pages, details=None):
         provenance.append({'label': page['label'], 'source_id': row.id, 'url': row.url,
                            'captured_at': sources.utc(row.captured_at).isoformat(),
                            'content_sha256': row.content_hash, 'request': page['request'],
-                           'request_sha256': row.location['request_hash'], 'range': [page['offset'], page['end']]})
+                           'request_sha256': row.location['request_hash'], 'range': [page['offset'], page['end']],
+                           'retrieval': row.location.get('retrieval', [])})
     ordered = [records[positions[p]] for p in sorted(positions)]
     if adapter.ascending_ids and any(int(a[adapter.id_field]) >= int(b[adapter.id_field]) for a, b in zip(ordered, ordered[1:])):
         raise DatasetError('Selected records are not in ascending API order.')
@@ -161,6 +162,7 @@ def collect_details(ctx, labels, turn_id, pages):
             'request': row.location['request'], 'request_sha256': row.location['request_hash'],
             'record_sha256': value['record_hash'], 'selection': value['selection'],
             'selected_from_source_id': row.location['selected_from_source_id'],
+            'retrieval': row.location.get('retrieval', []),
         }})
     return details
 

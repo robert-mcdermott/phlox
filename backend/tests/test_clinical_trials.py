@@ -46,7 +46,7 @@ def study(index):
 
 @pytest.fixture
 def trial_site(monkeypatch):
-    state = SimpleNamespace(requests=[], headers=[], status=200, kind='application/json', raw=None,
+    state = SimpleNamespace(requests=[], headers=[], statuses=[], retry_after=None, status=200, kind='application/json', raw=None,
                             studies=[study(i) for i in range(1, 5)], mutate=lambda v: None, wait=None)
 
     class Handler(BaseHTTPRequestHandler):
@@ -72,7 +72,9 @@ def trial_site(monkeypatch):
                 value = deepcopy(next(s for s in state.studies if s['protocolSection']['identificationModule']['nctId'] == path.path.split('/')[-1]))
             state.mutate(value)
             body = state.raw if state.raw is not None else json.dumps(value).encode()
-            self.send_response(state.status)
+            self.send_response(state.statuses.pop(0) if state.statuses else state.status)
+            if state.retry_after is not None:
+                self.send_header('Retry-After', state.retry_after)
             self.send_header('Content-Type', state.kind)
             self.send_header('Content-Length', str(len(body)))
             self.send_header('Location', 'http://169.254.169.254/private')
@@ -243,10 +245,10 @@ def test_mismatched_record_response_and_inconsistent_token_provenance(searched, 
 
 
 @pytest.mark.parametrize('status', [302, 403, 429, 503])
-def test_transport_failure_no_retry_or_evidence(ctx, trial_site, status):
+def test_transport_failure_bounded_retries_without_evidence(ctx, trial_site, status):
     trial_site.status = status
     assert QueryPublicApi().run(ctx, **ARGS).is_error
-    assert len(trial_site.requests) == 1 and not rows(ctx)
+    assert len(trial_site.requests) == (3 if status in (429, 503) else 1) and not rows(ctx)
 
 
 @pytest.mark.parametrize('revocation', ['owner', 'expiry', 'removed', 'scope', 'attempt'])
@@ -283,6 +285,7 @@ def test_stop_while_waiting_for_record_response(searched, trial_site):
 @pytest.mark.parametrize('durable', [False, True])
 def test_search_inspect_export_in_one_research_turn(db, client, monkeypatch, trial_site, durable):
     from app import runs
+    trial_site.statuses = [503, 200]
     provider = ResearchProvider([
         [ToolCall('query', 'query_public_api', ARGS)],
         [ToolCall('overview', 'query_public_api', DETAIL)],
@@ -310,7 +313,7 @@ def test_search_inspect_export_in_one_research_turn(db, client, monkeypatch, tri
         assert client.post('/api/chat', json=payload).status_code == 200
     report = client.get(f'/api/conversations/{conv.id}').json()['messages'][-1]
     assert report['usage']['research']['reads'] == 3
-    assert len(report['artifacts']) == 5 and len(trial_site.requests) == 3
+    assert len(report['artifacts']) == 5 and len(trial_site.requests) == 4
     detail_file = next(a for a in report['artifacts'] if a['name'] == 'record_details.json')
     assert len(client.get(detail_file['url']).json()) == 2
     assert db.query(Source).filter_by(conversation_id=conv.id).count() == 3

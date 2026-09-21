@@ -55,18 +55,24 @@ class QueryPublicApi(Tool):
             else:
                 adapter = adapters.get(arguments.get('adapter', 'nih_projects'))
                 request, previous = public_api.recipe(arguments), None
-            page, status, digest, request_hash = public_api.query(ctx, request, previous, adapter.name)
+            def authorize():
+                public_api.authorize_read(ctx, turn_id, arguments.get('continue_from'))
+
+            page, status, digest, request_hash = public_api.query(ctx, request, previous, adapter.name, authorize=authorize)
             location = {'format': 'api', 'adapter': adapter.name, 'method': adapter.method, 'request': request,
                         'request_hash': request_hash, 'offset': page['offset'], 'item_end': page['end'],
                         'total_records': page['total'], 'next_offset': page['next_offset'],
-                        'window_exhausted': page['window_exhausted'], 'record_ids': page['ids']}
+                        'window_exhausted': page['window_exhausted'], 'record_ids': page['ids'],
+                        'retrieval': page['retrieval']}
             if adapter.name == 'pubmed':
                 location['query_translation'] = page['query_translation']
             if adapter.name == 'clinical_trials':
                 location['next_page_token'] = page['next_page_token']
-            captures = sources.capture_web(ctx.db, conversation_id=ctx.conversation_id, user_id=ctx.user_id,
-                turn_id=turn_id, url=adapter.endpoint, title=adapter.title, text=page['text'],
-                content_hash=digest, http_status=status, cancel=ctx.cancel_event, provenance=location)
+            with sources.LOCK:
+                authorize()
+                captures = sources.capture_web(ctx.db, conversation_id=ctx.conversation_id, user_id=ctx.user_id,
+                    turn_id=turn_id, url=adapter.endpoint, title=adapter.title, text=page['text'],
+                    content_hash=digest, http_status=status, cancel=ctx.cancel_event, provenance=location)
             if not captures or not captures[0].startswith('[S'):
                 return ToolResult('API query stopped or evidence could not be retained.', is_error=True)
             if ctx.research:

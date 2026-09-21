@@ -89,6 +89,12 @@ export default function SourcePanel({ conversationId, reference, onClose }) {
           </details>
         </>}
         {source.location.section && <p className="text-muted">Section: {source.location.section}</p>}
+        {source.location.retrieval?.length > 0 && <details className="rounded border border-border p-2">
+          <summary className="cursor-pointer">API retrieval attempts</summary>
+          {source.location.retrieval.map((operation, index) => <p key={index} className="my-2 text-xs text-muted">
+            {operation.operation}: {operation.attempts.length} HTTP attempt(s), {Math.max(0, operation.attempts.length - 1)} automatic retry/retries.
+          </p>)}
+        </details>}
         {source.location.table_row && <p className="text-muted">Table {source.location.table || ''} row {source.location.table_row}</p>}
         <p className="text-muted">{source.kind !== 'web' && <>Chunk {source.location.chunk + 1} · </>}Characters {source.location.start + 1}–{source.location.end}</p>
         <p className="text-muted">Captured {new Date(source.captured_at).toLocaleString()}</p>

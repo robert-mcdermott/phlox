@@ -144,7 +144,7 @@ bounded data files. Existing artifact events, checkpoints and saved-answer snaps
 delivery. There is no network/model call, arbitrary code or new schema. See [API datasets](API_DATASETS.md).
 
 `public_api_adapters.py` defines adapter contracts (identity, endpoint, page validator,
-record key, ordering, notice and output formatter). `api_dataset_formats.py` keeps NIH
+record key, ordering, notice, output formatter and explicit `retry_safe` review). `api_dataset_formats.py` keeps NIH
 funding calculations separate from PubMed bibliographic projections. Shared export logic
 owns source reauthorization, conflict/coverage checks, manifests and atomic publication;
 existing NIH snapshots remain readable/exportable without a migration.
@@ -161,6 +161,16 @@ source location JSON retains the canonical request, hash and pagination state; c
 reauthorizes the source and current Research attempt/domain scope. The tool counts as a
 Research read and uses the shared permission, notebook, source and replay seams. See
 [public API queries](PUBLIC_API.md); bulk acquisition and aggregation remain later work.
+
+`public_api_transport.py` wraps individual reviewed HTTP reads with at most three attempts
+for transient connection/incomplete-response failures and HTTP 408/429/500/502/503/504.
+Exponential backoff, jitter and server `Retry-After` waits share the existing Deadline;
+server cooldowns extend the per-adapter process pacing clock. Successful PubMed ESearch
+is not repeated when ESummary retries. Each attempt reauthorizes source access/capacity/
+scope and repeats DNS/private-network checks; TLS and policy failures stay non-retryable.
+Validation remains outside the retry loop. Captured source location JSON and exported
+manifests retain safe operation/attempt metadata, displayed by the source panel. These
+retries are internal to one Research read and do not replay unrelated tools or actions.
 
 ClinicalTrials.gov uses fixed v2 GET queries, saved opaque page tokens and a small study
 projection. Cursor values are part of per-page provenance, not dataset query identity.

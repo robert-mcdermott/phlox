@@ -25,7 +25,7 @@ ARGS = {'org_names': ['Example'], 'fiscal_years': [2024], 'limit': 2}
 
 @pytest.fixture
 def site(monkeypatch):
-    state = SimpleNamespace(requests=[], headers=[], status=200, kind='application/json', raw=None,
+    state = SimpleNamespace(requests=[], headers=[], statuses=[], retry_after=None, status=200, kind='application/json', raw=None,
                             mutate=lambda value: None, wait=None)
     records = [{'appl_id': i + 1, 'subproject_id': None, 'fiscal_year': 2024,
                 'organization': {'org_name': 'EXAMPLE UNIVERSITY', 'org_ipf_code': '123', 'primary_uei': 'ABC'},
@@ -49,7 +49,9 @@ def site(monkeypatch):
                      'results': deepcopy(records[start:start + count])}
             state.mutate(value)
             body = state.raw if state.raw is not None else json.dumps(value).encode()
-            self.send_response(state.status)
+            self.send_response(state.statuses.pop(0) if state.statuses else state.status)
+            if state.retry_after is not None:
+                self.send_header('Retry-After', state.retry_after)
             self.send_header('Content-Type', state.kind)
             self.send_header('Content-Length', str(len(body)))
             self.send_header('Location', 'http://169.254.169.254/private')
@@ -164,10 +166,10 @@ def test_numeric_spelling_preserved(ctx, site):
 
 
 @pytest.mark.parametrize('status', [301, 302, 303, 307, 308, 401, 403, 429, 500])
-def test_redirects_http_errors_never_retry_or_capture(ctx, site, status):
+def test_http_errors_retry_only_transient_failures_without_capture(ctx, site, status):
     site.status = status
     assert QueryPublicApi().run(ctx, **ARGS).is_error
-    assert len(site.requests) == 1 and not rows(ctx)
+    assert len(site.requests) == (3 if status in (429, 500) else 1) and not rows(ctx)
 
 
 @pytest.mark.parametrize('body', [b'{broken', b'{"meta":1,"meta":2}', b'{"value":NaN}',

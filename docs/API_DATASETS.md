@@ -11,7 +11,7 @@ RePORTER, PubMed or ClinicalTrials.gov query pages into four base files in a new
 | `records.json` | All fields retained by the API adapter, including nested data and original numeric spellings |
 | `summary.csv` | Dataset coverage, NIH counts/known award sums/missing amounts grouped by organization and fiscal year; PubMed/ClinicalTrials.gov captured and reported record counts |
 | `record_details.json` (optional) | Captured article/study section selections, with record IDs, versions, filters and ranges; only when `detail_labels` are supplied |
-| `manifest.json` | Query recipe, source references/capture times, coverage and gaps, duplicate counts, and data-file hashes |
+| `manifest.json` | Query recipe, source references/capture times, HTTP attempt history when captured, coverage and gaps, duplicate counts, and data-file hashes |
 
 The tool reads existing source snapshots. It makes no network requests, installs nothing,
 and runs no model-generated code. This is the first bounded Research-to-files workflow;
@@ -36,6 +36,8 @@ Submit the entire request together:
 4. Inspect `manifest.json`: it should report four captured unique records, the API's
    larger match count, `all_reported_records_captured: false`, and the missing record range.
    Each source retains its exact request, offsets, original capture time and content hash.
+   New API captures also retain `retrieval` operations, attempt statuses and retry delays.
+   Export copies this history without repeating network requests.
 5. Inspect `summary.csv`. Counts cover the exported records, and sums cover **known amounts
    only**. Missing amounts are counted separately; a group with no known amounts has a
    blank sum, not zero.

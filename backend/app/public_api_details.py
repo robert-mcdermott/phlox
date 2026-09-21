@@ -2,7 +2,7 @@
 import hashlib
 import json
 
-from app import public_api_adapters as adapters, sources, web_fetch, web_formats
+from app import public_api_adapters as adapters, public_api_transport, sources, web_fetch, web_formats
 from app.models import Conversation, Source, SourceUse
 
 NOTICE = ('This is selected article-detail evidence, not full article text. Abstracts report the authors\' claims, '
@@ -90,16 +90,22 @@ def read(ctx, arguments, turn_id):
     else:
         request.update(limit=arguments.get('limit', 5), affiliation=arguments.get('affiliation', '').strip())
     payload = json.dumps(request, sort_keys=True, separators=(',', ':'), ensure_ascii=False).encode()
+    retrieval = []
+
+    def authorize():
+        public_api.authorize_read(ctx, turn_id, label)
+
     with web_fetch.Deadline(ctx.cancel_event) as deadline:
-        public_api.pace(deadline, adapter.name)
         # Adapter owns the wire request; neither arbitrary URLs nor raw bodies are accepted.
         url = adapter.record_url(identifier)
-        body, status = web_fetch.read_api_query(url, deadline, policy, response_format=adapter.detail_response_format)
+        body, status = public_api_transport.read(adapter.name, 'detail', url, deadline, policy,
+            response_format=adapter.detail_response_format, authorize=authorize, retrieval=retrieval)
         result = web_formats.extract(body, adapter.detail_format, deadline, request=request)
         deadline.check()
     if expected_version and result['record_hash'] != expected_version:
         fail('Article/study details changed since the selected capture. Start again from the query page; do not combine versions.')
     with sources.LOCK:
+        authorize()
         # Removal/expiry during the network request must not authorize new evidence.
         _, current, _ = selected_record(ctx, label, identifier, turn_id)
         if current.id != source_id:
@@ -107,7 +113,7 @@ def read(ctx, arguments, turn_id):
         location = {'format': 'api_record', 'adapter': adapter.name, 'method': 'GET',
                     'record_id': identifier, 'section': section, 'record_hash': result['record_hash'],
                     'request': request, 'request_hash': hashlib.sha256(payload).hexdigest(),
-                    'selection': result['selection'], 'selected_from_source_id': source_id}
+                    'selection': result['selection'], 'selected_from_source_id': source_id, 'retrieval': retrieval}
         captures = sources.capture_web(ctx.db, conversation_id=ctx.conversation_id, user_id=ctx.user_id,
             turn_id=turn_id, url=adapter.record_endpoint(identifier), title=f'{adapter.name} {identifier}: {section}',
             text=result['text'], content_hash=hashlib.sha256(result['text'].encode()).hexdigest(),

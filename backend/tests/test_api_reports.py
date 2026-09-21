@@ -259,7 +259,8 @@ def test_permissions_schema_and_group_cardinality(ctx):
         assert not {'allOf', 'anyOf', 'oneOf'} & tool.parameters.keys()
     with pytest.raises(api_dataset.DatasetError, match='50 groups'):
         dataset_analysis.analyze([{'group': str(i)} for i in range(51)], [{'title': 'Groups', 'group_by': 'group'}], [])
-    result = CreateApiReport().run(ctx, labels=['S1'], title='Report', sections=[], path='/tmp/untrusted.json')
+    # Deliberately invalid absolute path: the report tool must reject it without writing.
+    result = CreateApiReport().run(ctx, labels=['S1'], title='Report', sections=[], path='/tmp/untrusted.json')  # nosec B108
     assert result.is_error and not result.artifacts
 
 

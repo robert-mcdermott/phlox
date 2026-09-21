@@ -118,14 +118,16 @@ def server(tmp_path):
         def ready():
             if proc.poll() is not None:
                 raise AssertionError(log.read_text())
-            return urllib.request.urlopen(base + '/api/health', timeout=.5).read()
+            # base is the loopback HTTP server started by this fixture.
+            return urllib.request.urlopen(base + '/api/health', timeout=.5).read()  # nosec B310
         wait_for(ready)
         return proc, base, log
 
     def request(base, path, body=None):
         req = urllib.request.Request(base + path, data=json.dumps(body).encode() if body is not None else None,
                                      headers={'Content-Type': 'application/json'})
-        response = urllib.request.urlopen(req, timeout=8)
+        # Only fixture-generated loopback HTTP URLs are passed by these tests.
+        response = urllib.request.urlopen(req, timeout=8)  # nosec B310
         clients.append(response)
         return response
 
@@ -202,7 +204,8 @@ def test_deadline_starts_at_signal_even_with_blocked_event_loop(server):
     from concurrent.futures import ThreadPoolExecutor
     def blocked_request():
         try:
-            urllib.request.urlopen(base + '/fixture-block', timeout=7).read()
+            # Fixed route on the loopback server started above.
+            urllib.request.urlopen(base + '/fixture-block', timeout=7).read()  # nosec B310
         except OSError:
             pass
     with ThreadPoolExecutor() as pool:

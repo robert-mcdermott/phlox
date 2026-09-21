@@ -67,7 +67,8 @@ if __name__ == '__main__':
                                 cwd=tmp_path, stdout=output, stderr=output,
                                 start_new_session=os.name != 'nt')
         def read():
-            with urllib.request.urlopen(f'http://127.0.0.1:{port}', timeout=.5) as response:
+            # Fixed loopback HTTP fixture; the URL does not come from user input.
+            with urllib.request.urlopen(f'http://127.0.0.1:{port}', timeout=.5) as response:  # nosec B310
                 return json.load(response)
 
         def wait_for(predicate):

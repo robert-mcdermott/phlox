@@ -84,7 +84,8 @@ def test_capability_facts_match_configuration(monkeypatch, runner, network, expe
 def test_handoff_rejects_escaping_paths_and_does_not_autocreate_files(db):
     agent, conv = session(db, ResearchProvider())
     agent.research.state['phase'] = 'gather'
-    for path in ('../bad.html', '/tmp/bad.html', '..\\bad.html'):
+    # Deliberately invalid paths: assert rejection without creating any files.
+    for path in ('../bad.html', '/tmp/bad.html', '..\\bad.html'):  # nosec B108
         assert BeginResearchAnalysis().run(agent.ctx, **{**HANDOFF, 'output_paths': [path]}).is_error
     assert not agent.research.state.get('analysis_enabled')
     assert not list(workspace_dir(conv.id).iterdir())

@@ -449,7 +449,7 @@ main:focus { outline: none; }
 .release-link { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; margin-top: 24px; color: var(--text-muted); font-size: 0.82rem; }
 .release-link span:first-child { border: 1px solid var(--border); background: var(--surface-2); color: var(--accent-2); border-radius: 5px; padding: 2px 8px; font-weight: 700; }
 .release-link:hover { color: var(--text); }
-.strip-num { font-size: clamp(1.05rem, 2.1vw, 1.6rem); }
+.strip-num { font-size: clamp(1.05rem, 1.8vw, 1.4rem); }
 .release-section { padding-top: 32px; }
 .feature-ic { color: var(--accent-2); }
 .feature-card::before { pointer-events: none; }
@@ -569,3 +569,48 @@ main:focus { outline: none; }
 }
 
 .release-link .release-summary { flex: 1 1 220px; }
+
+/* Public-data workflow: explanatory content, independent of the app theme preview. */
+.data-sources { margin-bottom: 28px; }
+.source-type { display: block; color: var(--accent-2); font-size: 0.75rem; font-weight: 600; margin-bottom: 12px; }
+.data-workflow {
+  padding: 32px; border: 1px solid var(--border); border-radius: var(--radius);
+  background: linear-gradient(125deg, var(--surface-2), var(--surface));
+  scroll-margin-top: 88px;
+}
+.data-workflow-intro { display: flex; justify-content: space-between; align-items: flex-start; gap: 32px; }
+.data-workflow-intro > div:first-child { max-width: 720px; min-width: 0; }
+.data-workflow-intro h3 { margin: 0 0 12px; font-size: clamp(1.3rem, 2.4vw, 1.7rem); line-height: 1.25; letter-spacing: -0.025em; }
+.data-workflow-intro p { margin: 0; color: var(--text-muted); }
+.output-formats { display: flex; gap: 8px; flex-shrink: 0; }
+.output-formats span { border: 1px solid var(--border); background: var(--bg); border-radius: 8px; padding: 8px 10px; color: var(--accent-2); font-family: var(--mono); font-size: 0.78rem; }
+.data-steps { list-style: none; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 22px; padding: 28px 0; margin: 28px 0 0; border-top: 1px solid var(--border); }
+.data-step-num { color: var(--accent-2); font-family: var(--mono); font-size: 0.85rem; }
+.data-steps h4 { font-size: 0.95rem; margin: 10px 0 8px; }
+.data-steps p { color: var(--text-muted); margin: 0; font-size: 0.87rem; }
+.data-analysis-note { display: grid; grid-template-columns: 1fr 2fr; gap: 24px; border-top: 1px solid var(--border); padding-top: 24px; }
+.data-analysis-note strong { font-size: 0.95rem; }
+.data-analysis-note p { margin: 0; color: var(--text-muted); font-size: 0.9rem; }
+.data-boundary { max-width: 860px; margin: 22px auto 0; text-align: center; }
+.data-guide-links { text-align: center; margin-top: 24px; }
+.diagram-card > .detail-note { margin: 22px 0 0; text-align: center; }
+.feature-link .text-link { margin-top: auto; padding-top: 20px; }
+@media (max-width: 960px) {
+  .data-workflow-intro { flex-direction: column; gap: 20px; }
+  .data-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 680px) {
+  .data-workflow { padding: 24px; }
+  .data-steps { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+  .data-analysis-note { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+}
+
+/* Keep team administration concise while retaining the two useful overview captures. */
+.platform-details { margin-top: 48px; align-items: start; }
+.platform-details .shot { margin: 0; }
+.gateway-note { margin-top: 28px; padding-top: 24px; border-top: 1px solid var(--border); }
+.gateway-note h4 { margin: 0 0 10px; font-size: 1.05rem; }
+.gateway-note p { margin: 0 0 16px; color: var(--text-muted); font-size: 0.94rem; }
+@media (min-width: 681px) and (max-width: 960px) {
+  .data-sources > :last-child, #architecture .grid-3 > :last-child, #web-search .grid-3 > :last-child { grid-column: 1 / -1; }
+}

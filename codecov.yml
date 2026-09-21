@@ -1,0 +1,12 @@
+coverage:
+  status:
+    project:
+      default:
+        # Keep overall coverage from dropping below the base commit.
+        target: auto
+        threshold: 0%
+    patch:
+      default:
+        # Use a stable minimum for changed code instead of the moving project baseline.
+        target: 75%
+        threshold: 0%

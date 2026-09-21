@@ -464,6 +464,11 @@ the query for inspection; sampled NIH pages are not complete annual funding tota
 When downloadable data is requested, [dataset export](API_DATASETS.md) creates CSV/JSON
 records, an adapter-specific summary and a retrieval manifest from retained API pages. File
 creation uses normal approvals, and incomplete coverage and missing values stay explicit.
+For more pages, [multi-page collection](API_DATASETS.md#multi-page-collection) follows a
+small verified preview, saves progress and delivers the files in one tool call. It returns
+counts and continuation labels instead of filling the model's context with raw records.
+Each page observes the usual Research read allowance; Stop preserves saved pages for
+explicit continuation. See the [collection demo](API_DATASETS.md#manual-verification-collect-and-continue).
 Optional detail exports preserve captured article/study selections separately. See
 the [PubMed demo](PUBLIC_API.md#manual-verification-fred-hutch-demo) and
 [ClinicalTrials.gov demo](PUBLIC_API.md#manual-verification-clinicaltrialsgov-demo).

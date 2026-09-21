@@ -456,7 +456,7 @@ version expiry remain outside this wave.
 ## Wave 14 — General reliability and task completion
 
 **Status:** in progress; first through third increments implemented 2026-09-09,
-fourth through twelfth increments implemented 2026-09-20. **Scope:** application/session/run
+fourth through thirteenth increments implemented 2026-09-20. **Scope:** application/session/run
 reliability across Chat and Research, M2.3 evidence quality and completion budgets, with a
 bounded bridge to M3 deliverables. Schedule ahead of output inspection and portable exports.
 The delivery record below distinguishes implemented changes from the remaining plan.
@@ -916,17 +916,59 @@ Final verification: **910 backend tests passed, 24 skipped**; all **45 Chromium
 regressions**, lint, frontend production build and diff checks passed. Existing
 deprecation and bundle-size warnings remain.
 
+**Thirteenth increment — Bounded multi-page data collection (2026-09-20):**
+
+- **W14.7 and initial W14.6/W14.8 delivery:** the Ask-tier `collect_api_dataset` tool
+  follows a small validated preview for any of the three existing adapters. It reuses
+  saved filters/page size/cursors, collects multiple pages and exports the dataset in
+  one tool call. The model receives compact counts, source labels, coverage, stop reason
+  and file artifacts; the added raw records stay in the source store and data files.
+- **Progress and consistency:** each validated page is committed before moving on.
+  Ordered retained labels form the explicit continuation input; completed pages are
+  revalidated, not fetched again. Cross-page conflicts, duplicate positions/identities,
+  repeated study cursors and bundle-size limits are checked before a new capture.
+  API failure or an acquisition limit yields a labelled partial bundle when the retained
+  prefix is still valid. Revocation/expiry cannot publish stale cached data.
+- **Budget and policy:** each additional page attempt uses a Research read, while
+  HTTP retries stay within that read. Each page retains its 30-second maximum and shares
+  the overall acquisition deadline. Defaults are five additional attempts, 200 total
+  records and 60 seconds; caller ceilings are 20 attempts, 1,000 records and 120 seconds.
+  Existing Research time/read/source limits and 2 MiB bundle limits may stop earlier.
+  These are explicit bounds, not automatic extensions of the user's selected limits.
+- **Stop and continuation:** progress and final tool results report all saved labels.
+  Stop preserves committed pages without publishing a new bundle. Normal Chat can reuse
+  older owned citations with Web search enabled; new Research attempts retain their
+  fresh-evidence boundary. No automatic replay or recovery of uncertain file publication
+  after process loss is introduced. A forced kill may leave progress without a final result.
+- **Integration:** normal file approval, artifact snapshots/downloads, workspace checkpoints,
+  source inspection and durable replay are reused. Disabled or denied query/export
+  capabilities cannot be bypassed through collection. Read-only children cannot collect.
+  No new provider, dependency, configuration or database migration is required.
+
+**Thirteenth-increment verification:** local fixtures cover all three adapters, ordered
+continuation without refetching completed pages, cross-page consistency, partial exports,
+record/page/time/read/source/byte ceilings, server cooldowns, Stop during acquisition and
+publication, source revocation and disabled tools. Follow-up calls reserve capacity for
+reused citations before requesting new pages; publication failures return actionable
+saved labels. Scripted request-bound and durable Research runs deliver real saved files
+from one prompt, count every page and keep collected records out of provider input.
+The full regression run passed **950 backend tests, with 24 skipped**. After final
+capacity/publication recovery refinements, all **116 collection/export/retry tests**
+passed. All **45 Chromium regressions**, lint, production build and diff checks passed;
+existing deprecation and bundle-size warnings remain. See the
+[collect-and-continue demo](API_DATASETS.md#manual-verification-collect-and-continue).
+
 **Still pending:** remaining W14.1/W14.5 stage allowances, live calibration and recovery UX, further W14.2 extraction quality, broader W14.3 API coverage and W14.4 quality evaluation, and
 W14.6–W14.8 (extraction, working context and analysis/deliverables), plus full process-level signal/draining/deadline work in
 W14.11. A stalled tool or open event stream can still delay graceful shutdown. No automatic
 replay of uncertain actions, session refresh protocol, durable return hint or distributed
-worker has been introduced. Future increments should address bounded bulk acquisition
-and broader research-to-analysis execution/deliverable verification (W14.6–W14.8).
+worker has been introduced. Future increments should address acquisition beyond the
+current bounds and broader research-to-analysis execution/deliverable verification (W14.6–W14.8).
 
 **Remaining public API work (W14.3/W14.7):** NIH RePORTER, PubMed bibliography/article
 details and ClinicalTrials.gov study search/details now use shared source and export
-contracts and bounded transient retries. Full article text, general API discovery and bounded bulk
-retrieval remain open. Continue testing common components against all three adapters;
+contracts, bounded transient retries and multi-page collection. Full article text, general API
+discovery and larger acquisitions beyond the current bounds remain open. Continue testing common components against all three adapters;
 this does not promise arbitrary public API access.
 
 **Motivation:** a reviewed long-running research task exposed an empty synthesis saved as

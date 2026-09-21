@@ -125,6 +125,8 @@ class AgentSession:
             self.allowed_tools &= allowed_tools
         if research:
             self.allowed_tools &= research.allowed_tools()
+        if not {'query_public_api', 'export_api_dataset'} <= self.allowed_tools:
+            self.allowed_tools.discard('collect_api_dataset')
         self.final_text = ""
         # Set by the caller (e.g. the chat router, watching for a client disconnect) so a
         # user's "Stop" click can actually halt an in-flight turn — kill any running
@@ -858,7 +860,7 @@ class AgentSession:
         )
 
     #: tools that change workspace files — snapshot before they run (for undo)
-    MUTATING_TOOLS = {"write_file", "edit_file", "run_shell", "execute_python", "execute_node", "export_api_dataset"}
+    MUTATING_TOOLS = {"write_file", "edit_file", "run_shell", "execute_python", "execute_node", "export_api_dataset", "collect_api_dataset"}
 
     def _maybe_checkpoint(self, tool_name: str) -> None:
         if tool_name not in self.MUTATING_TOOLS:

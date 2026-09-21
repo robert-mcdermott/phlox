@@ -11,6 +11,7 @@ from app.research_notebook import NAME as NOTEBOOK_TOOL
 from app.public_api import NAME as API_TOOL
 from app.public_api_adapters import ADAPTERS
 EXPORT_TOOL = 'export_api_dataset'
+COLLECT_TOOL = 'collect_api_dataset'
 PAGE_READ_TOOLS = {'web_fetch', 'read_web_source', API_TOOL}
 READ_TOOLS = {'web_search', 'search_documents'} | PAGE_READ_TOOLS
 INSTRUCTIONS = """
@@ -49,6 +50,12 @@ were requested; normal file-write approvals apply. A sample stays partial. Leave
 pass for this export before synthesis; at most two export attempts are available. Do not
 claim files were delivered unless the tool succeeded. General code execution and charts
 remain unavailable in Research; explain this early if the requested output requires them.
+For multi-page data files, inspect a small query_public_api page first, then use
+collect_api_dataset with all retained page labels in order. It collects additional pages
+and exports files without sending raw records into context. Each page still consumes a
+read; max_pages means additional attempts and max_records is a total ceiling. Saved labels
+are checkpoints: explicitly continue using the full returned list, never refetch completed
+pages. Respect partial status and stop reasons; inspect sources before record-level claims.
 When update_research_notebook is available, maintain concise source-linked findings,
 disagreements and unresolved questions after every few reads and before the final handoff.
 Supply the full notebook, preserving still-relevant findings. Batch an update with your next
@@ -111,6 +118,7 @@ class Research:
             allowed.discard(API_TOOL)
         if API_TOOL in allowed:
             allowed.add(EXPORT_TOOL)
+            allowed.add(COLLECT_TOOL)
         return allowed
 
     def url_allowed(self, url):
@@ -168,11 +176,13 @@ class Research:
     def available_tools(self):
         if self.exhausted(source_capacity=False):
             return set()
-        reads = {name for name in self.allowed_tools() - {NOTEBOOK_TOOL, EXPORT_TOOL}
+        reads = {name for name in self.allowed_tools() - {NOTEBOOK_TOOL, EXPORT_TOOL, COLLECT_TOOL}
                 if self.state['reads' if name in PAGE_READ_TOOLS else 'searches']
                 < self.limits['reads' if name in PAGE_READ_TOOLS else 'searches']
                 and self.state.get('source_capacity', 1) > 0}
         available = reads | {NOTEBOOK_TOOL} if reads else set()
+        if API_TOOL in reads and self.state.get('api_data_available'):
+            available.add(COLLECT_TOOL)
         if (EXPORT_TOOL in self.allowed_tools() and self.state.get('api_data_available')
                 and self.state.get('export_attempts', 0) < 2):
             available.add(EXPORT_TOOL)
@@ -199,6 +209,10 @@ class Research:
                 return 'No API pages available or dataset export attempts exhausted.'
             self.state['export_attempts'] = self.state.get('export_attempts', 0) + 1
             return None  # Local file export; no new search/read or model allowance.
+        if name == COLLECT_TOOL:
+            if not self.state.get('api_data_available') or self.state['reads'] >= self.limits['reads']:
+                return 'Inspect an API page first; collection requires remaining read allowance.'
+            return None  # Each attempted page is charged by admit_collection_page.
         if name == NOTEBOOK_TOOL:
             return None  # Local notes use model passes/tokens, not search/read allowances.
         kind = 'reads' if name in PAGE_READ_TOOLS else 'searches'
@@ -211,6 +225,17 @@ class Research:
         if identity not in self.state['seen']:
             self.state['seen'].append(identity)
         self.state[kind] += 1
+        return None
+
+    def admit_collection_page(self):
+        """Explicit bounded collection may retry a failed page on a later invocation."""
+        if self.phase != 'gather' or API_TOOL not in self.allowed_tools():
+            return 'API collection is outside this research stage or scope.'
+        if reason := self.exhausted():
+            return reason
+        if self.state['reads'] >= self.limits['reads']:
+            return 'Research reads limit reached. Exporting retained pages only.'
+        self.state['reads'] += 1
         return None
 
     def progress(self, usage=None, source_count=0):

@@ -23,14 +23,15 @@ def check_stop(ctx):
         raise DatasetError('Dataset export stopped. No files published.')
 
 
-def collect(ctx, labels, turn_id):
+def collect(ctx, labels, turn_id, *, check_cancel=True):
     """Caller holds sources.LOCK through final publication so revocation cannot race it."""
     conv = ctx.db.get(Conversation, ctx.conversation_id, populate_existing=True)
     if not conv or conv.user_id != ctx.user_id:
         raise DatasetError('Dataset sources unavailable in this conversation.')
     pages = []
     for label in labels:
-        check_stop(ctx)
+        if check_cancel:
+            check_stop(ctx)
         row = ctx.db.query(Source).filter_by(conversation_id=conv.id, number=int(label[1:])).populate_existing().first()
         if not row or row.kind != 'web' or not sources.inspect_source(ctx.db, conv, row.id)['available']:
             raise DatasetError(f'{label} is missing, removed, expired or unavailable. No sources were silently skipped.')
@@ -167,25 +168,36 @@ def collect_details(ctx, labels, turn_id, pages):
     return details
 
 
-def export(ctx, labels, detail_labels=None):
+def bind_pages(ctx, pages, turn_id):
+    """Caller holds sources.LOCK and has reauthorized the supplied pages."""
+    missing = [p['row'] for p in pages if not ctx.db.get(SourceUse, (turn_id, p['row'].id))]
+    if ctx.db.query(SourceUse).filter_by(turn_id=turn_id).count() + len(missing) > sources.MAX_TURN_SOURCES:
+        raise DatasetError('Not enough source capacity to bind the dataset citations to this turn.')
+    for row in missing:
+        ctx.db.add(SourceUse(turn_id=turn_id, source_id=row.id, query=''))
+    ctx.db.commit()
+
+
+def export(ctx, labels, detail_labels=None, *, collection=None, turn_id=None):
     detail_labels = detail_labels or []
     if len(labels) + len(detail_labels) > 64 or set(labels) & set(detail_labels):
         raise DatasetError('Supply at most 64 distinct query/detail source labels in total.')
-    turn_id = ctx.accounting.turn_id if ctx.accounting else uuid.uuid4().hex
+    turn_id = turn_id or (ctx.accounting.turn_id if ctx.accounting else uuid.uuid4().hex)
     with sources.LOCK:
         check_stop(ctx)
         pages = collect(ctx, labels, turn_id)
         details = collect_details(ctx, detail_labels, turn_id, pages)
         files, coverage = assemble(pages, details)
+        if collection is not None:
+            manifest = json.loads(files['manifest.json'])
+            manifest['collection'] = collection
+            files['manifest.json'] = json.dumps(manifest, indent=2, ensure_ascii=False) + '\n'
+            if sum(len(text.encode()) for text in files.values()) > MAX_BYTES:
+                raise DatasetError('Dataset export exceeds the 2 MiB bundle allowance.')
         check_stop(ctx)
         # Recheck expiry immediately before publication. Lock also excludes deletion.
         collect(ctx, labels, turn_id)
         collect_details(ctx, detail_labels, turn_id, pages)
-        missing = [p['row'] for p in [*pages, *details] if not ctx.db.get(SourceUse, (turn_id, p['row'].id))]
-        if ctx.db.query(SourceUse).filter_by(turn_id=turn_id).count() + len(missing) > sources.MAX_TURN_SOURCES:
-            raise DatasetError('Not enough source capacity to bind the dataset citations to this turn.')
-        for row in missing:
-            ctx.db.add(SourceUse(turn_id=turn_id, source_id=row.id, query=''))
-        ctx.db.commit()
+        bind_pages(ctx, [*pages, *details], turn_id)
         artifacts = publish(ctx, files)
     return artifacts, coverage

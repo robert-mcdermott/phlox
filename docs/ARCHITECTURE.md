@@ -143,6 +143,19 @@ rechecks access/expiry, and atomically renames a fresh staging folder containing
 bounded data files. Existing artifact events, checkpoints and saved-answer snapshots handle
 delivery. There is no network/model call, arbitrary code or new schema. See [API datasets](API_DATASETS.md).
 
+`api_collection.py` adds bounded acquisition from an existing validated query-page prefix.
+The Ask-tier `collect_api_dataset` tool uses `public_api.capture_query`, per-page Research
+read admission and the shared transport/parser to follow saved continuation recipes.
+Cross-page identity/order/cursor and bundle-size checks run before capturing each new
+page. Committed Source rows are the progress checkpoints; ordered labels are the explicit
+continuation input. No model call is needed between pages, and records are not returned
+in the collection tool result. Progress uses existing tool events; publication uses the
+existing dataset exporter and adds collection status/limits to its manifest. Stop retains
+committed sources without publishing files; failed/limited acquisition can publish a
+reauthorized partial prefix. There is no new database table, arbitrary HTTP interface or
+automatic replay after process loss. Source expiry, Research-attempt isolation and
+permission checks remain authoritative, including after retries and before publication.
+
 `public_api_adapters.py` defines adapter contracts (identity, endpoint, page validator,
 record key, ordering, notice, output formatter and explicit `retry_safe` review). `api_dataset_formats.py` keeps NIH
 funding calculations separate from PubMed bibliographic projections. Shared export logic

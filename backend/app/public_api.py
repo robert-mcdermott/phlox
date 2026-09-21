@@ -205,7 +205,7 @@ def pace(deadline, adapter_name='nih_projects'):
             time.sleep(min(wait, 0.05))
 
 
-def query(ctx, request, previous=None, adapter_name='nih_projects', authorize=None):
+def query(ctx, request, previous=None, adapter_name='nih_projects', authorize=None, deadline_until=None):
     adapter = adapters.get(adapter_name)
     endpoint = adapter.endpoint
     policy = ctx.research.url_allowed if ctx.research else None
@@ -214,6 +214,9 @@ def query(ctx, request, previous=None, adapter_name='nih_projects', authorize=No
     payload = json.dumps(request, sort_keys=True, separators=(',', ':'), ensure_ascii=False).encode()
     retrieval = []
     with web_fetch.Deadline(ctx.cancel_event) as deadline:
+        if deadline_until is not None:
+            deadline.until = min(deadline.until, deadline_until)
+        deadline.check()
         if adapter_name == 'pubmed':
             page, status = query_pubmed(request, previous, deadline, policy, authorize, retrieval)
         elif adapter_name == 'clinical_trials':
@@ -254,3 +257,38 @@ def query_pubmed(request, previous, deadline, policy, authorize=None, retrieval=
         body = b'{"result":{"uids":[]}}'
     page = web_formats.extract(body, 'pubmed_summary', deadline, request=request, search=search)
     return page, status
+
+
+def capture_query(ctx, adapter, request, previous, turn_id, *, label=None,
+                  deadline_until=None, authorize_extra=None, validate=None):
+    """Shared single-page capture; batch callers return summaries instead of raw records."""
+    def authorize():
+        authorize_read(ctx, turn_id, label)
+        if authorize_extra:
+            authorize_extra()
+
+    kwargs = {'authorize': authorize}
+    if deadline_until is not None:
+        kwargs['deadline_until'] = deadline_until
+    page, status, digest, request_hash = query(ctx, request, previous, adapter.name, **kwargs)
+    location = {'format': 'api', 'adapter': adapter.name, 'method': adapter.method, 'request': request,
+                'request_hash': request_hash, 'offset': page['offset'], 'item_end': page['end'],
+                'total_records': page['total'], 'next_offset': page['next_offset'],
+                'window_exhausted': page['window_exhausted'], 'record_ids': page['ids'],
+                'retrieval': page['retrieval']}
+    if adapter.name == 'pubmed':
+        location['query_translation'] = page['query_translation']
+    if adapter.name == 'clinical_trials':
+        location['next_page_token'] = page['next_page_token']
+    if validate:
+        validate(page, location, digest)
+    with sources.LOCK:
+        authorize()
+        captures = sources.capture_web(ctx.db, conversation_id=ctx.conversation_id, user_id=ctx.user_id,
+            turn_id=turn_id, url=adapter.endpoint, title=adapter.title, text=page['text'],
+            content_hash=digest, http_status=status, cancel=ctx.cancel_event, provenance=location)
+    if not captures or not captures[0].startswith('[S'):
+        raise web_fetch.FetchError('capture_failed', 'API query stopped or evidence could not be retained.')
+    if ctx.research:
+        ctx.research.state['api_data_available'] = True
+    return page, captures

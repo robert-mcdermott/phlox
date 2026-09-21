@@ -243,9 +243,14 @@ Compression and redirects are rejected; search responses must be JSON;
 detail responses are PubMed XML or ClinicalTrials.gov JSON; failures reveal no response bodies
 and create no usable evidence/cursor.
 
+For multiple query pages and downloadable data, [multi-page collection](API_DATASETS.md#multi-page-collection)
+uses a verified preview, retains each validated page and returns a compact result with
+files and continuation labels. Each page still consumes a Research read; records are
+kept out of the model's context until explicitly inspected.
+
 These are reviewed adapters, not arbitrary public API access. New adapters must define
 endpoints, request policy, validation, pagination and export fields. Generic `web_fetch`
-remains GET-only. Full article text, bulk acquisition, configurable
+remains GET-only. Full article text, larger bulk acquisition beyond the collection bounds, configurable
 retry settings and general API discovery remain backlog work.
 
 ### Temporary failures and automatic retries

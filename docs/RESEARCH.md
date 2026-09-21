@@ -134,6 +134,14 @@ one Research read and do not repeat successful operations or make additional mod
 Stop interrupts backoff; citation inspection and dataset manifests retain attempt history.
 See [API recovery and its limits](PUBLIC_API.md#temporary-failures-and-automatic-retries).
 
+For requested data files, `collect_api_dataset` can follow a small verified preview with
+multiple pages in one operation, then export them. Each new page consumes one Research
+read, with the current time/source limits and normal file approval. Progress and compact
+results expose saved labels and why collection stopped; raw records stay in sources/files.
+Explicit continuation reuses saved pages. A stopped Research attempt's sources can be
+reused in ordinary Chat with Web search enabled; they are not silently imported into a
+new Research attempt. See [multi-page collection](API_DATASETS.md#multi-page-collection).
+
 ## Research notebook and working context
 
 During gathering, the model can maintain a **Research notebook** containing concise

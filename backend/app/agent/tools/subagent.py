@@ -24,7 +24,7 @@ from app.agent.tools.base import Tool, ToolContext, ToolResult
 SUBAGENT_TOOLS = {
     "read_file", "write_file", "edit_file", "list_dir", "glob_search", "grep_search",
     "run_shell", "execute_python", "execute_node", "search_documents", "web_fetch",
-    "update_todos", "read_web_source", "query_public_api", "export_api_dataset",
+    "update_todos", "read_web_source", "query_public_api", "export_api_dataset", "collect_api_dataset",
 }
 READ_ONLY_TOOLS = {
     "read_file", "list_dir", "glob_search", "grep_search", "search_documents", "web_fetch", "read_web_source", "query_public_api",

@@ -132,4 +132,6 @@ and restoring are independent of explicit hash-checked workspace publication. Se
 AI revision uses the shared model-call accounting/budget seam and both guardrail directions;
 proposals require review and never write automatically. Observe run/approval admission
 guards for mutations and preserve the original answer snapshot. See [docs/ARTIFACTS.md](docs/ARTIFACTS.md).
-Current schema head is `0008_artifacts`; older revision metadata must remain checkable.
+Current schema head is `0009_api_datasets`; older revision metadata must remain checkable. Bulk API pages live in private `ApiDataset`
+rows anchored to revocable sources, separate from citation excerpts. Research execution
+requires `begin_research_analysis` plus normal per-tool permissions; preserve both gates.

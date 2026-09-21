@@ -174,7 +174,7 @@ def stream_model(provider, messages, tools, params, scope, *, cancel_event=None,
     call_id = call_id or f'call:{uuid.uuid4().hex}'
     record_call(scope, provider, fitted, call_id=call_id)
     diagnostics = {
-        **info, "max_context_tokens": int(params.get("max_context_tokens", 16000)),
+        **info, "advertised_tools": [tool.name for tool in tools or []], "max_context_tokens": int(params.get("max_context_tokens", 16000)),
         "max_tool_rounds": params.get("max_tool_rounds"),
         "profile_context_window": window,
         "stage": params.get("_stage") if params.get("_stage") in {

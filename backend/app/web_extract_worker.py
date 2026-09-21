@@ -173,7 +173,7 @@ def structured(body, pointer, start, limit, max_chars):
     return {'text': text, 'location': location, 'notice': notice, 'truncated': bool(pointer)}
 
 
-def nih_projects(body, request, previous=None):
+def nih_projects(body, request, previous=None, *, max_chars=6000):
     """Validate a bounded page before it becomes evidence or a continuation recipe."""
     def fail(message):
         raise ExtractionError('invalid_api_response', message + ' No evidence or continuation captured.')
@@ -223,9 +223,9 @@ def nih_projects(body, request, previous=None):
                          'agency_ic_admin': record.get('agency_ic_admin'),
                          'agency_ic_fundings': record.get('agency_ic_fundings')})
     text = ''.join(encode_json({'meta': {k: meta[k] for k in ('total', 'offset', 'limit')}, 'results': selected}))
-    if len(text) > 6000:
-        raise ExtractionError('selection_empty', 'API page exceeds the 6,000-character evidence allowance. '
-                              'Start a query with a smaller limit; no partial records or continuation captured.')
+    if len(text) > max_chars:
+        raise ExtractionError('selection_empty', f'API page exceeds the {max_chars:,}-character page allowance. '
+                              'Use a smaller limit for previews or a narrower bulk query; no partial records or continuation captured.')
     end = offset + len(records)
     return {'text': text, 'ids': ids, 'total': total, 'offset': offset, 'end': end,
             'next_offset': end if end < total and end <= 14999 else None,
@@ -274,7 +274,7 @@ def pubmed_search(body, request, previous=None):
             'query_translation': translation}
 
 
-def pubmed_records(body, request, previous=None):
+def pubmed_records(body, request, previous=None, *, max_chars=6000):
     """Validate the normalized retained page as well as newly acquired records."""
     value = decode_json(body)
     if not isinstance(value, dict) or not isinstance(value.get('meta'), dict) or not isinstance(value.get('results'), list):
@@ -305,16 +305,16 @@ def pubmed_records(body, request, previous=None):
                 api_fail('Invalid PubMed author or identifier list.')
         ids.append(record['pmid'])
     text = ''.join(encode_json(value))
-    if len(text) > 6000:
-        raise ExtractionError('selection_empty', 'API page exceeds the 6,000-character evidence allowance. '
-                              'Start a query with a smaller limit; no partial records or continuation captured.')
+    if len(text) > max_chars:
+        raise ExtractionError('selection_empty', f'API page exceeds the {max_chars:,}-character page allowance. '
+                              'Use a smaller limit for previews or a narrower bulk query; no partial records or continuation captured.')
     end = offset + len(records)
     return {'text': text, 'ids': ids, 'total': total, 'offset': offset, 'end': end,
             'next_offset': end if end < min(total, 10000) else None,
             'window_exhausted': end < total and end >= 10000, 'query_translation': translation}
 
 
-def pubmed_summary(body, request, search):
+def pubmed_summary(body, request, search, *, max_chars=6000):
     value = decode_json(body)
     data = value.get('result') if isinstance(value, dict) else None
     ids = search['ids']
@@ -339,7 +339,7 @@ def pubmed_summary(body, request, search):
                         'pmc': [a['value'] for a in articleids if a['idtype'] == 'pmc'],
                         'url': 'https://pubmed.ncbi.nlm.nih.gov/' + identifier + '/'})
     meta = {k: search[k] for k in ('total', 'offset', 'limit', 'query_translation')}
-    return pubmed_records(json.dumps({'meta': meta, 'results': records}).encode(), request)
+    return pubmed_records(json.dumps({'meta': meta, 'results': records}).encode(), request, max_chars=max_chars)
 
 
 def pubmed_detail(body, request):
@@ -472,7 +472,7 @@ def trial_record(study):
             'url': 'https://clinicaltrials.gov/study/' + identifier}
 
 
-def trial_records(body, request, previous=None):
+def trial_records(body, request, previous=None, *, max_chars=6000):
     import re
     value = decode_json(body)
     meta, records = value['meta'], value['results']
@@ -509,14 +509,14 @@ def trial_records(body, request, previous=None):
             api_fail('Study link does not match its ID.')
         ids.append(identifier)
     text = ''.join(encode_json(value))
-    if len(text) > 6000:
-        api_fail('ClinicalTrials.gov page exceeds 6,000 characters. Start a query with a smaller limit.')
+    if len(text) > max_chars:
+        api_fail(f'ClinicalTrials.gov page exceeds {max_chars:,} characters. Use a smaller preview or narrower bulk query.')
     end = offset + len(records)
     return {'text': text, 'ids': ids, 'total': total, 'offset': offset, 'end': end,
             'next_offset': end if token is not None else None, 'next_page_token': token, 'window_exhausted': False}
 
 
-def trial_search(body, request, previous=None):
+def trial_search(body, request, previous=None, *, max_chars=6000):
     value = decode_json(body)
     # The v2 API reports totalCount only on the first page, even with countTotal=true.
     # Carry that captured count forward; never invent a refreshed total. Empty pages
@@ -528,7 +528,7 @@ def trial_search(body, request, previous=None):
     normalized = {'meta': {'total': total, 'total_reported_on': 'first_page', 'offset': request['offset'],
                            'limit': request['limit'], 'next_page_token': value.get('nextPageToken')},
                   'results': [trial_record(study) for study in studies]}
-    return trial_records(''.join(encode_json(normalized)).encode(), request, previous)
+    return trial_records(''.join(encode_json(normalized)).encode(), request, previous, max_chars=max_chars)
 
 
 def trial_detail(body, request):
@@ -589,17 +589,17 @@ def main():
         if request['format'] == 'pdf':
             result = pdf(body, request.get('pdf_page'))
         elif request['format'] == 'nih_projects':
-            result = nih_projects(body, request['request'], request.get('previous'))
+            result = nih_projects(body, request['request'], request.get('previous'), max_chars=request.get('max_chars', 6000))
         elif request['format'] == 'pubmed_detail':
             result = pubmed_detail(body, request['request'])
         elif request['format'] == 'clinical_trials_search':
-            result = trial_search(body, request['request'], request.get('previous'))
+            result = trial_search(body, request['request'], request.get('previous'), max_chars=request.get('max_chars', 6000))
         elif request['format'] == 'clinical_trials_detail':
             result = trial_detail(body, request['request'])
         elif request['format'] == 'pubmed_search':
             result = pubmed_search(body, request['request'], request.get('previous'))
         elif request['format'] == 'pubmed_summary':
-            result = pubmed_summary(body, request['request'], request['search'])
+            result = pubmed_summary(body, request['request'], request['search'], max_chars=request.get('max_chars', 6000))
         else:
             result = structured(body, request['json_pointer'], request['json_start'],
                                 request['json_limit'], request['max_chars'])

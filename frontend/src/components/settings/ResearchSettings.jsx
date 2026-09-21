@@ -3,7 +3,7 @@ import { FlaskConical, Loader2, Save } from 'lucide-react'
 import { api } from '../../api/client'
 
 const fields = [
-  ['rounds', 'Model passes', 3, 100], ['searches', 'Searches', 1, 100],
+  ['rounds', 'Evidence passes', 3, 100], ['searches', 'Searches', 1, 100],
   ['reads', 'Source reads', 1, 100], ['seconds', 'Gathering seconds', 30, 7200],
   ['tokens', 'Reported token threshold', 1000, 5000000],
 ]
@@ -32,7 +32,7 @@ export default function ResearchSettings({ config, onSaved }) {
   if (!presets) return null
   return <form onSubmit={save} className="rounded-lg border border-border bg-surface p-4" aria-label="Research allowances">
     <h4 className="mb-1 flex items-center gap-1.5 text-sm font-semibold text-content"><FlaskConical size={15} className="text-accent" />Research allowances</h4>
-    <p className="mb-3 text-xs text-muted">Each preset includes planning and a reserved report pass. The effective Model round limit can reduce it. Time and reported tokens stop gathering between operations; report writing and bounded continuation may add usage. These are not total spend caps.</p>
+    <p className="mb-3 text-xs text-muted">Evidence passes include planning and a reserved report pass. Approved analysis can use the remaining Model rounds to finish files; it does not extend evidence gathering. Time and reported tokens stop gathering between operations; report writing and bounded continuation may add usage. These are not total spend caps.</p>
     <div className="space-y-3">
       {Object.entries(depths).map(([depth, label]) => <fieldset key={depth} disabled={busy} className="rounded-lg border border-border p-3">
         <legend className="px-1 text-sm font-medium text-content">{label}</legend>
@@ -45,7 +45,7 @@ export default function ResearchSettings({ config, onSaved }) {
         </div>
       </fieldset>)}
     </div>
-    <p className="my-3 text-xs text-muted">Per-call output/context settings, provider capacity, source storage limits, monthly spend policy and Stop still apply. Larger allowances can increase model and search costs. Research remains opt-in and uses read tools only.</p>
+    <p className="my-3 text-xs text-muted">Per-call output/context settings, provider capacity, source storage limits, monthly spend policy and Stop still apply. Larger allowances can increase model and search costs. Research remains opt-in. File creation and analysis use normal tool permissions.</p>
     <button disabled={busy} className="flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-sm text-accent-fg hover:opacity-90 disabled:opacity-50">
       {busy ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}Save research allowances
     </button>

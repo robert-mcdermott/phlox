@@ -310,10 +310,16 @@ and provider finish reasons. Research's separate gathering presets are admin-edi
 search/read/time/token allowances. The composer shows the current presets and flags a lower
 Model setting. Thorough defaults to 24 planned passes, 24 searches, 48 source reads and
 30 minutes/1,000,000 reported tokens before gathering stops; a lower effective Model limit
-still wins. Report writing can add usage, and source storage bounds still apply. See the
+still wins. An approved analysis handoff can use remaining Model rounds to create and verify
+files after the evidence-pass allowance ends; it does not add searches, reads, time or tokens.
+Research progress distinguishes available files from missing deliverables. Report writing can add usage, and source storage bounds still apply. See the
 [Research guide](RESEARCH.md#depth-and-limits) for all presets and configuration ranges. If a limit still prevents
-completion, review the saved work and its diagnostic before changing that limit and continuing
-in Chat. A new Research request starts from its own question and selected sources.
+completion, review the saved work and its diagnostic before changing that limit. Continue
+in Chat, or send a new Research prompt in the **same conversation**, explicitly naming the
+retained dataset ID and relevant file paths. A new Research request starts from its own
+question and selected sources; it does not automatically replay the previous transcript.
+See [finishing a report from an earlier collection](RESEARCH.md#finishing-a-report-from-an-earlier-collection)
+for a reusable prompt that avoids downloading complete data again.
 
 ## Appearance
 
@@ -464,16 +470,19 @@ the query for inspection; sampled NIH pages are not complete annual funding tota
 When downloadable data is requested, [dataset export](API_DATASETS.md) creates CSV/JSON
 records, an adapter-specific summary and a retrieval manifest from retained API pages. File
 creation uses normal approvals, and incomplete coverage and missing values stay explicit.
-For more pages, [multi-page collection](API_DATASETS.md#multi-page-collection) follows a
-small verified preview, saves progress and delivers the files in one tool call. It returns
-counts and continuation labels instead of filling the model's context with raw records.
-Each page observes the usual Research read allowance; Stop preserves saved pages for
-explicit continuation. See the [collection demo](API_DATASETS.md#manual-verification-collect-and-continue).
+For large queries, [bulk collection](API_DATASETS.md#multi-page-collection) uses an initial
+preview's `source` label, stores larger pages privately and returns a `dataset_id` for
+continuation, inspection and reporting. NIH pages can hold 500 projects; PubMed and
+ClinicalTrials.gov pages can hold 100 records. Each bulk invocation uses one Research read
+and one compact dataset-manifest citation. Stop preserves validated pages for explicit
+resume. The older `labels` path still uses a read/citation per page.
 For requested tables and charts, [dataset reports](DATASET_REPORTS.md) inspect retained
 columns, calculate filtered/grouped counts or exact numeric sums, and deliver a standalone
 HTML report plus data/analysis files. Reports preserve partial coverage, unknown values and
 source references. They need normal file approval and no extra API reads or dependencies.
-Optional detail exports preserve captured article/study selections separately. See
+For custom scripts and charts, approve the [Research analysis handoff](RESEARCH.md#analysis-handoff);
+normal execution permissions and configured sandbox networking still apply. Declared missing
+output files are reported as a delivery failure. Optional detail exports preserve captured article/study selections separately. See
 the [PubMed demo](PUBLIC_API.md#manual-verification-fred-hutch-demo) and
 [ClinicalTrials.gov demo](PUBLIC_API.md#manual-verification-clinicaltrialsgov-demo).
 
@@ -618,7 +627,7 @@ secret environment**. Enabling runs or citations does not require a fresh databa
    frontend (`npm ci` then `npm run build`) for production. The development launcher does
    not refresh existing frontend dependencies automatically after every lockfile change.
 4. Start normally. Checked Alembic migrations run before application bootstrap. Current
-   head is `0008_artifacts`; this includes artifact versions, conversation alternatives, projects and the earlier run/source migrations even with runs
+   head is `0009_api_datasets`; this adds private bulk data and includes artifact versions, conversation alternatives, projects and the earlier run/source migrations even with runs
    disabled. Do not stamp a database manually or overwrite it with an empty one.
 5. Check `/api/readiness`, sign in, and verify an existing conversation and document.
 

@@ -289,6 +289,9 @@ def inspect_source(db, conv, source_id):
 def cleanup(db, now=None):
     """Purge snapshot text, retaining label/identity tombstones. Access also checks expiry."""
     now = now or datetime.now(timezone.utc)
+    from app.models import ApiDataset
+    db.query(ApiDataset).filter(ApiDataset.source_id.in_(
+        db.query(Source.id).filter(Source.expires_at <= now))).delete(synchronize_session=False)
     db.execute(update(Source).where(Source.expires_at <= now).values(
         title=None, url=None, excerpt=None, location=None,
     ).execution_options(synchronize_session=False))
@@ -304,6 +307,11 @@ def forget_web(db, conv, source_id):
         row = db.get(Source, source_id, populate_existing=True)
         if not row or row.conversation_id != conv.id or row.kind != 'web':
             raise HTTPException(404, 'Source not found')
+        from app.models import ApiDataset
+        dataset_id = (row.location or {}).get('dataset_id')
+        datasets = db.query(ApiDataset).filter(
+            (ApiDataset.source_id == row.id) | (ApiDataset.id == dataset_id))
+        datasets.delete(synchronize_session=False)
         row.title = row.url = row.excerpt = row.location = None
         db.execute(update(SourceUse).where(SourceUse.source_id == row.id).values(query=''))
         db.commit()

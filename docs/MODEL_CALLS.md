@@ -156,3 +156,9 @@ fallback/retries, interrupted usage, prices/cache rates, context limits, deletio
 and schema upgrades. [Approval tests](../backend/tests/test_approval_continuity.py) cover
 version-2 import and version-3 reconciliation. [Browser tests](../frontend/tests/browser/approval.test.js)
 verify unknown-cost receipts, chargeback and CSV using synthetic API fixtures.
+
+New call diagnostics also include `advertised_tools`: the exact tool names supplied to
+that provider call. Research planning/synthesis can have an empty list; analysis tools
+appear only after the approved handoff. This records Phlox's outbound catalog, not a
+promise that an external gateway preserved it. No tool arguments or credentials are added
+by this diagnostic field.

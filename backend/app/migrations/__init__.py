@@ -34,6 +34,14 @@ def known_revision(revision):
 
 
 def expected_metadata(revision):
+    if revision == '0008_artifacts':
+        import json
+        from app.migrations.baseline import metadata
+        result = expected_metadata('0007_branches')
+        additions = json.loads(Path(__file__).with_name('schema_v8_additions.json').read_text())
+        for table in metadata({'tables': additions}).tables.values():
+            table.to_metadata(result)
+        return result
     if revision == '0007_branches':
         import sqlalchemy as sa
         result = expected_metadata('0006_projects')

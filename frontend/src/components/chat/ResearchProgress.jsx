@@ -16,6 +16,13 @@ export default function ResearchProgress({ research }) {
     <div role="status" className="font-semibold">{labels[research.phase] || 'Research'}</div>
     <p className="mt-1 text-muted">{research.searches}/{research.limits.searches} searches · {research.reads}/{research.limits.reads} source reads · {research.source_count} source records · {Math.floor(elapsed / 60)}m {elapsed % 60}s</p>
     {research.effective_rounds != null && <p className="mt-1 text-muted">{research.rounds_used} model passes used · {research.effective_rounds} planned including report{research.model_round_limit != null ? ` · ${research.model_round_limit} total pass ceiling including continuation` : ''}{research.recovery_calls > 0 ? ` · ${research.recovery_calls} continuation calls` : ''}</p>}
+    {research.analysis_enabled && <p className="mt-1 text-muted">Analysis enabled. Execution permissions still apply; remaining Model rounds can finish files after evidence gathering ends.</p>}
+    {research.delivery && (research.delivery.available_files.length > 0 || research.delivery.missing_files.length > 0) && <details className="mt-2" aria-label="Research deliverables">
+      <summary className="cursor-pointer text-accent">{research.delivery.status === 'partial' ? 'Partially delivered' : 'File delivery'} · {research.delivery.available_files.length} available · {research.delivery.missing_files.length} missing</summary>
+      <p className="mt-1 text-muted">Existence checks do not verify contents or chart correctness. Open the saved files below to inspect them.</p>
+      {research.delivery.available_files.length > 0 && <p className="mt-1">Available: {research.delivery.available_files.join(', ')}</p>}
+      {research.delivery.missing_files.length > 0 && <p className="mt-1">Missing or empty: {research.delivery.missing_files.join(', ')}</p>}
+    </details>}
     {research.limits.tokens != null && <p className="mt-1 text-muted">Gathering thresholds: {research.limits.tokens.toLocaleString()} reported tokens · {research.limits.seconds / 60} minutes. Report writing may add usage.{research.source_capacity != null ? ` ${research.source_capacity} new source records available.` : ''}</p>}
     {research.limits_restricted && <p className="mt-1 text-muted">Stricter administrator limits applied when this research resumed.</p>}
     {usage.total > 0 && <p className="mt-1 text-muted">{usage.total.toLocaleString()} reported tokens{usage.unknown_usage_calls ? ' (partial)' : ''} · {usage.cost != null ? `$${usage.cost.toFixed(4)} model cost` : 'model cost unavailable or partial'}. Search API charges are separate.</p>}

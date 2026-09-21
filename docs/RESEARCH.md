@@ -23,8 +23,9 @@ apply. Eligible tools include `web_search`, `web_fetch`, `read_web_source`, `que
 `search_documents` and the research notebook. After API evidence is captured,
 `export_api_dataset`/`collect_api_dataset` can create [validated data files](API_DATASETS.md),
 and `analyze_api_dataset`/`create_api_report` support [tables and HTML reports](DATASET_REPORTS.md).
-Requested file creation uses normal file-write permission (Ask by default). Research does not enable
-general shell/code execution, arbitrary file mutation, MCP, memory tools or child agents.
+Requested file creation uses normal file-write permission (Ask by default). Execution and
+workspace tools require an explicit [analysis handoff](#analysis-handoff); MCP, memory tools
+and child agents remain outside Research.
 Approvals still appear when the effective permission for an eligible tool is Ask.
 
 Research uses the **current question and selected sources**, rather than replaying older
@@ -43,7 +44,7 @@ These are the built-in defaults. Administrators can change each preset under
 The composer reads the current deployment presets; saved reports retain the limits used
 for that attempt. Larger allowances permit more work and may increase model/search costs.
 
-| Preset | Planned model passes | Search calls (web + documents) | Source reads (fetches + retained passages) | Gathering time | Reported-token threshold |
+| Preset | Evidence passes (including planning/report) | Search calls (web + documents) | Source reads (fetches + retained passages) | Gathering time | Reported-token threshold |
 |---|---:|---:|---:|---:|---:|
 | Brief | 5 | 3 | 4 | 2 minutes | 20,000 |
 | Standard | 12 | 8 | 16 | 15 minutes | 250,000 |
@@ -52,7 +53,13 @@ for that attempt. Larger allowances permit more work and may increase model/sear
 A lower effective Model round limit wins. For example, Thorough still allows only 12
 passes when **Max tool rounds** resolves to 12; choose at least 24 to use its full planned
 allowance. Assistant and explicit conversation overrides also apply. The pass allowance includes planning and a reserved final
-synthesis pass. Duplicate tool requests are not repeated; failures consume attempts too.
+synthesis pass. For new turns, an approved analysis handoff can use the remaining effective
+**Max tool rounds** to finish files beyond the evidence-pass allowance. At that point new
+searches, page reads and API collection stop; only retained-data analysis and approved
+workspace/code tools remain. Time and token thresholds still apply and never reset.
+For example, Standard with Model rounds set to 50 gathers within its 12-pass allowance,
+then approved analysis can finish within 50 total passes, reserving the last for synthesis.
+Without a handoff, the original 12-pass behavior remains. Duplicate tool requests are not repeated; failures consume attempts too.
 If synthesis is empty, truncated or ends without a completion signal, up to two tool-free
 recovery calls may continue it using existing evidence. They can exceed the preset's
 planned pass count only if they remain within the effective **Max tool rounds** setting.
@@ -75,11 +82,11 @@ still use retained API pages after reads or source storage are exhausted, within
 remaining time/token/pass ceilings. Create requested files before the synthesis handoff;
 these tools do not create extra model passes or extend a hard budget. Inspection defaults
 to Auto and reports to Ask. Reports support filtered grouped counts and exact known-value
-sums, with tables, bar charts and downloadable data/analysis files. General code execution
-and other chart types remain outside Research. See the [report demo](DATASET_REPORTS.md#manual-verification).
+sums, with tables, bar charts and downloadable data/analysis files. Custom scripts and other chart types use the explicit
+[analysis handoff](#analysis-handoff), with ordinary execution permissions. See the [report demo](DATASET_REPORTS.md#manual-verification).
 
 Presets are saved as the `research` database configuration section. The admin form accepts
-3–100 planned passes, 1–100 searches, 1–100 source reads, 30–7,200 gathering seconds, and
+3–100 evidence passes, 1–100 searches, 1–100 source reads, 30–7,200 gathering seconds, and
 1,000–5,000,000 reported tokens. Ordinary users can read numerical presets through
 `GET /api/settings/research`; only administrators can replace them through
 `PUT /api/admin/config/research` (all three complete presets are required).
@@ -139,13 +146,106 @@ one Research read and do not repeat successful operations or make additional mod
 Stop interrupts backoff; citation inspection and dataset manifests retain attempt history.
 See [API recovery and its limits](PUBLIC_API.md#temporary-failures-and-automatic-retries).
 
-For requested data files, `collect_api_dataset` can follow a small verified preview with
-multiple pages in one operation, then export them. Each new page consumes one Research
-read, with the current time/source limits and normal file approval. Progress and compact
-results expose saved labels and why collection stopped; raw records stay in sources/files.
-Explicit continuation reuses saved pages. A stopped Research attempt's sources can be
-reused in ordinary Chat with Web search enabled; they are not silently imported into a
-new Research attempt. See [multi-page collection](API_DATASETS.md#multi-page-collection).
+For large data tasks, use `collect_api_dataset` with a preview `source` label. Bulk
+collection stores larger pages privately, charges one Research read per bounded invocation,
+and returns a dataset ID rather than a growing list of citations. Explicit `dataset_id`
+continuation reuses saved pages; export, inspection and reporting accept the same ID.
+Legacy `labels` collection retains its per-page source/read costs. See
+[multi-page collection](API_DATASETS.md#multi-page-collection) for defaults and remaining bounds.
+
+## Analysis handoff
+
+The model can call **`begin_research_analysis`** when your request needs custom analysis,
+plots, trend lines, annotations or other files beyond the built-in report. The handoff
+states its purpose and requested relative output paths, and defaults to **Ask**. Once
+approved, eligible `execute_python`, `execute_node`, `run_shell` and workspace file tools
+become available. Their own permissions still apply: approving the handoff does not approve
+later code execution, and disabled tools remain disabled. Agent mode can auto-approve Ask
+tools as usual. MCP, child agents and memory tools are not enabled by this handoff.
+
+Code uses the configured sandbox. Container `network: none` disables networking;
+`network: bridge` permits configured outbound access, subject to the actual environment.
+The local runner uses host networking; AgentCore depends on its configuration. These are
+configuration facts, not proof that a particular endpoint is reachable. **Research domain
+filters constrain the reviewed web/API tools, not arbitrary code networking.** Review the
+handoff and code accordingly, or retain disabled network execution. Prefer scripts that
+analyze the already exported dataset instead of downloading it again.
+
+Each model call receives current execution-tool availability and sandbox configuration
+facts. Exact advertised tool names are retained in protected call diagnostics so a claim
+that a tool was unavailable can be checked. The shell tool is named `run_shell`, not
+`execute_bash`. Provider-side tool filtering still requires provider diagnostics.
+
+Before synthesis the harness checks whether declared output paths contain nonempty files.
+Missing outputs and available files are listed separately in the answer and Research
+progress. An unfinished delivery is marked incomplete (limit reached when a budget stopped
+the work); existing reports and exports are retained. A report under another name is
+listed as available, but is not silently treated as the requested chart. This checks file
+presence only: it does not prove a chart is scientifically correct, establish event
+causality, or claim a browser preview occurred. The model must validate its calculations
+and report limitations. Analysis uses the existing overall Model ceiling, never unlimited
+retries. Paused turns created before this change retain their original pass policy.
+
+The handoff lists this turn’s existing generated file paths. Use them directly instead of
+searching or exporting again. Built-in reports return compact exact grouped results (up to
+ten groups per section, with explicit omission counts); full results remain in analysis.json.
+Declare an existing report’s actual path when reusing it, and add paths for new charts.
+File inventory is bounded to the latest 64 tool-published paths in this attempt.
+
+### Manually checking analysis completion
+
+1. Stay in the **same chat** that collected the data. Select **Research → Standard** and
+   send a **new prompt**; you do not need a new conversation. Set **Settings → Model →
+   Max tool rounds** to 50 (unless an assistant or conversation override sets a lower ceiling).
+2. To reuse a previous collection in the same conversation, copy its `dataset_id` from
+   the collection tool result. Ask: “Use retained dataset ID [paste ID] without downloading
+   it again. Verify coverage and scope, create an HTML report with annual funding bars and
+   a linear trend line, and use begin_research_analysis and execute_python as needed.
+   Reuse returned file paths, verify all outputs, and cite the retained data.”
+3. Approve the analysis handoff and execution when prompted. Open the report and verify
+   the chart and trend line are present. Compare values against the exported analysis.
+4. Inspect **Context record → Model calls** for execution-tool availability and the
+   effective round ceiling. A longer analysis can pass the preset’s 12 evidence passes
+   while staying within 50 total Model passes and the shared time/token thresholds.
+5. If work ends early, expand **File delivery** in Research progress. Available reports
+   and exports should remain listed separately from missing charts, including after reload.
+
+The first test still depends on the selected model following the tool workflow. Automated
+regressions use scripted providers to force a late handoff and verify the budget boundary;
+they do not measure a live model’s plotting quality.
+
+### Finishing a report from an earlier collection
+
+A failed or incomplete report does not necessarily mean data collection failed. Check the
+collection result for `dataset_id`, `captured_records`, `api_reported_matches` and `complete`.
+If collection is complete, ask for analysis of that retained dataset instead of another
+download. Research does not automatically replay the earlier conversation, so include the
+dataset ID, relevant file paths and the requirements again in your new prompt. Access,
+source retention and scope checks still apply to the retained dataset.
+
+Adapt this example, replacing the bracketed placeholders with values from your tool results:
+
+```text
+Finish the report using retained dataset_id [paste dataset ID] in this conversation.
+Do not download or collect the records again. Verify coverage, organization and agency
+scope, duplicate IDs and missing award amounts using the retained data.
+
+Create a self-contained HTML report for [organization and fiscal years] with annual
+funding bars in chronological order, a linear trend line, a supporting table of amounts
+and project counts, scope limitations and citations to the retained data.
+
+Use begin_research_analysis and execute_python as needed. Existing files are:
+[paste exact records.csv and analysis.json paths, if available]
+Reuse those files rather than exporting or searching for them again.
+
+Save the report as funding_report.html and embed the chart directly in that HTML so
+it displays without separate files. Verify the report and chart before claiming completion.
+Do not add event annotations or conduct additional web research for this task.
+```
+
+Approve the handoff and code execution when prompted. For a **partial** dataset, explicitly
+request continued collection with its `dataset_id` before creating whole-query totals.
+Keep any report based on incomplete data clearly labelled as partial.
 
 ## Research notebook and working context
 

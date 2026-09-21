@@ -46,6 +46,7 @@ def register_builtin_tools(registry: "ToolRegistry") -> None:
         api_reports.AnalyzeApiDataset(),
         api_reports.CreateApiReport(),
         research.UpdateResearchNotebook(),
+        research.BeginResearchAnalysis(),
         memory.SaveMemory(),
         skills.UseSkill(),
         subagent.SpawnSubagent(),

@@ -1430,3 +1430,27 @@ test('selected revision preserves CRLF outside the passage and keyboard selectio
   assert.equal(editor.revisions[0].start, 15)
   assert.equal(editor.saves[0].content, '🌸 First line.\r\nA concise paragraph.\r\nKeep this section.')
 })
+
+
+test('partial research delivery preserves available reports and missing chart details after reload', async (t) => {
+  const { page, state } = await fixture(t)
+  state.messages.push({ id: 'partial-report', role: 'assistant', content: 'Data collected; chart unfinished.',
+    usage: { research: { phase: 'limit_reached', started_at: 1790000000, finished_at: 1790000400,
+      searches: 1, reads: 2, source_count: 2, limits: { searches: 8, reads: 16, tokens: 250000, seconds: 900 },
+      rounds_used: 20, effective_rounds: 20, model_round_limit: 20, analysis_enabled: true,
+      delivery: { status: 'partial', available_files: ['api-dataset-test/report.html', 'api-dataset-test/records.csv'], missing_files: ['chart.png'] },
+    } }, created_at: '2026-09-21T00:00:00Z',
+  })
+  await page.getByText('Approval chat', { exact: true }).click()
+  const delivery = page.getByLabel('Research deliverables', { exact: true })
+  await delivery.getByText('Partially delivered · 2 available · 1 missing').click()
+  await delivery.getByText(/Available: api-dataset-test\/report.html/).waitFor()
+  await delivery.getByText('Missing or empty: chart.png').waitFor()
+  await page.reload()
+  await page.getByText('Approval chat', { exact: true }).click()
+  await delivery.getByText('Partially delivered · 2 available · 1 missing').click()
+  await delivery.getByText('Missing or empty: chart.png').waitFor()
+  await page.setViewportSize({ width: 390, height: 844 })
+  const bounds = await delivery.boundingBox()
+  assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= 390)
+})

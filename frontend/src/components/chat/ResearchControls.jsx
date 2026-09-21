@@ -43,7 +43,7 @@ export default function ResearchControls({ value, onChange, documents, selected,
     </div>
     {limits ? <div className="mt-2 text-muted" aria-label="Research budget">
       <p>Up to {limits.searches} searches{value.scope !== 'documents' ? `, ${limits.reads} source reads` : ''} · {limits.seconds / 60} minutes · {limits.tokens.toLocaleString()} reported tokens before gathering stops.</p>
-      <p>{limits.rounds} planned model passes, including the report.{roundLimit < limits.rounds ? ` Your Model setting is ${roundLimit} passes; raise Max tool rounds to use the full preset.` : ''} Assistant and conversation overrides also apply.</p>
+      <p>{limits.rounds} evidence passes, including planning and the report.{roundLimit < limits.rounds ? ` Your Model setting is ${roundLimit} passes; raise Max tool rounds to use the full preset.` : ''} Approved analysis can use remaining Model rounds to finish files, within the same time/token thresholds. Assistant and conversation overrides also apply.</p>
       <p>Report writing and continuation can add time and tokens. Source storage holds up to {config.source_limit} records per turn; a page may use several. Stop ends further calls.</p>
     </div> : <p role="status" className="mt-2 text-muted">{error ? 'Research allowances could not be loaded. The server will apply its current limits.' : 'Loading research allowances…'}</p>}
     {value.scope !== 'web' && <fieldset className="mt-3"><legend className="mb-1 font-medium">Choose documents</legend>

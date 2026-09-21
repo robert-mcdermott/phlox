@@ -40,7 +40,8 @@ def run(db, provider, rounds=6, research=None, cancel=None):
     agent = AgentSession(db, conv, provider, REGISTRY,
                          PermissionGate(db, REGISTRY, auto_approve=True),
                          {'max_tokens': 1000, 'max_context_tokens': 8000, 'max_tool_rounds': rounds},
-                         'test', provider.model, research=research, cancel_event=cancel)
+                         'test', provider.model, research=research, cancel_event=cancel,
+                         allowed_tools={'write_file', 'web_search', 'web_fetch'})
     events = []
     for frame in agent.run([{'role': 'system', 'content': 'Help complete the task.'},
                             {'role': 'user', 'content': 'Finish the report.'}]):
@@ -227,7 +228,7 @@ def test_compaction_does_not_replace_history_with_a_truncated_summary():
 def test_research_removes_exhausted_tools_and_checks_usage_before_tool_admission():
     r = Research({'scope': 'web', 'depth': 'brief', 'domains': []})
     r.state.update(phase='gather', searches=3)
-    assert r.available_tools() == {'web_fetch', 'read_web_source', 'query_public_api', 'update_research_notebook'}
+    assert r.available_tools() == {'web_fetch', 'read_web_source', 'query_public_api', 'update_research_notebook', 'begin_research_analysis'}
     r.before_round(2, 5, r.limits['tokens'])
     assert r.phase == 'synthesize'
     assert r.admit('web_fetch', {'url': 'https://example.org'})

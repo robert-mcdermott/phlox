@@ -44,6 +44,8 @@ separate bundle, preserving the earlier export.
 
 ## Analysis semantics and limits
 
+- `dataset_id`: a private bulk dataset checkpoint; use instead of `labels`. The complete
+  retained dataset is inspected/reported without loading raw rows into model context.
 - `labels`: 1–64 distinct query-page source labels from one query and supported adapter.
   Article/study detail passages are not tabular query rows and cannot be included here.
 - `sections`: 1–6 objects with a required `title`, optional `group_by`, `metric` (`count`
@@ -68,7 +70,7 @@ separate bundle, preserving the earlier export.
   PubMed metadata does not establish study findings, and trial registration is not evidence
   of efficacy. The existing adapter notices remain in the report.
 
-The full bundle is limited to **2 MiB**. Files are staged, checked against their generated
+Bundles are limited to **2 MiB for small-page labels**, or **32 MiB for bulk dataset IDs**. Files are staged, checked against their generated
 bytes, and published together. Tables, chart labels and analysis files share the computed
 results. The manifest explicitly says that live visual review was **not** performed at
 generation time. Phlox does not start a preview server or claim a browser inspection occurred.
@@ -77,16 +79,19 @@ Research offers inspection and reporting after an API page is captured, with at 
 inspection attempts and two report attempts per turn. They consume no new search/read
 allowance and remain available when reads or source storage are full. Time, reported-token
 and model-pass ceilings still apply. Requested files must be created during gathering,
-before tool-free synthesis; instructions prioritize this, but a general task-completion
-tracker and arbitrary code/report execution remain future work.
+before tool-free synthesis. For custom plots, trend lines or event annotations, the explicit
+[analysis handoff](RESEARCH.md#analysis-handoff) enables normal execution tools. The built-in
+report itself remains deterministic bars/tables; it does not infer trend models or events.
 
 Sources are reauthorized for ownership, expiry, current Research attempt and domain scope,
 including immediately before publication. Source removal or Stop prevents new publication;
 a forced process kill can leave an unreported bundle and is never automatically replayed.
 Previously saved reports are independent copies: later source removal does not erase them.
 In ordinary Chat, earlier owned citations can be reused while available. A new Research
-attempt retains its fresh-evidence boundary. Workspace edits are never accepted as analysis
-input by these tools. No new configuration, dependency or database migration is required.
+attempt retains its fresh-evidence boundary for page labels; an explicit bulk dataset ID
+can reuse earlier owned data after current access checks. Workspace edits are never accepted as analysis
+input by these deterministic tools. Bulk storage adds migration `0009_api_datasets`; no
+new configuration or dependency is required.
 
 ## Manual verification
 
@@ -116,3 +121,12 @@ For exact sums, query a small NIH sample and request a report grouped by `fiscal
 using `metric=sum` and `value_field=award_amount`. Describe it as the sum of known awards
 in the captured sample, never an annual institutional funding total. For PubMed, group
 bibliographic records by `journal` or count author memberships; dates remain source strings.
+
+### Reusing reports for custom charts
+
+The report tool returns exact grouped values in a compact summary, with up to ten groups
+per section and explicit omission counts. The complete values remain in `analysis.json`
+and `analysis.csv`; missing summary groups do not mean zero. Use the returned paths directly.
+For custom plotting, the Research analysis handoff lists generated files and enables normal
+approved code execution. Reuse the actual report path and declare the additional chart path;
+there is no need to export the same dataset again. See [analysis handoff](RESEARCH.md#analysis-handoff).

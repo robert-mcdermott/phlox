@@ -61,7 +61,7 @@ def collect(ctx, labels, turn_id, *, check_cancel=True):
     return pages
 
 
-def assemble(pages, details=None):
+def assemble(pages, details=None, *, max_bytes=MAX_BYTES):
     adapter = pages[0]['adapter']
     recipe = {k: v for k, v in pages[0]['request'].items() if k not in {'offset', 'limit', 'page_token'}}
     total = pages[0]['total']
@@ -117,8 +117,8 @@ def assemble(pages, details=None):
     if pages[0]['query_translation'] is not None:
         manifest['query_translation'] = pages[0]['query_translation']
     files['manifest.json'] = json.dumps(manifest, indent=2, ensure_ascii=False) + '\n'
-    if sum(len(text.encode()) for text in files.values()) > MAX_BYTES:
-        raise DatasetError('Dataset export exceeds the 2 MiB bundle allowance. Select fewer pages.')
+    if sum(len(text.encode()) for text in files.values()) > max_bytes:
+        raise DatasetError('Dataset export exceeds its bundle allowance. Select fewer pages.')
     return files, coverage
 
 
@@ -176,7 +176,8 @@ def collect_details(ctx, labels, turn_id, pages):
 
 def bind_pages(ctx, pages, turn_id):
     """Caller holds sources.LOCK and has reauthorized the supplied pages."""
-    missing = [p['row'] for p in pages if not ctx.db.get(SourceUse, (turn_id, p['row'].id))]
+    unique = {p['row'].id: p['row'] for p in pages}
+    missing = [row for row in unique.values() if not ctx.db.get(SourceUse, (turn_id, row.id))]
     if ctx.db.query(SourceUse).filter_by(turn_id=turn_id).count() + len(missing) > sources.MAX_TURN_SOURCES:
         raise DatasetError('Not enough source capacity to bind the dataset citations to this turn.')
     for row in missing:

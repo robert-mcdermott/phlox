@@ -21,6 +21,78 @@ shell execution. For tables and bar charts, use the separate
 
 ## Multi-page collection
 
+For large tasks, inspect a small `query_public_api` preview, then call
+`collect_api_dataset` with **`source: "S1"`** (the actual preview label). Use one query
+covering all requested fiscal years/filters. The preview must start at offset zero.
+The server collects larger validated pages into a private SQL dataset and returns a
+`dataset_id`, compact coverage, one dataset-manifest citation and exported file paths.
+Raw pages never fill the model's context or consume one citation each.
+
+NIH bulk requests use up to **500 projects per page**; PubMed and ClinicalTrials.gov use
+up to **100 records per page**. The original preview is reused. API filters, ordering,
+record identity, totals, request/content hashes and opaque continuation cursors remain
+validated. NIH excludes subprojects, so parent/subproject and agency scope must still be
+reviewed before describing a sum as institutional or NIH-only funding.
+
+| Bulk argument | Default | Maximum / meaning |
+|---|---|---|
+| `source` | Start selector | One offset-zero preview citation; repeating it reuses its dataset |
+| `dataset_id` | Resume selector | Returned private dataset ID; use instead of `source` |
+| `max_pages` | 100 | 200 additional page attempts per call |
+| `max_records` | 10,000 | 50,000 retained records in total; increase explicitly to continue beyond it |
+| `max_seconds` | 300 | 600 acquisition seconds; remaining Research time can shorten this |
+
+Each bulk invocation charges **one Research read**, regardless of internal page count.
+Normal query/export permissions, API rate pacing/retries, SSRF protection, Stop, per-page
+network/parser bounds and Research time/token/pass limits still apply. This is not an
+unlimited background job. Upstream search windows (NIH offsets through 14,999; PubMed's
+10,000-result window) can still require narrower queries. A bulk parsed page is bounded
+to 1,048,576 characters; the existing HTTP response-byte and parser limits still apply.
+
+Each validated page is committed before the next request. Stop publishes no new files;
+partial acquisition can export explicitly partial data. Resume with `dataset_id` to reuse
+saved pages, including after interruption. An explicit dataset reference can be reused in
+a new Research attempt subject to current ownership/domain/expiry checks; old conversation
+messages and unrelated evidence are still not injected. Process loss never automatically
+replays an uncertain tool action. Progress reports the checkpoint ID and record count.
+
+Storage is bounded to **16 MiB per retained dataset**, **32 datasets / 64 MiB per
+conversation**, and **32 MiB per bulk export/report bundle**. Data is private to the owning
+conversation, included in database backups, and expires with its preview source. Removing
+the preview or a dataset-manifest citation removes the retained dataset. Deleting the
+conversation cascades to its datasets. Existing exported files and saved answer copies
+are independent and are not erased by source removal.
+
+`analyze_api_dataset`, `export_api_dataset` and `create_api_report` accept **`dataset_id`**
+instead of `labels`. The export manifest includes per-page requests/hashes, coverage and
+the dataset checkpoint. Inspection and reporting work from the full retained dataset.
+A manifest citation establishes acquisition/coverage; inspect records or generated tables
+before making record-level claims. Detail exports still use the small-page `labels` path.
+
+### Manual verification: ten years and a custom chart
+
+Choose **Research → Web → Standard** and a tool-capable model. Ask:
+
+> Find Fred Hutchinson Cancer Center's RePORTER projects for FY2016–2025 in one query.
+> Inspect a small preview, then use collect_api_dataset with its source label to collect
+> every reported match. Verify organization and agency scope, coverage, duplicate IDs and
+> missing amounts. Export the data and create an HTML funding report with annual bars and
+> a linear trend line. Use begin_research_analysis and execute_python if custom plotting
+> is needed. Explain scope limitations and support any event annotations with evidence.
+> Do not present partial data as complete annual totals.
+
+Approve the collection, analysis handoff and execution when prompted (unless already
+allowed by policy/Agent mode). Expect hundreds of records per NIH bulk request, a compact
+checkpoint, complete coverage before totals, and data/report files. Stop during collection
+and continue with its dataset ID to check that saved pages are not downloaded again.
+The [analysis handoff](RESEARCH.md#analysis-handoff) also explains sandbox networking.
+
+### Legacy citation-page collection
+
+The older `labels` interface below remains compatible with saved tool calls and small
+page workflows. It retains its original limits and charges one read/citation per page.
+Prefer `source` / `dataset_id` for large acquisitions.
+
 When downloadable data is requested, first use `query_public_api` to inspect a small
 page and verify the query. Then use **`collect_api_dataset`** with its saved `labels`.
 The collector supports NIH RePORTER, PubMed and ClinicalTrials.gov through the same
@@ -182,7 +254,7 @@ exponents between −100 and 100. Nulls remain null in JSON and blank in CSV. Or
 and nested data remain in JSON; formula-like text cells in CSV receive an apostrophe
 prefix so opening the file in a spreadsheet does not interpret them as formulas.
 
-The complete bundle is limited to 2 MiB. They are staged privately and published
+The small-page labels bundle is limited to 2 MiB; bulk dataset bundles allow 32 MiB. They are staged privately and published
 together under a fresh `api-dataset-…` folder; existing files are never overwritten.
 Stop and write failures before publication remove the staging folder. File descriptors
 are returned only after publication succeeds. A forced process kill can leave a staging

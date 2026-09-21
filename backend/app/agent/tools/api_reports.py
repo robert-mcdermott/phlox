@@ -10,6 +10,7 @@ from app.agent.tools.base import Tool, ToolResult
 from app.web_extract_worker import ExtractionError
 
 FIELDS = {
+    'dataset_id': {'type': 'string', 'pattern': '^[a-f0-9]{32}$'},
     'labels': {'type': 'array', 'minItems': 1, 'maxItems': 64, 'uniqueItems': True,
                'items': {'type': 'string', 'pattern': '^S[1-9][0-9]{0,5}$'}},
     'sections': {'type': 'array', 'maxItems': 6, 'items': {'type': 'object', 'additionalProperties': False,
@@ -32,13 +33,14 @@ class AnalyzeApiDataset(Tool):
     name = api_reports.INSPECT
     category = 'web'
     default_permission = 'auto'
-    description = 'Inspect retained API labels for column paths, types, missing counts and coverage. Read-only.'
+    description = 'Inspect retained API dataset_id or labels for column paths, types, missing counts and coverage. Read-only.'
     parameters = {'type': 'object', 'additionalProperties': False,
-                  'properties': {'labels': deepcopy(FIELDS['labels'])}, 'required': ['labels']}
+                  'properties': {key: deepcopy(FIELDS[key]) for key in ('labels', 'dataset_id')}}
 
     def run(self, ctx, **arguments):
-        if next(Draft202012Validator(self.parameters).iter_errors(arguments), None):
-            return ToolResult('Invalid dataset inspection. Supply source labels.', is_error=True)
+        if (next(Draft202012Validator(self.parameters).iter_errors(arguments), None)
+                or ('labels' in arguments) == ('dataset_id' in arguments)):
+            return ToolResult('Invalid dataset inspection. Supply exactly one of dataset_id or labels, not both.', is_error=True)
         try:
             return ToolResult(api_reports.inspect(ctx, **arguments))
         except (DatasetError, ExtractionError) as exc:
@@ -51,16 +53,17 @@ class CreateApiReport(Tool):
     name = api_reports.REPORT
     category = 'filesystem'
     default_permission = 'ask'
-    description = ('Create report.html, tables/bar charts and CSV/JSON from retained API labels. Inspect columns first. '
+    description = ('Create report.html, tables/bar charts and CSV/JSON from retained API dataset_id or labels. Inspect columns first. '
         'Max 50 groups; omit group_by for overall. List counts overlap. Filters AND; contains ignores case.')
     parameters = {'type': 'object', 'additionalProperties': False,
                   'properties': {**deepcopy(FIELDS), 'title': {'type': 'string', 'minLength': 1, 'maxLength': 200}},
-                  'required': ['labels', 'title', 'sections']}
+                  'required': ['title', 'sections']}
     parameters['properties']['sections']['minItems'] = 1
 
     def run(self, ctx, **arguments):
-        if next(Draft202012Validator(self.parameters).iter_errors(arguments), None):
-            return ToolResult('Invalid report. Supply source labels, title and 1–6 bounded analysis sections.', is_error=True)
+        if (next(Draft202012Validator(self.parameters).iter_errors(arguments), None)
+                or ('labels' in arguments) == ('dataset_id' in arguments)):
+            return ToolResult('Invalid report. Supply exactly one of dataset_id or labels, plus title and 1–6 analysis sections.', is_error=True)
         try:
             artifacts, result = api_reports.report(ctx, **arguments)
         except (DatasetError, ExtractionError) as exc:
@@ -68,6 +71,6 @@ class CreateApiReport(Tool):
         except (ValueError, TypeError, KeyError, ArithmeticError, OSError):
             return ToolResult('Report validation or file publication failed. No completed report was reported; retained sources remain available.', is_error=True)
         return ToolResult('Created report.html and its reproducible data/analysis files. ' + json.dumps(result) +
-            '\nComputed from ' + ' '.join(f'[{label}]' for label in arguments['labels']) +
+            '\nComputed from ' + ' '.join(f'[{label}]' for label in result['citations']) +
             '. Tables and chart values share the same computed results; staged file bytes were verified. '
             'No live visual review was performed. Coverage refers to captured records, not independent upstream completeness.', artifacts=artifacts)

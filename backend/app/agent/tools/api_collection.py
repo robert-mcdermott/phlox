@@ -1,7 +1,7 @@
 """Collect a bounded sequence of validated API pages and publish a dataset bundle."""
 from jsonschema import Draft202012Validator
 
-from app import api_collection, api_dataset, web_fetch
+from app import api_collection, api_dataset, bulk_datasets, web_fetch
 from app.agent.tools.base import Tool, ToolResult
 from app.web_extract_worker import ExtractionError
 
@@ -10,26 +10,32 @@ class CollectApiDataset(Tool):
     name = api_collection.NAME
     category = 'filesystem'
     default_permission = 'ask'
-    description = ('When data files are requested, start with query_public_api to inspect a small page, then collect '
-                   'more pages and export CSV/JSON files in one call. Supply labels for ALL retained pages from offset zero, '
-                   'in order. Continuation reuses those pages without refetching. max_pages limits additional page attempts; '
-                   'max_records limits total retained records. Uses the saved filters/page size and shared retries. '
-                   'Each new page consumes a Research read. Returns compact counts, source labels and files, not raw records. '
-                   'Partial results remain explicit. Stop retains saved sources but creates no new files. '
-                   'No arbitrary URLs, code, full articles or study-detail expansion.')
+    description = ('Collect full API datasets after a small preview: supply source=S# at offset zero, '
+                   'or dataset_id to resume. Bulk pages stay outside model context and citation limits. '
+                   'Use one query for all requested years. Returns CSV/JSON, coverage and a checkpoint. '
+                   'Partial data stays explicit. '
+                   'Stop saves progress. Legacy labels uses small citation pages instead.')
     parameters = {'type': 'object', 'additionalProperties': False, 'properties': {
+        'source': {'type': 'string', 'pattern': '^S[1-9][0-9]{0,5}$'},
+        'dataset_id': {'type': 'string', 'pattern': '^[a-f0-9]{32}$'},
         'labels': {'type': 'array', 'minItems': 1, 'maxItems': 64, 'uniqueItems': True,
                    'items': {'type': 'string', 'pattern': '^S[1-9][0-9]{0,5}$'}},
-        'max_pages': {'type': 'integer', 'minimum': 1, 'maximum': api_collection.MAX_PAGES, 'default': 5},
-        'max_records': {'type': 'integer', 'minimum': 1, 'maximum': api_collection.MAX_RECORDS, 'default': 200},
-        'max_seconds': {'type': 'integer', 'minimum': 1, 'maximum': api_collection.MAX_SECONDS, 'default': 60},
-    }, 'required': ['labels']}
+        'max_pages': {'type': 'integer', 'minimum': 1, 'maximum': bulk_datasets.MAX_PAGES, 'default': 100},
+        'max_records': {'type': 'integer', 'minimum': 1, 'maximum': bulk_datasets.MAX_RECORDS, 'default': 10000},
+        'max_seconds': {'type': 'integer', 'minimum': 1, 'maximum': bulk_datasets.MAX_SECONDS, 'default': 300},
+    }}
 
     def run(self, ctx, **arguments):
-        if next(Draft202012Validator(self.parameters).iter_errors(arguments), None):
-            return ToolResult('Supply ordered retained API labels and valid max_pages/max_records/max_seconds limits.', is_error=True)
+        if (next(Draft202012Validator(self.parameters).iter_errors(arguments), None)
+                or sum(key in arguments for key in ('source', 'dataset_id', 'labels')) != 1):
+            return ToolResult('Supply exactly one of source, dataset_id or legacy labels, with valid collection limits.', is_error=True)
         try:
-            content, artifacts, stopped = api_collection.run(ctx, **arguments)
+            if 'labels' in arguments:
+                for key, maximum in [('max_pages', api_collection.MAX_PAGES), ('max_records', api_collection.MAX_RECORDS), ('max_seconds', api_collection.MAX_SECONDS)]:
+                    if arguments.get(key, 1) > maximum:
+                        raise api_dataset.DatasetError('Legacy labels limits exceeded. Use source or dataset_id for bulk data.')
+            collect = api_collection.run if 'labels' in arguments else bulk_datasets.run
+            content, artifacts, stopped = collect(ctx, **arguments)
             return ToolResult(content, artifacts=artifacts, is_error=stopped)
         except (api_dataset.DatasetError, ExtractionError, web_fetch.FetchError) as exc:
             return ToolResult(str(exc) + ' No completed collection export reported; previously saved pages remain retained.', is_error=True)

@@ -993,12 +993,83 @@ Tests use scripted providers and local API fixtures, not a live provider/model o
 API account. Existing deprecation and build-size warnings remain. See the
 [manual report demo](DATASET_REPORTS.md#manual-verification).
 
+**Fifteenth increment — Bulk datasets and Research analysis handoff (2026-09-21):**
+
+- Replaced the citation-per-page bottleneck for large acquisitions with a separate `source` /
+  `dataset_id` path in `collect_api_dataset`. NIH bulk pages request up to 500 records;
+  PubMed and ClinicalTrials.gov use 100. Validated pages commit privately before the next
+  request, with compact progress, resumable checkpoints and one manifest citation per
+  published revision. One bounded collection invocation uses one Research read.
+- Added additive migration `0009_api_datasets` and frozen revision-0008 metadata. Dataset
+  pages preserve exact serialized numbers, source ownership/expiry/revocation, hashes,
+  query identity and validated pagination. Storage has separate per-dataset/conversation
+  quotas; exports/reports accept dataset IDs and a 32 MiB bulk bundle allowance. Existing
+  small-page labels and their limits remain compatible. Stops retain pages without file
+  publication; interrupted work requires explicit continuation, never automatic replay.
+- Added Ask-tier `begin_research_analysis`, exposing normal execution/file tools only after
+  an explicit handoff. Their own permissions remain authoritative. Configured runner/network
+  facts accompany model calls; their exact advertised tool names are retained in call
+  diagnostics. Domain filters apply to reviewed web/API tools, not arbitrary code networking.
+- Declared analysis outputs are checked for nonempty files before synthesis. Missing outputs
+  are listed and mark the run failed; file presence does not claim scientific or visual
+  correctness. Custom code can create trend lines and evidence-backed annotations, while
+  built-in reports retain deterministic tables/bars. No unbounded retries or extra model
+  passes are introduced. Research instructions now prefer combined multi-year bulk queries
+  and reserve work for the requested deliverables.
+
+**Fifteenth-increment verification:** a synthetic ten-year dataset with **4,286 records**
+collects through the real HTTP/parser path in **10 requests, two citations and one bulk
+collection read**, with verified annual table sums. A scripted-provider harness test then
+executes Python to produce an HTML bar/trend chart with an example annotation, without
+replaying raw rows into model context. All three adapters, Stop/resume, stale totals,
+quotas, source removal/expiry, ownership/scope, handoff and separate execution approvals,
+current disabled-tool policy and missing-file outcomes have regressions. Populated upgrade
+and backup/restore drills cover SQLite and Postgres. No live model or public API quality
+claims are made by these fixtures. See [bulk data](API_DATASETS.md#multi-page-collection)
+and [analysis handoff](RESEARCH.md#analysis-handoff) for manual testing and limits.
+
+The complete backend run recorded **1,002 passed / 25 optional skips**, with one preview-error
+wording assertion subsequently corrected and verified in a **66-test passing API/bulk/analysis
+rerun**. A **53-test passing bulk/analysis/report rerun** covers the final integrity and
+record-ceiling refinements. All **45 Chromium regressions**, the frontend production build,
+lint and diff checks passed. The operations suite also passed with a disposable PostgreSQL
+16 instance alongside SQLite (one SQLite-specific case intentionally skips on Postgres).
+Existing deprecation and frontend chunk-size warnings remain.
+
+**Fifteenth-increment follow-up — Late analysis and partial delivery:**
+
+- Approved analysis in new Research turns uses remaining effective Model rounds after the
+  preset’s evidence passes, with the last pass reserved for synthesis. Searches, reads and
+  collection close at the evidence boundary; time/token thresholds, Stop, permissions and
+  lower Model limits remain enforced. Existing paused turns keep their old pass policy.
+- The handoff lists actual generated paths, and report results include bounded exact group
+  summaries with explicit omission counts. Agents can reuse complete datasets and reports
+  without another export or file search. Selector errors explain dataset_id versus labels.
+- Recursive workspace globs now allow ** to match zero directories, fixing missed root-level
+  dataset bundles. Partial delivery shows available files separately from absent declarations;
+  an existing report never silently substitutes for a missing custom chart.
+- Regression coverage includes a late handoff followed by actual Python execution beyond
+  pass 12, preserved approval boundaries, time/token/Model ceilings, old approval policy,
+  recursive matching, exact summary values and partial-delivery display/replay.
+
+**Follow-up verification:** the full backend run passed **1,021 tests**, with **25 optional
+Postgres cases skipped**. After the final Stop/inventory and approval-resume refinements,
+all **136 focused regressions** passed. All **46 Chromium tests**, the production build,
+lint and diff checks passed. Tests used scripted providers, local API fixtures and real
+local Python execution; no live provider or public API was called. Existing deprecation
+and large frontend chunk warnings remain.
+
+**Manual follow-up:** the user confirmed that a new Research prompt in the same chat,
+explicitly reusing the retained dataset and requesting a self-contained HTML chart/report,
+completed successfully. The Research guide now documents this recovery workflow and a
+reusable prompt; this is a reported successful example, not a general live-model benchmark.
+
 **Still pending:** remaining W14.1/W14.5 stage allowances, live calibration and recovery UX, further W14.2 extraction quality, broader W14.3 API coverage and W14.4 quality evaluation, and
 broader W14.6–W14.8 work (extraction, working context and analysis/deliverables), plus full process-level signal/draining/deadline work in
 W14.11. A stalled tool or open event stream can still delay graceful shutdown. No automatic
 replay of uncertain actions, session refresh protocol, durable return hint or distributed
-worker has been introduced. Future increments should address acquisition beyond the
-current bounds and broader research-to-analysis execution/deliverable verification (W14.6–W14.8).
+worker has been introduced. Future increments should address acquisition beyond the separate bulk quotas, live-model
+calibration, and semantic/visual deliverable verification beyond declared file existence (W14.6–W14.8).
 
 **Remaining public API work (W14.3/W14.7):** NIH RePORTER, PubMed bibliography/article
 details and ClinicalTrials.gov study search/details now use shared source and export

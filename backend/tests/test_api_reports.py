@@ -53,6 +53,12 @@ def test_exact_tables_missing_values_chart_and_file_integrity(ctx, monkeypatch):
     assert not inspection.is_error and 'organization.org_name' in inspection.content
     assert '"records"' not in inspection.content and 'agency_ic_fundings' not in inspection.content
     result, files, manifest = report(ctx, labels)
+    payload, _ = json.JSONDecoder().raw_decode(result.content[result.content.index('{'):])
+    summary = payload['computed_sections'][0]
+    assert summary['groups'][0]['value'] == '0.3'
+    assert summary['groups'][0]['missing_count'] == 1
+    assert summary['groups'][1]['value'] is None
+    assert summary['omitted_groups'] == 0
     assert len(result.artifacts) == 7 and result.artifacts[0]['name'] == 'report.html'
     analysis = json.loads(files['analysis.json'], parse_float=Decimal)
     groups = analysis['sections'][0]['groups']
@@ -208,7 +214,7 @@ def test_research_tools_survive_read_exhaustion_but_preserve_limits_and_resume(c
     capture(ctx, [record(1)])
     research = ctx.research
     research.state.update(reads=research.limits['reads'], searches=research.limits['searches'], source_capacity=0)
-    assert research.available_tools() == {'export_api_dataset', api_reports.INSPECT, api_reports.REPORT}
+    assert research.available_tools() == {'export_api_dataset', api_reports.INSPECT, api_reports.REPORT, 'begin_research_analysis'}
     research.before_round(2, 8, 0)
     assert research.phase == 'gather'
     assert research.admit(api_reports.INSPECT, {}) is None
@@ -342,3 +348,24 @@ def test_trial_report_counts_distinct_phase_memberships_and_filters_booleans(ctx
     assert {g['group']: g['value'] for g in section['groups']} == {'PHASE1': 1, 'PHASE2': 2}
     assert section['membership_count'] == 3 and len(trial_site.requests) == 1
     assert json.loads(files['manifest.json'])['adapter'] == 'clinical_trials'
+
+
+def test_compact_group_results_are_bounded_and_report_omissions():
+    groups = [{'group': str(i), 'value': Number('9007199254740993.0123401'), 'record_count': 1,
+               'missing_count': 0, 'known_count': 1} for i in range(50)]
+    section = dict(title='Amounts', group_by='category', metric='sum', value_field='amount', multi_valued_groups=False, groups=groups)
+    compact = api_reports.compact_results({'sections': [section]})
+    assert len(compact[0]['groups']) == 10 and compact[0]['omitted_groups'] == 40
+    assert compact[0]['total_groups'] == 50
+    assert '9007199254740993.0123401' in json.dumps(compact)
+    huge = deepcopy(section)
+    huge['groups'][0]['group'] = 'x' * 10000
+    compact = api_reports.compact_results({'sections': [huge] * 6})
+    assert len(json.dumps(compact)) < 8000
+    assert all(s['omitted_groups'] == 50 and not s['groups'] for s in compact)
+
+
+def test_selector_errors_explain_dataset_or_labels(ctx):
+    for args in ({}, {'labels': ['S1'], 'dataset_id': 'a' * 32}):
+        result = AnalyzeApiDataset().run(ctx, **args)
+        assert result.is_error and 'exactly one of dataset_id or labels' in result.content

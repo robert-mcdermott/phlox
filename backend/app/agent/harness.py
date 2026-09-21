@@ -171,9 +171,16 @@ class AgentSession:
             turn_usage(self.accounting), len(self._source_refs())))
 
     def _refresh_research_budget(self):
+        from app.models import ApiDataset, Source
+        # Advertise reuse without injecting old evidence. Loading still requires an
+        # explicit dataset_id and fresh ownership, expiry and domain authorization.
+        retained = self.db.query(ApiDataset.id).join(Source, ApiDataset.source_id == Source.id).filter(
+            Source.conversation_id == self.conversation.id, Source.excerpt.isnot(None)).first()
+        if retained:
+            self.research.state['api_data_available'] = True
         self.research.state.update(
             rounds_used=self.rounds_used,
-            effective_rounds=min(int(self.params.get('max_tool_rounds', 12)), self.research.limits['rounds']),
+            effective_rounds=self.research.effective_rounds(int(self.params.get('max_tool_rounds', 12))),
             model_round_limit=int(self.params.get('max_tool_rounds', 12)),
             source_capacity=sources.remaining_capacity(self.db, self.conversation.id, self.accounting.turn_id),
         )
@@ -232,10 +239,9 @@ class AgentSession:
         initial_decisions: dict[str, str] | None = None,
     ) -> Iterator[str]:
         max_rounds = int(self.params.get("max_tool_rounds", 12))
-        research_rounds = min(max_rounds, self.research.limits['rounds']) if self.research else max_rounds
         enabled = self.allowed_tools if self.allowed_tools is not None else self.gate.enabled_names()
         if not self.research:
-            enabled = enabled - {'update_research_notebook'}
+            enabled = enabled - {'update_research_notebook', 'begin_research_analysis'}
         tools = self.registry.specs(enabled_names=enabled)
 
         # Guardrails (see app/guardrails.py): input rules scrub the outbound message
@@ -276,12 +282,16 @@ class AgentSession:
             if self.research:
                 from app.model_calls import turn_usage
                 self._refresh_research_budget()
-                instruction = self.research.before_round(self.rounds_used, research_rounds,
+                from app.research_analysis import deliverables
+                delivery = deliverables(self.ctx)
+                instruction = self.research.before_round(self.rounds_used, self.research.effective_rounds(max_rounds),
                                                         turn_usage(self.accounting)['total'])
                 # Transient stage instructions are not persisted as user messages. End with
                 # a user turn for providers that disallow assistant-prefill continuations.
                 round_messages = deepcopy(messages)
                 round_messages[0]['content'] += '\n\nCurrent research stage: ' + instruction
+                if delivery:
+                    round_messages[0]['content'] += '\nRequested analysis files (existence only, not correctness): ' + json.dumps(delivery)
                 round_messages.append({'role': 'user', 'content': 'Proceed with the current research stage.'})
                 round_tools = [t for t in tools if t.name in self.research.available_tools()] if self.research.phase == 'gather' else []
             else:
@@ -297,6 +307,10 @@ class AgentSession:
                     'Write the final answer now from the work already performed. '
                 ) + 'Use the existing evidence; no more tools or new actions. Do not claim files or actions '
                     'were completed unless the saved tool results confirm them. Explain any remaining gaps.'})
+            from app.research_analysis import capabilities
+            round_messages = deepcopy(round_messages)
+            round_messages[0]['content'] += ('\nExecution tools now: ' + (', '.join(t.name for t in round_tools if t.name in {'execute_python', 'execute_node', 'run_shell'}) or 'none')
+                + '. ' + capabilities() + ' Use the current tool definitions; do not invent restrictions.')
             call_params = {**self.params, '_stage': (
                 'completion_recovery' if completion_only else
                 self.research.phase if self.research else 'finalize' if final_reserve else 'generation'
@@ -519,6 +533,16 @@ class AgentSession:
                     yield from self._finalize(round_text, tool_steps, all_artifacts)
                     return
                 if self.research.phase == 'synthesize':
+                    from app.research_analysis import deliverables
+                    missing = [item['path'] for item in deliverables(self.ctx) if not item['nonempty_file_exists']]
+                    if missing:
+                        completed = self.research.state['delivery']['available_files']
+                        self.outcome = 'limit_reached' if self.research.state.get('reason') else 'failed'
+                        note = '\n\nDelivery incomplete: declared files are missing or empty: ' + ', '.join(missing) + '.'
+                        if completed:
+                            note += ' Available files retained: ' + ', '.join(completed) + '. Existing reports do not prove the missing chart was completed.'
+                        round_text += note
+                        yield events.token(note)
                     if pending_calls:
                         self.outcome = 'limit_reached'
                         round_text += '\n\nResearch ended: the model requested more tools instead of completing the report. No further actions were executed.'
@@ -833,6 +857,9 @@ class AgentSession:
             if call.name == 'update_research_notebook' and not result.is_error:
                 self.research.state['notebook']['covered_calls'].append(call.id)
                 yield self._research_event()
+        if self.research:
+            from app.research_analysis import remember_files
+            remember_files(self.ctx, result.artifacts)
         from app.artifact_snapshots import unique_artifacts
         for art in result.artifacts:
             url = f"/api/files/{self.conversation.id}?path={art['path']}"
@@ -948,6 +975,8 @@ class AgentSession:
                          context_attachments=record.data.get('user_attachments', []))
         if self.research:
             import time
+            from app.research_analysis import deliverables
+            deliverables(self.ctx)
             if self.outcome in {'cancelled', 'failed', 'limit_reached'} and self.research.phase != 'synthesize':
                 refs = self._source_refs()
                 final_text = ('Research ended before a complete report was written. '

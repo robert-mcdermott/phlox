@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import fnmatch
+from functools import lru_cache
 import re
 from typing import Any
 
@@ -18,6 +19,21 @@ def _skip_dir(rel_parts: tuple[str, ...]) -> bool:
     """True if a path (relative to the workspace root) is inside a vendor/build/VCS dir
     that shouldn't clutter search results (node_modules, .venv, .git, ...)."""
     return any(part in IGNORE_DIRS for part in rel_parts)
+
+
+def _glob_match(path: str, pattern: str) -> bool:
+    """Path-segment globbing: ** consumes zero or more complete directories."""
+    parts, patterns = path.split('/'), pattern.removeprefix('./').split('/')
+
+    @lru_cache(maxsize=None)
+    def match(i, j):
+        if j == len(patterns):
+            return i == len(parts)
+        if patterns[j] == '**':
+            return match(i, j + 1) or (i < len(parts) and match(i + 1, j))
+        return i < len(parts) and fnmatch.fnmatchcase(parts[i], patterns[j]) and match(i + 1, j + 1)
+
+    return match(0, 0)
 
 
 def _rel(ctx: ToolContext, path) -> str:
@@ -209,7 +225,7 @@ class GlobSearch(Tool):
         matches = []
         for p in root.rglob("*"):
             rel = p.relative_to(root)
-            if _skip_dir(rel.parts) or not fnmatch.fnmatch(str(rel), pattern):
+            if _skip_dir(rel.parts) or not _glob_match(rel.as_posix(), pattern):
                 continue
             matches.append(str(rel))
         matches.sort()
@@ -245,7 +261,7 @@ class GrepSearch(Tool):
         truncated = False
         for p in root.rglob("*"):
             rel = p.relative_to(root)
-            if not p.is_file() or _skip_dir(rel.parts) or not fnmatch.fnmatch(p.name, glob):
+            if not p.is_file() or _skip_dir(rel.parts) or not _glob_match(rel.as_posix() if '/' in glob else p.name, glob):
                 continue
             try:
                 for i, line in enumerate(p.read_text(encoding="utf-8", errors="replace").splitlines(), 1):

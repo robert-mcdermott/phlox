@@ -141,7 +141,7 @@ advertises it after API capture, with two bounded attempts before synthesis; it 
 no read allowance but keeps time/token/pass ceilings. Publication holds the source lock,
 rechecks access/expiry, and atomically renames a fresh staging folder containing the
 bounded data files. Existing artifact events, checkpoints and saved-answer snapshots handle
-delivery. There is no network/model call, arbitrary code or new schema. See [API datasets](API_DATASETS.md).
+delivery. Export itself makes no network/model call and runs no arbitrary code. See [API datasets](API_DATASETS.md).
 
 `api_reports.py` reuses dataset validation, coverage and source authorization for
 `analyze_api_dataset` (Auto-tier column inspection) and `create_api_report` (Ask-tier files).
@@ -154,7 +154,7 @@ Research allows four inspections and two reports without new read charges, prese
 time/token/pass limits and approval counters. Workspace files are not analysis inputs.
 See [Dataset reports](DATASET_REPORTS.md) for limits and remaining delivery boundaries.
 
-`api_collection.py` adds bounded acquisition from an existing validated query-page prefix.
+`api_collection.py` preserves legacy `labels` acquisition from an existing validated query-page prefix.
 The Ask-tier `collect_api_dataset` tool uses `public_api.capture_query`, per-page Research
 read admission and the shared transport/parser to follow saved continuation recipes.
 Cross-page identity/order/cursor and bundle-size checks run before capturing each new
@@ -163,9 +163,31 @@ continuation input. No model call is needed between pages, and records are not r
 in the collection tool result. Progress uses existing tool events; publication uses the
 existing dataset exporter and adds collection status/limits to its manifest. Stop retains
 committed sources without publishing files; failed/limited acquisition can publish a
-reauthorized partial prefix. There is no new database table, arbitrary HTTP interface or
+reauthorized partial prefix. The legacy path has no separate dataset table, arbitrary HTTP interface or
 automatic replay after process loss. Source expiry, Research-attempt isolation and
 permission checks remain authoritative, including after retries and before publication.
+
+`bulk_datasets.py` handles the `source`/`dataset_id` collection path. Additive migration
+`0009_api_datasets` stores normalized page text and request/retrieval hashes in private
+`ApiDataset` rows anchored to a Source. Pages commit individually; one compact immutable
+manifest citation describes each published revision. Shared transport and validators use
+larger server-selected page sizes; their records bypass model context and per-page citation
+charges. One bounded collection invocation charges one Research read. Scope, Stop, current
+permissions, ownership, expiry, quotas and cross-page consistency are checked throughout.
+The report/export seams accept dataset IDs under a separate 32 MiB bundle bound. Source
+removal/expiry and conversation deletion purge retained datasets; independent saved files
+remain. Revision 0008 metadata is frozen separately so populated upgrades/backups remain valid.
+
+`research_analysis.py` and `begin_research_analysis` provide an Ask-tier capability handoff.
+Existing execution/file tools are eligible but not advertised/admitted before approval;
+afterward each still traverses the ordinary permission gate. Their runner/network policy
+is unchanged and independent of Research fetch domain filters. Declared output paths are
+checked before synthesis; missing/empty files produce an incomplete outcome, with existing
+files listed separately. Existence is not semantic or visual verification. New turns snapshot
+the analysis-pass policy: an approved handoff can use remaining Model rounds after evidence
+passes end, but then evidence tools close. Time/token limits and per-tool permissions still
+apply. Legacy approval snapshots retain their original pass ceilings. Current capability facts are transient per-call
+instructions and advertised tool names are persisted in call diagnostics.
 
 `public_api_adapters.py` defines adapter contracts (identity, endpoint, page validator,
 record key, ordering, notice, output formatter and explicit `retry_safe` review). `api_dataset_formats.py` keeps NIH

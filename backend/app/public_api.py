@@ -205,7 +205,7 @@ def pace(deadline, adapter_name='nih_projects'):
             time.sleep(min(wait, 0.05))
 
 
-def query(ctx, request, previous=None, adapter_name='nih_projects', authorize=None, deadline_until=None):
+def query(ctx, request, previous=None, adapter_name='nih_projects', authorize=None, deadline_until=None, bulk=False):
     adapter = adapters.get(adapter_name)
     endpoint = adapter.endpoint
     policy = ctx.research.url_allowed if ctx.research else None
@@ -218,7 +218,7 @@ def query(ctx, request, previous=None, adapter_name='nih_projects', authorize=No
             deadline.until = min(deadline.until, deadline_until)
         deadline.check()
         if adapter_name == 'pubmed':
-            page, status = query_pubmed(request, previous, deadline, policy, authorize, retrieval)
+            page, status = query_pubmed(request, previous, deadline, policy, authorize, retrieval, bulk=bulk)
         elif adapter_name == 'clinical_trials':
             parameters = {'format': 'json', 'countTotal': 'true', 'pageSize': request['limit'],
                           'sort': request['sort'], 'fields': TRIAL_FIELDS}
@@ -230,11 +230,11 @@ def query(ctx, request, previous=None, adapter_name='nih_projects', authorize=No
                 parameters['filter.overallStatus'] = '|'.join(request['statuses'])
             body, status = public_api_transport.read(adapter_name, 'search', endpoint + '?' + urlencode(parameters),
                 deadline, policy, authorize=authorize, retrieval=retrieval)
-            page = web_formats.extract(body, 'clinical_trials_search', deadline, request=request, previous=previous)
+            page = web_formats.extract(body, 'clinical_trials_search', deadline, request=request, previous=previous, max_chars=1048576 if bulk else 6000)
         else:
             body, status = public_api_transport.read(adapter_name, 'search', endpoint, deadline, policy,
                 body=payload, authorize=authorize, retrieval=retrieval)
-            page = web_formats.extract(body, adapter_name, deadline, request=request, previous=previous)
+            page = web_formats.extract(body, adapter_name, deadline, request=request, previous=previous, max_chars=1048576 if bulk else 6000)
         deadline.check()
     page['retrieval'] = retrieval
     # The API mints a new search_id on every request. Identity follows the retained
@@ -242,7 +242,7 @@ def query(ctx, request, previous=None, adapter_name='nih_projects', authorize=No
     return page, status, hashlib.sha256(page['text'].encode()).hexdigest(), hashlib.sha256(payload).hexdigest()
 
 
-def query_pubmed(request, previous, deadline, policy, authorize=None, retrieval=None):
+def query_pubmed(request, previous, deadline, policy, authorize=None, retrieval=None, *, bulk=False):
     def read(endpoint, parameters, operation):
         return public_api_transport.read('pubmed', operation, endpoint + '?' + urlencode(
             {'db': 'pubmed', 'retmode': 'json', 'tool': 'phlox', **parameters}), deadline, policy,
@@ -255,7 +255,7 @@ def query_pubmed(request, previous, deadline, policy, authorize=None, retrieval=
         body, status = read(PUBMED_SUMMARY_ENDPOINT, {'id': ','.join(search['ids'])}, 'summary')
     else:
         body = b'{"result":{"uids":[]}}'
-    page = web_formats.extract(body, 'pubmed_summary', deadline, request=request, search=search)
+    page = web_formats.extract(body, 'pubmed_summary', deadline, request=request, search=search, max_chars=1048576 if bulk else 6000)
     return page, status
 
 

@@ -30,11 +30,75 @@ query translations or changed match counts fail explicitly before evidence is ca
 The reported translation is inspectable; this does not independently prove a complex
 search expresses your intended inclusion criteria.
 
-Captured fields are PMID, title, author names, journal, publication date, volume, issue,
-pages, DOI/PMC identifiers when returned, and the PubMed record link. **Abstracts and full
-article text are not retrieved in this slice.** These records support bibliographic claims;
-they do not establish study findings, quality or clinical recommendations. Abstract retrieval
-and ClinicalTrials.gov integration remain planned.
+Search-page fields are PMID, title, author names, journal, publication date, volume, issue,
+pages, DOI/PMC identifiers when returned, and the PubMed record link. These search records
+support bibliographic claims, not study findings. Read selected abstracts and author
+affiliations separately as described below. Full article text and ClinicalTrials.gov
+integration remain planned.
+
+## Read abstracts and author affiliations
+
+After a PubMed search, `query_public_api` can inspect a selected article with
+`record_from: "S1"` (the query-page citation) and `record_id: "12345678"` (a PMID on that
+page). The adapter follows the retained source; an optional `adapter` must match it.
+This is a fixed EFetch XML request, not an arbitrary URL. It creates a **new detail citation**;
+the original search metadata stays unchanged.
+
+- `section: "abstract"` is the default. Abstract text preserves supplied headings and
+  language labels, and reports `abstract_status: "missing"` when none is available in the
+  returned record. Inline formatting becomes text. Use `start` and `max_chars` (500–4,000,
+  default 4,000) for long abstracts. `next_start` identifies unread text. Partial passages
+  remain explicit; a missing abstract is not a failed network request.
+- `section: "authors"` returns names with their own supplied affiliations, author positions,
+  collective-author names, reported list completeness and missing-affiliation counts. Use
+  `affiliation: "Fred Hutch"` for a case-insensitive substring filter, or omit it to inspect
+  all returned authors. `start` indexes the matching list; `limit` is 1–20, default 5.
+  Legacy affiliations lacking author mappings are reported separately and never assigned
+  to every author. No matches with missing affiliations cannot establish institutional absence.
+
+Follow the returned `next_start` with the same section/filter and the **detail citation** as
+`record_from`. This verifies that the normalized article record still matches the earlier
+capture. It also works when switching from abstract to authors. If the record changed,
+start explicitly from the search citation again and keep versions separate. Source deletion,
+expiry and Research attempt/domain scope are checked before retrieval and again before capture.
+
+Every detail call refetches one selected article under shared PubMed pacing and consumes
+one Research read. To revisit already captured evidence without network access, use
+`read_web_source` with its citation. Detail snapshots retain their selection, source lineage,
+request hash and record version through rereads, notebooks, exports and reloads. They do
+not authorize `continue_from`, which is reserved for search-page pagination.
+
+Each serialized detail selection must fit 6,000 characters. Oversized selections fail
+explicitly; reduce `max_chars` or the author `limit`. Pathological single-author affiliation
+lists may still exceed this bound. XML is parsed in the bounded worker without resolving
+DTDs or entities; malformed, mismatched, multi-record and unsupported book responses are
+rejected. Public journal articles are supported; full-text acquisition is not included.
+
+Affiliations describe the publication record, not current employment. Abstracts support
+summaries of what the authors report; they do not establish independent verification or
+replace reading the full methods/results. Missing fields remain unknown.
+
+### Manual verification: Fred Hutch demo
+
+Use **Research → Web → Standard** (or normal Chat with **Web search enabled**) and submit
+this as one request:
+
+> Find four recent PubMed publications about ovarian cancer involving Fred Hutchinson
+> Cancer Center or its earlier name, Fred Hutchinson Cancer Research Center. Retrieve two
+> search pages with two records each. Read the available abstracts and author affiliations
+> for those four PMIDs using query_public_api record_from/record_id. Summarize each study's
+> objective and reported findings with detail citations. Identify Fred Hutch-affiliated
+> authors only where their returned affiliations support it. Note missing abstracts or
+> affiliations and any passages left unread. Export the search records and captured details.
+
+Check that search results get their own citations, and abstract/author reads create separate
+ones. Open a detail citation: it should show the PMID, section, selection range and whether
+more remains. A Fred Hutch affiliation filter should return mapped authors rather than
+labelling every coauthor. Export should produce the usual four files plus
+`record_details.json` when `detail_labels` are supplied. Inspect its filters/ranges and the
+manifest's `record_detail_sources`. Reload and verify saved downloads and citations still
+work. With Agent mode off, file creation asks for permission; reading uses normal query-tool
+policy. The exact live publications, abstracts and match counts can change.
 
 ## Try NIH RePORTER
 
@@ -79,6 +143,7 @@ inspection, rereads and Markdown exports do not contact the API again.
 
 When files are requested, [dataset export](API_DATASETS.md) creates records CSV/JSON,
 an adapter-specific summary and a provenance manifest from available source labels.
+Optional `detail_labels` add the captured abstract/author selections in `record_details.json`.
 Export one query at a time. Partial data remains labelled partial; no bulk download or
 unrequested calculation is performed by the query tool.
 
@@ -91,7 +156,8 @@ stays opt-in. Domain restrictions must allow `api.reporter.nih.gov` for NIH, or
 that is the public website, not the API host.
 
 Every attempted page consumes one Research read, including failed pages. A PubMed page's
-two requests share that read and the same 30-second deadline. Source capacity is checked
+two requests share that read and the same 30-second deadline. Each selected-article
+detail request is another read with its own shared transport/parser deadline. Source capacity is checked
 before dispatch. Counters and current-policy checks survive approvals and durable replay.
 
 Both adapters use DNS-pinned connections, the private-network policy, no cookies/credentials
@@ -100,14 +166,17 @@ network reads and isolated parsing; Stop interrupts these operations. NIH reques
 at most once per second; PubMed starts are spaced by at least 0.4 seconds within Phlox's
 single process. Other applications sharing the same public IP may also consume NCBI's
 rate allowance. There is no API-key configuration or automatic retry in this slice.
-Compression, redirects and non-JSON responses are rejected; failures reveal no response bodies
+Compression and redirects are rejected; search responses must be JSON and article
+detail responses must be XML; failures reveal no response bodies
 and create no usable evidence/cursor.
 
 These are reviewed adapters, not arbitrary public API access. New adapters must define
 endpoints, request policy, validation, pagination and export fields. Generic `web_fetch`
-remains GET-only. ClinicalTrials.gov, abstract retrieval, bulk acquisition, configurable
+remains GET-only. ClinicalTrials.gov, full article text, bulk acquisition, configurable
 retry/backoff and general API discovery remain backlog work.
 
 References: [NIH RePORTER API](https://api.reporter.nih.gov/),
 [NCBI E-utilities parameters and usage guidance](https://www.nlm.nih.gov/dataguide/eutilities/utilities.html),
-[PubMed ESearch window](https://www.nlm.nih.gov/pubs/techbull/so22/so22_updated_pubmed_e_utilities.html).
+[PubMed ESearch window](https://www.nlm.nih.gov/pubs/techbull/so22/so22_updated_pubmed_e_utilities.html),
+[NLM structured abstract definition](https://dtd.nlm.nih.gov/ncbi/pubmed/doc/out/250101/el-AbstractText.html),
+[NLM EFetch XML examples for author affiliations](https://www.nlm.nih.gov/dataguide/classes/edirect-for-pubmed/samplecode2.html).

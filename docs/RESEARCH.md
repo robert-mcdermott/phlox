@@ -120,7 +120,9 @@ Ask for a specific page or set of records when a response is large; the model ca
 support notebook findings and final writing. Scanned PDFs require OCR, complex PDF tables
 need verification. For NIH RePORTER projects or PubMed bibliographic searches, the separate
 [public API query tool](PUBLIC_API.md) supports validated pages and continuation from
-retained citations. PubMed metadata does not include abstracts or establish study findings. Other POST APIs and bulk data acquisition remain unsupported. See
+retained citations. Search metadata does not establish study findings. PubMed record-detail
+reading captures available abstracts and author affiliations with separate citations; see
+[article reading and the Fred Hutch demo](PUBLIC_API.md#read-abstracts-and-author-affiliations). Other POST APIs and bulk data acquisition remain unsupported. See
 [PDF and JSON sources](WEB_SOURCES.md#pdf-and-json-sources) for limits and manual checks.
 
 ## Research notebook and working context

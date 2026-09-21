@@ -4,7 +4,7 @@ from copy import deepcopy
 
 from jsonschema import Draft202012Validator
 
-from app import public_api, public_api_adapters as adapters, sources, web_fetch
+from app import public_api, public_api_details, public_api_adapters as adapters, sources, web_fetch
 from app.agent.tools.base import Tool, ToolResult
 from app.models import Conversation
 
@@ -17,8 +17,11 @@ class QueryPublicApi(Tool):
         'Query NIH RePORTER projects (org_names/fiscal_years), or PubMed publications '
         '(adapter=pubmed, query with PubMed field/date tags). Capture one cited page. '
         'Start with a small limit (NIH default 5; PubMed default 2). Continue with only '
-        'continue_from=S# to reuse the saved query. PubMed captures bibliographic metadata, '
-        'not abstracts or study findings. No arbitrary URLs/POST bodies. Pages are partial '
+        'continue_from=S# to reuse the saved query. PubMed search captures bibliographic metadata, '
+        'not study findings. To read a selected PubMed article, supply record_from=S#, record_id=PMID, '
+        'and section=abstract (default) or authors. For authors optionally filter affiliation and set limit. '
+        'Use start for later detail passages; using a detail citation as record_from checks version consistency. '
+        'Reread saved evidence with read_web_source. No arbitrary URLs/POST bodies. Pages are partial '
         'datasets; inspect returned scope and completeness before analysis.'
     )
     parameters = public_api.PARAMETERS
@@ -29,7 +32,8 @@ class QueryPublicApi(Tool):
     def run(self, ctx, **arguments):
         if next(Draft202012Validator(self.parameters).iter_errors(arguments), None):
             return ToolResult('Invalid API query. Supply NIH org_names/fiscal_years, or adapter=pubmed and query, '
-                              'with optional limit; continue with only continue_from. URLs, headers and raw bodies are not accepted.', is_error=True)
+                              'with optional limit; continue with only continue_from. For details use record_from/record_id and section. '
+                              'URLs, headers and raw bodies are not accepted.', is_error=True)
         turn_id = ctx.accounting.turn_id if ctx.accounting else uuid.uuid4().hex
         try:
             if ctx.cancel_event and ctx.cancel_event.is_set():
@@ -38,6 +42,8 @@ class QueryPublicApi(Tool):
             conv = ctx.db.get(Conversation, ctx.conversation_id, populate_existing=True)
             if not conv or conv.user_id != ctx.user_id or sources.remaining_capacity(ctx.db, ctx.conversation_id, turn_id) < 1:
                 return ToolResult('API evidence unavailable: conversation or source allowance unavailable.', is_error=True)
+            if arguments.get('record_from'):
+                return ToolResult(public_api_details.read(ctx, arguments, turn_id))
             if arguments.get('continue_from'):
                 adapter, request, previous = public_api.continuation(ctx, arguments['continue_from'], turn_id,
                                                                     arguments.get('adapter'))

@@ -456,7 +456,7 @@ version expiry remain outside this wave.
 ## Wave 14 — General reliability and task completion
 
 **Status:** in progress; first through third increments implemented 2026-09-09,
-fourth through ninth increments implemented 2026-09-20. **Scope:** application/session/run
+fourth through tenth increments implemented 2026-09-20. **Scope:** application/session/run
 reliability across Chat and Research, M2.3 evidence quality and completion budgets, with a
 bounded bridge to M3 deliverables. Schedule ahead of output inspection and portable exports.
 The delivery record below distinguishes implemented changes from the remaining plan.
@@ -787,6 +787,43 @@ schemas, all supported query modes and invalid combinations; this does not bypas
 validation or change tool permissions.
 Verification: backend suite 771 passed, 24 skipped; lint and whitespace checks passed.
 
+**Tenth increment — PubMed article evidence and reusable record-detail reading (2026-09-20):**
+
+- **W14.3/W14.7 delivery:** `query_public_api` accepts a retained `record_from` citation
+  and `record_id`. PubMed EFetch is the first adapter-owned detail endpoint/parser;
+  abstracts and authors are separate selections with new `api_record` citations. Structured
+  abstract headings and language labels survive extraction. Missing abstracts, unmapped
+  affiliations, collective authors and returned author-list completeness are explicit.
+  Optional affiliation substring matching supports focused author inspection without
+  assigning an institution to every coauthor.
+- **Continuity and scope:** long abstracts and author lists are pageable. Chaining from
+  a detail citation checks the normalized record version before retaining another
+  selection. Owner, expiry, Research attempt and domain scope are rechecked before the
+  request and before capture; source revocation during retrieval cannot mint new evidence.
+  Saved-source rereads avoid refetches and use the existing notebook/citation seams.
+- **Delivery:** optional `detail_labels` add `record_details.json` and per-selection
+  manifest provenance alongside query dataset files. Detail IDs must belong to the
+  selected query records; mixed record versions fail. Detail coverage/filters do not
+  change query coverage or imply full abstracts, author lists or article text. Normal
+  file approvals, publication, saved downloads and source limits remain in force.
+- **Boundaries:** one paced EFetch request and one Research read per detail call; no
+  arbitrary URLs or new permission. Reviewed XML transport shares DNS pinning, Stop,
+  2 MiB download and deadline bounds. The parser rejects entities, external resolution,
+  excessive nesting, malformed/mismatched/multi-record responses and unsupported book
+  records. Selections must fit 6,000 serialized characters; reduce passage/page size when
+  needed. No full article text, independent study verification, current-employment claim,
+  ClinicalTrials.gov adapter, new dependency or database migration is introduced.
+
+**Tenth-increment verification:** synthetic HTTP/XML fixtures cover abstract headings,
+author mapping/filtering, missing fields, selection paging/version drift, hostile XML,
+transport failures, Stop, source revocation and approval resume. Scripted request-bound
+and durable runs perform search → detail reading → five-file export in one turn. Source
+inspection/reload is covered in Chromium. A live single-record Fred Hutch ovarian-cancer
+check retrieved an abstract and two matching authors with the same record hash; no model
+calls or user-data writes were involved. See [manual verification](PUBLIC_API.md#manual-verification-fred-hutch-demo).
+Full backend suite: 813 passed, 24 skipped. Lint, frontend production build and all
+45 Chromium regressions passed; existing deprecation and bundle-size warnings remain.
+
 **Still pending:** remaining W14.1/W14.5 stage allowances, live calibration and recovery UX, further W14.2 extraction quality, broader W14.3 API coverage and W14.4 quality evaluation, and
 W14.6–W14.8 (extraction, working context and analysis/deliverables), plus full process-level signal/draining/deadline work in
 W14.11. A stalled tool or open event stream can still delay graceful shutdown. No automatic
@@ -794,15 +831,13 @@ replay of uncertain actions, session refresh protocol, durable return hint or di
 worker has been introduced. Future increments should address bounded bulk acquisition
 and broader research-to-analysis execution/deliverable verification (W14.6–W14.8).
 
-**Planned public API expansion (W14.3/W14.7):** extend PubMed with available abstracts
-and add ClinicalTrials.gov studies, eligibility, recruitment status and available reported
-results. The ninth increment delivers the shared export foundation and PubMed bibliographic
-search; neither PubMed abstracts nor ClinicalTrials.gov is implemented yet. Continue using
-shared query/pagination, pacing/retry policy, citations/provenance and dataset publication,
-with adapters for documented API semantics. General discovery, retry/backoff and bounded
-bulk retrieval remain open. Verify official documentation, access requirements and limits
-before each addition; test common components against NIH, PubMed and eventually
-ClinicalTrials.gov. This does not promise arbitrary public API access.
+**Planned public API expansion (W14.3/W14.7):** add ClinicalTrials.gov studies, eligibility,
+recruitment status and available reported results through the shared search/detail/export
+contracts. PubMed bibliographic search, available abstracts and author affiliations now
+ship. Full article text, general API discovery, retry/backoff and bounded bulk retrieval
+remain open. Verify official documentation, access requirements and limits before each
+addition; test common components against NIH, PubMed and eventually ClinicalTrials.gov.
+This does not promise arbitrary public API access.
 
 **Motivation:** a reviewed long-running research task exposed an empty synthesis saved as
 completed, exhausted search/read allowances, repeated context trimming, and useful financial

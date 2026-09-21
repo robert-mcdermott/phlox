@@ -30,12 +30,17 @@ Do not guess that omitted records are absent or that requested API filters were 
 Scanned PDFs need OCR; complex table extraction needs verification. query_public_api supports
 NIH RePORTER projects by organization/year and PubMed bibliographic search (adapter=pubmed, query).
 Start with a small page. Continue with its S-label to reuse the saved recipe; each page is
-one source read (PubMed uses ESearch plus ESummary). PubMed records contain no abstracts or study findings. API pages are partial datasets,
+one source read (PubMed uses ESearch plus ESummary). PubMed search records are metadata only.
+Use query_public_api record_from and record_id with section=abstract or authors for evidence.
+Authors can be filtered by affiliation; missing affiliations are unknown. Page long details
+with start; chain record_from to detail citations to check versions. Use read_web_source for
+retained evidence. Full article text is not retrieved. API pages are partial datasets,
 not annual totals: check scope, duplicates, missing amounts and completeness before aggregation.
 Report unsupported API capabilities instead of retrying guessed GET URLs.
 If the user requests data files, use export_api_dataset after collecting API pages and
 before the final handoff. It creates CSV/JSON data, an adapter-specific summary and a
-retrieval manifest from saved source labels, without refetching. Export only when files
+retrieval manifest from saved query source labels, without refetching. Include optional
+detail_labels to export captured abstract/author selections as record_details.json. Export only when files
 were requested; normal file-write approvals apply. A sample stays partial. Leave a tool
 pass for this export before synthesis; at most two export attempts are available. Do not
 claim files were delivered unless the tool succeeded. General code execution and charts

@@ -139,8 +139,8 @@ source/request hashes, coverage intervals and duplicate checks. The registered
 `export_api_dataset` tool defaults to Ask and is excluded from read-only children. Research
 advertises it after API capture, with two bounded attempts before synthesis; it consumes
 no read allowance but keeps time/token/pass ceilings. Publication holds the source lock,
-rechecks access/expiry, and atomically renames a fresh staging folder containing four
-bounded files. Existing artifact events, checkpoints and saved-answer snapshots handle
+rechecks access/expiry, and atomically renames a fresh staging folder containing the
+bounded data files. Existing artifact events, checkpoints and saved-answer snapshots handle
 delivery. There is no network/model call, arbitrary code or new schema. See [API datasets](API_DATASETS.md).
 
 `public_api_adapters.py` defines adapter contracts (identity, endpoint, page validator,
@@ -156,11 +156,23 @@ reuses DNS pinning, cancellation and byte limits while rejecting redirects. The 
 parser subprocess validates filters, types, counts and adapter-specific ordering before
 capture. PubMed uses ESearch followed by ESummary within one deadline/read allowance;
 only matched complete metadata pages are captured. It retains query translation and
-bibliographic fields, with no abstract/full-text claims. Web
+bibliographic fields, with no study-finding claims. Web
 source location JSON retains the canonical request, hash and pagination state; continuation
 reauthorizes the source and current Research attempt/domain scope. The tool counts as a
 Research read and uses the shared permission, notebook, source and replay seams. See
 [public API queries](PUBLIC_API.md); bulk acquisition and aggregation remain later work.
+
+`public_api_details.py` implements retained-source-to-record reading through adapter-owned
+endpoint, request and parser contracts. The query tool's `record_from` mode selects a
+validated ID from a query/detail snapshot, reauthorizes before and after network work,
+and captures an `api_record` source. PubMed EFetch is the first detail adapter: its isolated
+Expat parser rejects entity declarations/resolution, preserves abstract headings and
+per-author affiliation mappings, and exposes bounded text/author selections. Chaining from
+a detail snapshot checks the normalized record hash across subsequent selections. Rereads
+use existing sources without refetching. XML support is internal to reviewed API reads;
+generic web fetching remains unchanged. Dataset `detail_labels` add a separate JSON file
+and manifest provenance, reusing file approval/publication/snapshot handling. No database
+migration, new tool permission or dependency is required.
 
 `web_fetch.py` performs the same DNS-pinned, bounded GET for HTML/text, PDF and JSON.
 PDF/JSON bytes are passed to `web_formats.py`, which admits at most two cancellable parser

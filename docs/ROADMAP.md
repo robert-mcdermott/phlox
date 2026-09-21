@@ -39,8 +39,10 @@ bulk acquisition, general analysis/charts and semantic deliverable tracking rema
 delivery record for verification and remaining restart boundaries.
 The ninth increment adds PubMed bibliographic search, cited pagination and exports through
 shared API/source/dataset components. NIH funding calculations are now adapter-specific.
-PubMed abstracts, ClinicalTrials.gov, broader API discovery and bulk acquisition remain
-planned; see the Wave 14 backlog for scope.
+The tenth increment adds separately cited PubMed abstracts and author affiliations,
+version-checked detail paging and optional captured-detail exports. ClinicalTrials.gov,
+full article text, broader API discovery and bulk acquisition remain planned; see the
+Wave 14 backlog for scope.
 The wave log records verification and remaining limits. M3 has an initial delivery; M4–M5 remain proposed. Existing features and
 completed work are identified explicitly; unchecked entries do not yet ship.
 
@@ -331,7 +333,8 @@ continuation that preserves evidence rather than restarting the investigation. D
 soft planning targets from explicit user/admin hard ceilings; honor Stop and actual provider
 capacity. Public PDF/JSON evidence now ships with explicit extraction/selection bounds.
 Scoped NIH RePORTER and PubMed bibliographic queries, saved-source pagination and dataset
-exports also ship; PubMed abstracts and ClinicalTrials.gov remain planned.
+exports also ship, with separately cited PubMed abstracts/author affiliations.
+ClinicalTrials.gov remains planned.
 Further improve extraction quality, structured-data validation and working-context
 consolidation. Measure successful completion and avoided restarts, not only
 tokens consumed per attempt. Audit effective settings across the generic harness, research,

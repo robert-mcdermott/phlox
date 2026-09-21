@@ -47,7 +47,7 @@ export default function SourcePanel({ conversationId, reference, onClose }) {
       {source && !source.available && <p role="status">{source.reason || 'Source unavailable.'}</p>}
       {source?.kind === 'web' && <>
         <p className="text-xs text-muted">Fetched web source · {source.location?.status === 'fetched' ? 'Retained evidence' : 'No supporting passage captured'}</p>
-        {source.url && /^https?:\/\//i.test(source.url) && <a href={source.url} target="_blank" rel="noopener noreferrer" className="block break-all text-accent underline">{source.location?.format === 'api' ? 'API endpoint' : 'Open original page'}: {source.url}</a>}
+        {source.url && /^https?:\/\//i.test(source.url) && <a href={source.url} target="_blank" rel="noopener noreferrer" className="block break-all text-accent underline">{['api', 'api_record'].includes(source.location?.format) ? 'API endpoint' : 'Open original page'}: {source.url}</a>}
         {source.location?.fetched_at && <p className="text-muted">Fetched {new Date(source.location.fetched_at).toLocaleString()}</p>}
         <button disabled={forgetting} onClick={async () => {
           setForgetting(true); setError(null)
@@ -76,6 +76,15 @@ export default function SourcePanel({ conversationId, reference, onClose }) {
           <details className="rounded border border-border p-2">
             <summary className="cursor-pointer">Retrieval query</summary>
             <p className="my-2 text-xs text-muted">Opening the endpoint does not replay the saved query.</p>
+            <pre className="whitespace-pre-wrap break-all text-xs">{JSON.stringify(source.location.request, null, 2)}</pre>
+          </details>
+        </>}
+        {source.location.format === 'api_record' && <>
+          <p className="text-muted">API record · {source.location.adapter} · {source.location.record_id}</p>
+          <p className="text-muted">Selection [{source.location.selection.start}, {source.location.selection.end}) of {source.location.selection.total} {source.location.selection.unit}</p>
+          <p className="text-muted">{source.location.selection.next_start != null ? 'More of this selection remains.' : 'End of this selection.'} Full article text was not retrieved. Missing affiliations are unknown.</p>
+          <details className="rounded border border-border p-2">
+            <summary className="cursor-pointer">Record retrieval</summary>
             <pre className="whitespace-pre-wrap break-all text-xs">{JSON.stringify(source.location.request, null, 2)}</pre>
           </details>
         </>}

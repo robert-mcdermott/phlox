@@ -399,7 +399,7 @@ def post_read_query(url, body, deadline, url_policy=None):
     return read_api_query(url, deadline, url_policy, body=body)
 
 
-def read_api_query(url, deadline, url_policy=None, *, body=None):
+def read_api_query(url, deadline, url_policy=None, *, body=None, response_format='json'):
     """Transport for trusted read adapters, never exposed as an arbitrary POST tool.
 
     The adapter owns the endpoint and request schema. Redirects are rejected rather than
@@ -415,7 +415,7 @@ def read_api_query(url, deadline, url_policy=None, *, body=None):
     try:
         parts = urlsplit(current)
         conn.request('POST' if body is not None else 'GET', parts.path + ('?' + parts.query if parts.query else ''), body=body,
-                     headers={'User-Agent': USER_AGENT, 'Accept': 'application/json',
+                     headers={'User-Agent': USER_AGENT, 'Accept': 'application/xml, text/xml' if response_format == 'xml' else 'application/json',
                               'Accept-Encoding': 'identity', 'Content-Type': 'application/json',
                               'Connection': 'close'})
         resp = conn.getresponse()
@@ -424,8 +424,10 @@ def read_api_query(url, deadline, url_policy=None, *, body=None):
         if not 200 <= resp.status < 300:
             raise FetchError('http_error', f'HTTP {resp.status}: API query failed. No evidence captured.', resp.status)
         ctype = resp.headers.get_content_type()
-        if ctype != 'application/json' and not (ctype.startswith('application/') and ctype.endswith('+json')):
-            raise FetchError('unsupported_type', 'Read-query API did not return JSON.', resp.status)
+        supported = (ctype in {'application/xml', 'text/xml'} if response_format == 'xml' else
+                     ctype == 'application/json' or (ctype.startswith('application/') and ctype.endswith('+json')))
+        if not supported:
+            raise FetchError('unsupported_type', f'Read-query API did not return {response_format.upper()}.', resp.status)
         return read_body(resp, deadline), resp.status
     except (OSError, http.client.HTTPException):
         deadline.check()

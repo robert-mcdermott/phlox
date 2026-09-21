@@ -901,6 +901,19 @@ test('PDF, JSON and public API citations show provenance after reload', async t 
   await dialog.getByText('PubMed interpreted query: "asthma"[Title]', { exact: true }).waitFor()
   await dialog.getByText('Retrieval query', { exact: true }).click()
   await dialog.locator('pre').filter({ hasText: 'asthma[Title]' }).waitFor()
+  await page.keyboard.press('Escape')
+  state.sources['source-1'] = { ...webSourceFixture(), excerpt: '{"abstract_status":"available","text":"OBJECTIVE: Example abstract."}',
+    location: { ...webSourceFixture().location, format: 'api_record', adapter: 'pubmed', method: 'GET',
+      record_id: '103', section: 'abstract', selection: { start: 0, end: 4000, total: 6000, next_start: 4000, unit: 'characters' },
+      request: { record_id: '103', section: 'abstract', start: 0, max_chars: 4000 } } }
+  await page.reload()
+  await page.getByText('Approval chat', { exact: true }).click()
+  await page.getByRole('button', { name: 'View source S1', exact: true }).click()
+  await dialog.getByText('API record · pubmed · 103', { exact: true }).waitFor()
+  await dialog.getByText('Selection [0, 4000) of 6000 characters', { exact: true }).waitFor()
+  await dialog.getByText(/More of this selection remains/).waitFor()
+  await dialog.getByText('Record retrieval', { exact: true }).click()
+  await dialog.locator('pre').filter({ hasText: 'max_chars' }).waitFor()
 })
 
 test('saved citations inspect exact evidence, preserve code, reload and recheck revoked access', async (t) => {

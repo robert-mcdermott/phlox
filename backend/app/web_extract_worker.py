@@ -342,6 +342,123 @@ def pubmed_summary(body, request, search):
     return pubmed_records(json.dumps({'meta': meta, 'results': records}).encode(), request)
 
 
+def pubmed_detail(body, request):
+    """Parse EFetch with no DTD/entity resolution in the isolated worker."""
+    from xml.etree.ElementTree import TreeBuilder
+    from xml.parsers import expat
+
+    builder = TreeBuilder()
+    parser = expat.ParserCreate()
+    depth = nodes = 0
+
+    def start(name, attrs):
+        nonlocal depth, nodes
+        depth += 1
+        nodes += 1
+        if depth > 64 or nodes > 50000:
+            api_fail('PubMed XML exceeds structural limits.')
+        builder.start(name, attrs)
+
+    def end(name):
+        nonlocal depth
+        builder.end(name)
+        depth -= 1
+
+    def forbidden(*args):
+        api_fail('PubMed XML entity declarations/references are not supported.')
+
+    def doctype(name, system, public, internal):
+        if name != 'PubmedArticleSet' or internal:
+            forbidden()
+
+    parser.StartElementHandler, parser.EndElementHandler = start, end
+    parser.CharacterDataHandler = builder.data
+    parser.StartDoctypeDeclHandler = doctype
+    parser.EntityDeclHandler = parser.ExternalEntityRefHandler = forbidden
+    try:
+        parser.Parse(body, True)
+        root = builder.close()
+    except (expat.ExpatError, ValueError) as exc:
+        if isinstance(exc, ExtractionError):
+            raise
+        api_fail('Malformed PubMed XML.')
+    if root.tag != 'PubmedArticleSet' or len(root) != 1 or root[0].tag != 'PubmedArticle':
+        api_fail('Expected exactly one PubMed journal article; missing, book or multi-record responses are unsupported.')
+    citation = root.find('PubmedArticle/MedlineCitation')
+    if citation is None or len(root[0].findall('MedlineCitation')) != 1:
+        api_fail('Missing or duplicate PubMed citation.')
+
+    def text(node):
+        return ' '.join(''.join(node.itertext()).split()) if node is not None else ''
+
+    identifier = text(citation.find('PMID'))
+    article = citation.find('Article')
+    if (identifier != request['record_id'] or article is None
+            or len(citation.findall('PMID')) != 1 or len(citation.findall('Article')) != 1):
+        api_fail('PubMed detail PMID does not match the selected record.')
+    title = text(article.find('ArticleTitle'))
+    if not title or len(title) > 1000:
+        api_fail('Missing or oversized PubMed article title.')
+    abstracts = []
+    for abstract in [*article.findall('Abstract'), *citation.findall('OtherAbstract')]:
+        sections = []
+        for section in abstract.findall('AbstractText'):
+            value = text(section)
+            if value:
+                heading = section.get('Label') or section.get('NlmCategory') or ''
+                sections.append((heading + ': ' if heading else '') + value)
+        if not sections and text(abstract) and abstract.find('AbstractText') is None:
+            api_fail('Unsupported PubMed abstract structure.')
+        if sections:
+            language = abstract.get('Language', '')
+            abstracts.append((f'Language: {language}\n' if language else '') + '\n\n'.join(sections))
+    abstract_text = '\n\n'.join(abstracts)
+    if len(abstract_text) > MAX_TEXT:
+        api_fail('PubMed abstract exceeds the supported text limit.')
+    authors = []
+    author_list = article.find('AuthorList')
+    for index, author in enumerate(article.findall('AuthorList/Author')):
+        collective = text(author.find('CollectiveName'))
+        personal = ' '.join(filter(None, [text(author.find('ForeName')) or text(author.find('Initials')),
+                                          text(author.find('LastName')), text(author.find('Suffix'))]))
+        if not (collective or personal):
+            api_fail('PubMed author name is missing.')
+        authors.append({'position': index + 1, 'name': collective or personal, 'collective': bool(collective),
+                        'affiliations': [text(a) for a in [*author.findall('AffiliationInfo/Affiliation'), *author.findall('Affiliation')] if text(a)]})
+    unassigned = [text(a) for a in [*article.findall('Affiliation'), *citation.findall('Affiliation')] if text(a)]
+    normalized = {'record_id': identifier, 'title': title, 'abstract': abstract_text, 'authors': authors,
+                  'author_list_complete': author_list.get('CompleteYN', 'unknown') if author_list is not None else 'unknown',
+                  'unassigned_affiliations': unassigned}
+    import hashlib
+    version = hashlib.sha256(json.dumps(normalized, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+    result = {'record_id': identifier, 'title': title, 'url': 'https://pubmed.ncbi.nlm.nih.gov/' + identifier + '/',
+              'section': request['section'], 'record_hash': version, 'full_text_retrieved': False}
+    offset = request['start']
+    if request['section'] == 'abstract':
+        if offset > len(abstract_text) or (offset == len(abstract_text) and offset):
+            api_fail('Abstract offset is outside the available text.')
+        passage = abstract_text[offset:offset + request['max_chars']]
+        end = offset + len(passage)
+        result.update(abstract_status='available' if abstract_text else 'missing', text=passage,
+                      selection={'start': offset, 'end': end, 'total': len(abstract_text),
+                                 'next_start': end if end < len(abstract_text) else None, 'unit': 'characters'})
+    else:
+        fragment = request['affiliation'].casefold()
+        selected = [a for a in authors if not fragment or any(fragment in affiliation.casefold() for affiliation in a['affiliations'])]
+        if offset > len(selected) or (offset == len(selected) and offset):
+            api_fail('Author offset is outside the matching author list.')
+        end = min(len(selected), offset + request['limit'])
+        result.update(authors=selected[offset:end], affiliation_filter=request['affiliation'],
+                      returned_author_count=len(authors), authors_without_affiliations=sum(not a['affiliations'] for a in authors),
+                      author_list_complete=normalized['author_list_complete'], unassigned_affiliations=unassigned,
+                      selection={'start': offset, 'end': end, 'total': len(selected),
+                                 'next_start': end if end < len(selected) else None, 'unit': 'authors'})
+    rendered = ''.join(encode_json(result))
+    if len(rendered) > 6000:
+        raise ExtractionError('selection_empty', 'Article detail exceeds the evidence allowance. Use smaller max_chars for abstract or limit for authors; no partial evidence captured.')
+    return {'text': rendered, 'record_hash': version, 'selection': result['selection']}
+
+
 def main():
     # Hard CPU/address-space bounds where supported; the parent enforces wall time and Stop.
     try:
@@ -359,6 +476,8 @@ def main():
             result = pdf(body, request.get('pdf_page'))
         elif request['format'] == 'nih_projects':
             result = nih_projects(body, request['request'], request.get('previous'))
+        elif request['format'] == 'pubmed_detail':
+            result = pubmed_detail(body, request['request'])
         elif request['format'] == 'pubmed_search':
             result = pubmed_search(body, request['request'], request.get('previous'))
         elif request['format'] == 'pubmed_summary':

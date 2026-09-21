@@ -15,6 +15,7 @@ NAME = 'query_public_api'
 ENDPOINT = 'https://api.reporter.nih.gov/v2/projects/search'
 PUBMED_ENDPOINT = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi'
 PUBMED_SUMMARY_ENDPOINT = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi'
+PUBMED_DETAIL_ENDPOINT = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi'
 _PUBMED_NEXT_REQUEST = 0.0
 PUBMED_INTERVAL = 0.4  # Below NCBI's three requests/second per-IP allowance without a key.
 _PACE_LOCK = threading.Lock()
@@ -25,6 +26,14 @@ FIELDS = ['ApplId', 'SubprojectId', 'FiscalYear', 'ProjectNum', 'ProjectTitle', 
 PARAMETERS = {
     'type': 'object', 'additionalProperties': False,
     'properties': {
+        'record_from': {'type': 'string', 'pattern': '^S[1-9][0-9]{0,5}$',
+                        'description': 'Read article details from a saved API query/detail citation, with record_id. PubMed only currently.'},
+        'record_id': {'type': 'string', 'pattern': '^[A-Za-z0-9_-]{1,64}$'},
+        'section': {'type': 'string', 'enum': ['abstract', 'authors'], 'description': 'Record detail section, default abstract.'},
+        'start': {'type': 'integer', 'minimum': 0, 'maximum': 500000, 'description': 'Detail offset: abstract character or matching author index; default 0.'},
+        'max_chars': {'type': 'integer', 'minimum': 500, 'maximum': 4000, 'description': 'Abstract passage size; default 4000.'},
+        'affiliation': {'type': 'string', 'minLength': 1, 'maxLength': 200,
+                        'description': 'Authors section only: case-insensitive affiliation substring, e.g. Fred Hutch. Missing affiliations remain unknown.'},
         'adapter': {'type': 'string', 'enum': ['nih_projects', 'pubmed'], 'description': 'Defaults to nih_projects; choose pubmed for publication search.'},
         'query': {'type': 'string', 'minLength': 1, 'maxLength': 1000, 'pattern': r'^[^\x00-\x1f]+$',
                   'description': 'PubMed search expression, including field tags/date filters. Requires adapter=pubmed.'},
@@ -40,11 +49,15 @@ PARAMETERS = {
     },
     'oneOf': [
         {'required': ['org_names', 'fiscal_years'], 'properties': {'adapter': {'const': 'nih_projects'}},
-         'not': {'anyOf': [{'required': ['continue_from']}, {'required': ['query']}]}},
+         'not': {'anyOf': [{'required': [key]} for key in ('continue_from', 'query', 'record_from', 'record_id', 'section', 'start', 'max_chars', 'affiliation')]}},
         {'required': ['adapter', 'query'], 'properties': {'adapter': {'const': 'pubmed'}},
-         'not': {'anyOf': [{'required': [key]} for key in ('continue_from', 'org_names', 'fiscal_years')]}},
+         'not': {'anyOf': [{'required': [key]} for key in ('continue_from', 'org_names', 'fiscal_years', 'record_from', 'record_id', 'section', 'start', 'max_chars', 'affiliation')]}},
         {'required': ['continue_from'], 'not': {'anyOf': [
-            {'required': [key]} for key in ('org_names', 'fiscal_years', 'query', 'limit')]}},
+            {'required': [key]} for key in ('org_names', 'fiscal_years', 'query', 'limit', 'record_from', 'record_id', 'section', 'start', 'max_chars', 'affiliation')]}},
+        {'required': ['record_from', 'record_id'], 'properties': {'section': {'const': 'abstract'}},
+         'not': {'anyOf': [{'required': [key]} for key in ('org_names', 'fiscal_years', 'query', 'continue_from', 'limit', 'affiliation')]}},
+        {'required': ['record_from', 'record_id', 'section'], 'properties': {'section': {'const': 'authors'}},
+         'not': {'anyOf': [{'required': [key]} for key in ('org_names', 'fiscal_years', 'query', 'continue_from', 'max_chars')]}},
     ],
 }
 

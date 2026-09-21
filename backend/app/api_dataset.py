@@ -7,7 +7,7 @@ import shutil
 import tempfile
 import uuid
 
-from app import public_api_adapters as adapters, sources
+from app import public_api_adapters as adapters, public_api_details, sources
 from app.api_dataset_formats import DatasetError
 from app.models import Conversation, Source, SourceUse
 from app.web_extract_worker import decode_json
@@ -60,7 +60,7 @@ def collect(ctx, labels, turn_id):
     return pages
 
 
-def assemble(pages):
+def assemble(pages, details=None):
     adapter = pages[0]['adapter']
     recipe = {k: v for k, v in pages[0]['request'].items() if k not in {'offset', 'limit'}}
     total = pages[0]['total']
@@ -102,11 +102,16 @@ def assemble(pages):
                 'all_reported_records_captured': not gaps and len(ordered) == total,
                 'missing_record_ranges': gaps, 'duplicate_records_removed': duplicates}
     files = adapter.dataset_files(ordered, coverage)
+    if details:
+        files['record_details.json'] = json.dumps([d['data'] for d in details], indent=2, ensure_ascii=False) + '\n'
     manifest = {'version': 1, 'adapter': adapter.name, 'created_at': datetime.now(timezone.utc).isoformat(),
                 'notice': adapter.notice, 'query': recipe, 'coverage': coverage, 'sources': provenance,
                 'csv_text_policy': 'Formula-like text cells are prefixed with an apostrophe; records.json preserves original strings. Nulls are blank in CSV.',
                 'files': {name: {'sha256': hashlib.sha256(text.encode()).hexdigest(), 'bytes': len(text.encode())}
                           for name, text in files.items()}}
+    if details:
+        manifest['record_detail_sources'] = [d['provenance'] for d in details]
+        manifest['record_detail_notice'] = public_api_details.NOTICE + ' Selections may be partial or affiliation-filtered; they do not change query coverage.'
     if pages[0]['query_translation'] is not None:
         manifest['query_translation'] = pages[0]['query_translation']
     files['manifest.json'] = json.dumps(manifest, indent=2, ensure_ascii=False) + '\n'
@@ -132,16 +137,49 @@ def publish(ctx, files):
              'ext': Path(name).suffix, 'size': len(text.encode())} for name, text in files.items()]
 
 
-def export(ctx, labels):
+def collect_details(ctx, labels, turn_id, pages):
+    if not labels:
+        return []
+    if any(page['adapter'] != pages[0]['adapter'] for page in pages):
+        raise DatasetError('Selected pages use different queries. Export each query separately.')
+    details, versions = [], {}
+    adapter = pages[0]['adapter']
+    identifiers = {str(record[adapter.id_field]) for page in pages for record in page['data']}
+    for label in labels:
+        check_stop(ctx)
+        row = public_api_details.load_source(ctx, label, turn_id)
+        detail_adapter, value = public_api_details.snapshot(row)
+        identifier = value['record_id']
+        if detail_adapter != adapter or identifier not in identifiers:
+            raise DatasetError('Record details must belong to records in the selected query pages.')
+        if identifier in versions and versions[identifier] != value['record_hash']:
+            raise DatasetError('Selected article details contain conflicting record versions. Export one version at a time.')
+        versions[identifier] = value['record_hash']
+        details.append({'row': row, 'data': value, 'provenance': {
+            'label': label, 'source_id': row.id, 'url': row.url, 'record_id': identifier,
+            'captured_at': sources.utc(row.captured_at).isoformat(), 'content_sha256': row.content_hash,
+            'request': row.location['request'], 'request_sha256': row.location['request_hash'],
+            'record_sha256': value['record_hash'], 'selection': value['selection'],
+            'selected_from_source_id': row.location['selected_from_source_id'],
+        }})
+    return details
+
+
+def export(ctx, labels, detail_labels=None):
+    detail_labels = detail_labels or []
+    if len(labels) + len(detail_labels) > 64 or set(labels) & set(detail_labels):
+        raise DatasetError('Supply at most 64 distinct query/detail source labels in total.')
     turn_id = ctx.accounting.turn_id if ctx.accounting else uuid.uuid4().hex
     with sources.LOCK:
         check_stop(ctx)
         pages = collect(ctx, labels, turn_id)
-        files, coverage = assemble(pages)
+        details = collect_details(ctx, detail_labels, turn_id, pages)
+        files, coverage = assemble(pages, details)
         check_stop(ctx)
         # Recheck expiry immediately before publication. Lock also excludes deletion.
         collect(ctx, labels, turn_id)
-        missing = [p['row'] for p in pages if not ctx.db.get(SourceUse, (turn_id, p['row'].id))]
+        collect_details(ctx, detail_labels, turn_id, pages)
+        missing = [p['row'] for p in [*pages, *details] if not ctx.db.get(SourceUse, (turn_id, p['row'].id))]
         if ctx.db.query(SourceUse).filter_by(turn_id=turn_id).count() + len(missing) > sources.MAX_TURN_SOURCES:
             raise DatasetError('Not enough source capacity to bind the dataset citations to this turn.')
         for row in missing:

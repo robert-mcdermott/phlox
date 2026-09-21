@@ -183,6 +183,13 @@ def capture_web(db, *, conversation_id, user_id, turn_id, url, title, text='', c
 
 
 def web_locator(location):
+    if location.get('format') == 'api_record':
+        selection = location['selection']
+        return (f"API record detail: {location['adapter']} {location['record_id']} ({location['method']}); "
+                f"{location['section']} [{selection['start']}, {selection['end']}) of {selection['total']} {selection['unit']}. "
+                'Selected evidence only; full article text was not retrieved.\n'
+                'Request: ' + json.dumps(location['request'], ensure_ascii=False, sort_keys=True) + '\n'
+                f"Record SHA-256: {location['record_hash']}\n")
     if location.get('format') == 'api':
         return (f"Public API: {location['adapter']} ({location.get('method', 'POST')}); records [{location['offset']}, {location['item_end']}) "
                 f"of {location['total_records']} reported matches. Selected fields only.\n"
@@ -258,7 +265,7 @@ def inspect_source(db, conv, source_id):
         versions = db.query(Source.id).filter(Source.conversation_id == conv.id, Source.kind == 'web',
             Source.url == row.url, Source.content_hash != row.content_hash, Source.excerpt.isnot(None),
             Source.expires_at > datetime.now(timezone.utc))
-        if row.location.get('format') == 'api':
+        if row.location.get('format') in {'api', 'api_record'}:
             # A different query/page at the same POST endpoint is not a revised source.
             versions = versions.filter(Source.location['request_hash'].as_string() == row.location['request_hash'])
         changed = versions.first() is not None

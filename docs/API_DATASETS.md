@@ -3,13 +3,14 @@
 [Public API queries](PUBLIC_API.md) · [Research](RESEARCH.md) · [User Guide](USER_GUIDE.md)
 
 When a task asks for downloadable data, `export_api_dataset` can turn retained NIH
-RePORTER or PubMed query pages into four real files in a new conversation workspace folder:
+RePORTER or PubMed query pages into four base files in a new conversation workspace folder:
 
 | File | Contents |
 |---|---|
 | `records.csv` | NIH project fields, or PubMed PMIDs, titles, authors, journals, dates and identifiers |
 | `records.json` | All fields retained by the API adapter, including nested data and original numeric spellings |
 | `summary.csv` | Dataset coverage, NIH counts/known award sums/missing amounts grouped by organization and fiscal year; PubMed captured and reported record counts |
+| `record_details.json` (optional) | Captured abstract/author selections, with record IDs, versions, filters and ranges; only when `detail_labels` are supplied |
 | `manifest.json` | Query recipe, source references/capture times, coverage and gaps, duplicate counts, and data-file hashes |
 
 The tool reads existing source snapshots. It makes no network requests, installs nothing,
@@ -48,12 +49,18 @@ export. No dataset files should be created. Research can still report its retain
 For PubMed, use the [two-page example](PUBLIC_API.md#try-pubmed). Verify four PMIDs in
 `records.json`, a partial coverage summary with no funding columns, and the interpreted
 query in `manifest.json`. Authors and DOI/PMC lists remain arrays in JSON and are joined
-with semicolons in CSV. Bibliographic records do not include abstracts or full article text.
+with semicolons in CSV. Search-page records do not include abstracts. Use `detail_labels` to add previously captured
+abstract/author selections separately. Full article text is not retrieved.
 The publication dates remain source strings; no publication-year aggregation is inferred.
 
 ## Validation and limits
 
-The agent supplies 1–64 distinct source labels, not file contents or model-authored rows.
+The agent supplies 1–64 distinct query source `labels`, plus optional `detail_labels`, with
+at most 64 distinct labels combined. It supplies no file contents or model-authored rows.
+Detail IDs must occur in the selected query pages and use the same adapter. Mixed detail
+versions of a record are rejected. Detail selections stay separate from query records and
+do not change the query coverage statistics; absence from the detail file means unread,
+not that an abstract/affiliation does not exist. Each selection retains its own provenance.
 All pages must be available, owned by the same conversation and from one query of one supported API.
 Research additionally requires the current attempt and allowed domains. Normal Chat can
 export retained pages from an earlier turn in the same conversation. Access and expiry
@@ -77,7 +84,7 @@ exponents between −100 and 100. Nulls remain null in JSON and blank in CSV. Or
 and nested data remain in JSON; formula-like text cells in CSV receive an apostrophe
 prefix so opening the file in a spreadsheet does not interpret them as formulas.
 
-The four files together are limited to 2 MiB. They are staged privately and published
+The complete bundle is limited to 2 MiB. They are staged privately and published
 together under a fresh `api-dataset-…` folder; existing files are never overwritten.
 Stop and write failures before publication remove the staging folder. File descriptors
 are returned only after publication succeeds. A forced process kill can leave a staging

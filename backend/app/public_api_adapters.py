@@ -24,6 +24,15 @@ class Adapter:
     dataset_files: Callable
     endpoint_setting: str
     ascending_ids: bool = False
+    detail_endpoint_setting: str | None = None
+    detail_format: str | None = None
+    detail_parameters: Callable | None = None
+    detail_response_format: str = 'xml'
+
+    @property
+    def detail_endpoint(self):
+        from app import public_api
+        return getattr(public_api, self.detail_endpoint_setting) if self.detail_endpoint_setting else None
 
     @property
     def endpoint(self):
@@ -36,7 +45,9 @@ ADAPTERS = {
     'nih_projects': Adapter('nih_projects', 'NIH RePORTER project query', 'POST', 'appl_id',
                             nih_projects, NIH_NOTICE, nih_files, 'ENDPOINT', ascending_ids=True),
     'pubmed': Adapter('pubmed', 'PubMed publication query', 'GET', 'pmid', pubmed_records,
-                      PUBMED_NOTICE, pubmed_files, 'PUBMED_ENDPOINT'),
+                      PUBMED_NOTICE, pubmed_files, 'PUBMED_ENDPOINT',
+                      detail_endpoint_setting='PUBMED_DETAIL_ENDPOINT', detail_format='pubmed_detail',
+                      detail_parameters=lambda identifier: {'db': 'pubmed', 'id': identifier, 'retmode': 'xml', 'tool': 'phlox'}),
 }
 
 

@@ -45,6 +45,9 @@ def test_invalid_unions_still_fail_before_approval_or_direct_execution(arguments
     {'adapter': 'nih_projects', 'org_names': ['Example'], 'fiscal_years': [2024], 'limit': 2},
     {'adapter': 'pubmed', 'query': 'asthma[Title]', 'limit': 2},
     {'continue_from': 'S1'}, {'adapter': 'pubmed', 'continue_from': 'S1'},
+    {'record_from': 'S1', 'record_id': '103'},
+    {'adapter': 'pubmed', 'record_from': 'S1', 'record_id': '103', 'max_chars': 1000, 'start': 0},
+    {'record_from': 'S2', 'record_id': '103', 'section': 'authors', 'affiliation': 'Fred Hutch', 'limit': 2},
 ])
 def test_supported_argument_modes_remain_valid(arguments):
     assert argument_error(QueryPublicApi(), arguments) is None
